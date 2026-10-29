@@ -1,0 +1,30 @@
+# 过滤 NexFatal_Storage 目录
+NexFatal_Storage/
+
+.gocache/
+*.png
+
+
+# 忽略非 json 格式的所有建筑文件
+*.schematic
+*.schem
+*.litematic
+*.mcstructure
+*.mcworld
+*.bdx
+*.construction
+*.bp
+*.mcfunction
+*.kbdx
+*.ibi
+*.building
+*.buildingX
+*.reb
+*.fhbuild
+*.bds
+*.sibi
+*.bcf
+*.tibi
+*.covstructure
+*.np
+*.nexus

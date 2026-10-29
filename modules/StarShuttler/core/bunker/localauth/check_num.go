@@ -1,0 +1,42 @@
+package localauth
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	g79 "github.com/xingbaiawa/g79client"
+	"github.com/xingbaiawa/unmcpk"
+)
+
+func TransferCheckNum(
+	_ context.Context,
+	isPC bool,
+	data string,
+	engineVersion string,
+	patchVersion string,
+) (string, error) {
+	if engineVersion == "" {
+		engineVersion = g79.EngineVersion
+	}
+	if patchVersion == "" {
+		latestVersion, err := g79.GetGlobalG79LatestVersion()
+		if err != nil {
+			return "", fmt.Errorf("get latest version failed: %w", err)
+		}
+		patchVersion = latestVersion
+	}
+
+	python3Path := os.Getenv("FUNAUTH_PYTHON3")
+	value, err := unmcpk.GenerateTransferCheckNum(
+		isPC,
+		data,
+		engineVersion,
+		patchVersion,
+		python3Path,
+	)
+	if err != nil {
+		return "", err
+	}
+	return value, nil
+}
