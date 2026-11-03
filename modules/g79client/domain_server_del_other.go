@@ -7,16 +7,16 @@ import (
 	"strings"
 )
 
-// 描述删除他服记录的响应
+// DomainDeleteOtherServerResponse 描述删除他服记录的响应。
 type DomainDeleteOtherServerResponse struct {
 	Response
 	Entity any `json:"entity"`
 }
 
-// 移除指定 sid 的他服记录
+// DeleteOtherDomainServer 移除指定 sid 的他服记录。
 func (c *Client) DeleteOtherDomainServer(sid string) (*DomainDeleteOtherServerResponse, error) {
 	if strings.TrimSpace(sid) == "" {
-		return nil, fmt.Errorf("DeleteOtherDomainServer: Sid must not be empty")
+		return nil, fmt.Errorf("DeleteOtherDomainServer: sid 不能为空")
 	}
 
 	api := "/domain-server/del-other-server"
@@ -26,12 +26,12 @@ func (c *Client) DeleteOtherDomainServer(sid string) (*DomainDeleteOtherServerRe
 
 	body, err := json.Marshal(requestData)
 	if err != nil {
-		return nil, fmt.Errorf("DeleteOtherDomainServer: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(body)))
 	if err != nil {
-		return nil, fmt.Errorf("DeleteOtherDomainServer: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -44,18 +44,18 @@ func (c *Client) DeleteOtherDomainServer(sid string) (*DomainDeleteOtherServerRe
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("DeleteOtherDomainServer: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("DeleteOtherDomainServer: %v", err)
+		return nil, err
 	}
 
 	var deleteResp DomainDeleteOtherServerResponse
 	if err := json.Unmarshal(respBody, &deleteResp); err != nil {
-		return nil, fmt.Errorf("DeleteOtherDomainServer: %v", err)
+		return nil, fmt.Errorf("解析删除他服响应失败: %v, 响应内容: %s", err, string(respBody))
 	}
 
 	return &deleteResp, nil

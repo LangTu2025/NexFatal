@@ -18,7 +18,7 @@ import (
 	"github.com/xingbaiawa/g79client/utils"
 )
 
-// 表示一个与聊天服务器的活跃连接
+// ChatConnection 表示一个与聊天服务器的活跃连接。
 type ChatConnection struct {
 	service *ChatConnectionService
 	entry   g79client.G79ChatServerEntry
@@ -56,26 +56,26 @@ func newChatConnection(service *ChatConnectionService, conn net.Conn, entry g79c
 func (c *ChatConnection) handshake(ctx context.Context) error {
 	tokenBytes, err := decodeToken(c.service.client.UserToken)
 	if err != nil {
-		return fmt.Errorf("handshake: %v", err)
+		return fmt.Errorf("chat_connection.handshake: 解析 token 失败: %w", err)
 	}
 
 	uid64, err := c.service.client.GetUserIDInt()
 	if err != nil {
-		return fmt.Errorf("handshake: %v", err)
+		return fmt.Errorf("chat_connection.handshake: 解析用户 ID 失败: %w", err)
 	}
 	if uid64 < 0 || uid64 > math.MaxUint32 {
-		return fmt.Errorf("handshake: User ID is outside the uint32 range: %d", uid64)
+		return fmt.Errorf("chat_connection.handshake: 用户 ID 超出 32 位整数范围: %d", uid64)
 	}
 	uid := uint32(uid64)
 
 	randBytes := make([]byte, 16)
 	if _, err := rand.Read(randBytes); err != nil {
-		return fmt.Errorf("handshake: %v", err)
+		return fmt.Errorf("chat_connection.handshake: 生成随机数失败: %w", err)
 	}
 
 	block, err := aes.NewCipher(tokenBytes)
 	if err != nil {
-		return fmt.Errorf("handshake: %v", err)
+		return fmt.Errorf("chat_connection.handshake: 创建 AES 实例失败: %w", err)
 	}
 
 	aesRand := make([]byte, 16)
@@ -93,7 +93,7 @@ func (c *ChatConnection) handshake(ctx context.Context) error {
 	payload := append(head, body...)
 	framed, err := wrapFrame(payload)
 	if err != nil {
-		return fmt.Errorf("handshake: %v", err)
+		return err
 	}
 
 	deadline := time.Now().Add(10 * time.Second)
@@ -101,30 +101,28 @@ func (c *ChatConnection) handshake(ctx context.Context) error {
 		deadline = ctxDeadline
 	}
 	if err := c.conn.SetDeadline(deadline); err != nil {
-		return fmt.Errorf("handshake: %v", err)
+		return err
 	}
-	defer func() {
-		_ = c.conn.SetDeadline(time.Time{})
-	}()
+	defer c.conn.SetDeadline(time.Time{})
 
-	if err := c.sendRaw(framed); err != nil {
-		return fmt.Errorf("handshake: %v", err)
+	if _, err := c.conn.Write(framed); err != nil {
+		return fmt.Errorf("chat_connection.handshake: 发送握手请求失败: %w", err)
 	}
 
 	for {
 		frame, err := readFrame(c.conn)
 		if err != nil {
-			return fmt.Errorf("handshake: %v", err)
+			return fmt.Errorf("chat_connection.handshake: 读取握手响应失败: %w", err)
 		}
 		if len(frame) == 0 {
 			continue
 		}
 		if len(frame) < 5 {
-			return fmt.Errorf("handshake: Handshake response is too short: %d", len(frame))
+			return fmt.Errorf("chat_connection.handshake: 握手响应过短: %d", len(frame))
 		}
 		ret := frame[4]
 		if ret != 0 {
-			return fmt.Errorf("handshake: Server returned code %d", ret)
+			return fmt.Errorf("chat_connection.handshake: 服务器返回错误码 %d", ret)
 		}
 		break
 	}
@@ -134,11 +132,11 @@ func (c *ChatConnection) handshake(ctx context.Context) error {
 
 	encryptEngine, err := utils.NewNeteaseChaCha(encryptKey)
 	if err != nil {
-		return fmt.Errorf("handshake: %v", err)
+		return fmt.Errorf("chat_connection.handshake: 创建加密引擎失败: %w", err)
 	}
 	decryptEngine, err := utils.NewNeteaseChaCha(decryptKey)
 	if err != nil {
-		return fmt.Errorf("handshake: %v", err)
+		return fmt.Errorf("chat_connection.handshake: 创建解密引擎失败: %w", err)
 	}
 
 	c.encrypt = encryptEngine
@@ -172,7 +170,7 @@ func (c *ChatConnection) readLoop() {
 			continue
 		}
 		if len(frame) < 2 {
-			c.setError(fmt.Errorf("readLoop: Invalid frame length %d", len(frame)))
+			c.setError(fmt.Errorf("chat_connection: 收到异常帧长度 %d", len(frame)))
 			return
 		}
 
@@ -180,7 +178,7 @@ func (c *ChatConnection) readLoop() {
 		encrypted := frame[2:]
 		plain, err := c.decrypt.Process(encrypted)
 		if err != nil {
-			c.setError(fmt.Errorf("readLoop: %v", err))
+			c.setError(fmt.Errorf("chat_connection: 解密数据失败: %w", err))
 			return
 		}
 		if len(plain) < 2 {
@@ -206,7 +204,7 @@ func (c *ChatConnection) heartbeatLoop() {
 		select {
 		case <-ticker.C:
 			if err := c.sendRaw(emptyFrame); err != nil {
-				c.setError(fmt.Errorf("heartbeatLoop: %v", err))
+				c.setError(fmt.Errorf("chat_connection: 心跳发送失败: %w", err))
 				return
 			}
 		case <-c.closed:
@@ -215,26 +213,66 @@ func (c *ChatConnection) heartbeatLoop() {
 	}
 }
 
-// 发送私聊消息，返回本次使用的序列号
+func (c *ChatConnection) sendMessage(cmd uint16, payload []byte) (uint16, error) {
+	if c.encrypt == nil {
+		return 0, fmt.Errorf("chat_connection.sendMessage: 连接未就绪")
+	}
+
+	c.seqMu.Lock()
+	seq := c.seq
+	if seq == 0 {
+		seq = 1
+	}
+	c.seq++
+	c.seqMu.Unlock()
+
+	head := make([]byte, 2)
+	binary.LittleEndian.PutUint16(head, seq)
+
+	body := make([]byte, 2+len(payload))
+	binary.LittleEndian.PutUint16(body[:2], cmd)
+	copy(body[2:], payload)
+
+	encrypted, err := c.encrypt.Process(body)
+	if err != nil {
+		return 0, fmt.Errorf("chat_connection.sendMessage: 加密失败: %w", err)
+	}
+
+	packet := append(head, encrypted...)
+	if len(packet) > math.MaxUint16 {
+		return 0, fmt.Errorf("chat_connection.sendMessage: 数据过长 %d", len(packet))
+	}
+
+	frame := make([]byte, 2+len(packet))
+	binary.LittleEndian.PutUint16(frame[:2], uint16(len(packet)))
+	copy(frame[2:], packet)
+
+	if err := c.sendRaw(frame); err != nil {
+		return 0, err
+	}
+	return seq, nil
+}
+
+// ChatTo 发送私聊消息，返回本次使用的序列号。
 func (c *ChatConnection) ChatTo(uid any, words string) (uint16, error) {
 	if c == nil {
-		return 0, fmt.Errorf("ChatTo: Connection is nil")
+		return 0, fmt.Errorf("chat_connection.ChatTo: 连接未初始化")
 	}
 	payload, err := json.Marshal([]any{uid, words})
 	if err != nil {
-		return 0, fmt.Errorf("ChatTo: %v", err)
+		return 0, fmt.Errorf("chat_connection.ChatTo: 序列化消息失败: %w", err)
 	}
 	return c.SendCommand(CommandChatPrivate, payload)
 }
 
-// 发送群聊消息，返回本次使用的序列号
+// GroupChatTo 发送群聊消息，返回本次使用的序列号。
 func (c *ChatConnection) GroupChatTo(groupID any, words string) (uint16, error) {
 	if c == nil {
-		return 0, fmt.Errorf("GroupChatTo: Connection is nil")
+		return 0, fmt.Errorf("chat_connection.GroupChatTo: 连接未初始化")
 	}
 	payload, err := json.Marshal([]any{groupID, words})
 	if err != nil {
-		return 0, fmt.Errorf("GroupChatTo: %v", err)
+		return 0, fmt.Errorf("chat_connection.GroupChatTo: 序列化消息失败: %w", err)
 	}
 	return c.SendCommand(CommandChatGroup, payload)
 }
@@ -242,34 +280,15 @@ func (c *ChatConnection) GroupChatTo(groupID any, words string) (uint16, error) 
 func (c *ChatConnection) sendRaw(data []byte) error {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
-	return c.writeRaw(data)
-}
-
-func (c *ChatConnection) writeRaw(data []byte) error {
 	if len(data) == 0 {
 		return nil
 	}
-	for len(data) > 0 {
-		written, err := c.conn.Write(data)
-		if err != nil {
-			return fmt.Errorf("writeRaw: %v", err)
-		}
-		if written == 0 {
-			return fmt.Errorf("writeRaw: Connection wrote zero bytes")
-		}
-		data = data[written:]
-	}
-	return nil
+	_, err := c.conn.Write(data)
+	return err
 }
 
-// 发送一条聊天命令，并返回使用的序列号
+// SendCommand 发送一条聊天命令，并返回使用的序列号。
 func (c *ChatConnection) SendCommand(cmd uint16, payload []byte) (uint16, error) {
-	if c == nil || c.encrypt == nil {
-		return 0, fmt.Errorf("SendCommand: Connection is not ready")
-	}
-	c.sendMu.Lock()
-	defer c.sendMu.Unlock()
-
 	plain := make([]byte, 2+len(payload))
 	binary.LittleEndian.PutUint16(plain[:2], cmd)
 	copy(plain[2:], payload)
@@ -284,7 +303,7 @@ func (c *ChatConnection) SendCommand(cmd uint16, payload []byte) (uint16, error)
 
 	encrypted, err := c.encrypt.Process(plain)
 	if err != nil {
-		return 0, fmt.Errorf("SendCommand: %v", err)
+		return 0, fmt.Errorf("chat_connection.SendCommand: 加密失败: %w", err)
 	}
 
 	msg := make([]byte, 2+len(encrypted))
@@ -293,45 +312,45 @@ func (c *ChatConnection) SendCommand(cmd uint16, payload []byte) (uint16, error)
 
 	framed, err := wrapFrame(msg)
 	if err != nil {
-		return 0, fmt.Errorf("SendCommand: %v", err)
+		return 0, err
 	}
 
-	if err := c.writeRaw(framed); err != nil {
-		return 0, fmt.Errorf("SendCommand: %v", err)
+	if err := c.sendRaw(framed); err != nil {
+		return 0, err
 	}
 	return seq, nil
 }
 
-// 返回连接是否已登录
+// IsOnline 返回连接是否已登录。
 func (c *ChatConnection) IsOnline() bool {
 	return c.online.Load()
 }
 
-// 返回当前序列号
+// SerialNumber 返回当前序列号。
 func (c *ChatConnection) SerialNumber() uint16 {
 	c.seqMu.Lock()
 	defer c.seqMu.Unlock()
 	return c.seq
 }
 
-// 返回用于读取服务器推送消息的只读通道
+// Messages 返回一个只读通道，用于读取服务器推送的消息。
 func (c *ChatConnection) Messages() <-chan Message {
 	return c.messages
 }
 
-// 关闭连接并释放资源
+// Close 关闭连接并释放资源。
 func (c *ChatConnection) Close() error {
 	var err error
 	c.closeOnce.Do(func() {
 		close(c.closed)
 		err = c.conn.Close()
+		c.wg.Wait()
 		c.online.Store(false)
 	})
-	c.wg.Wait()
 	return err
 }
 
-// 返回读写循环中出现的最新错误
+// Err 返回读写循环中出现的最新错误。
 func (c *ChatConnection) Err() error {
 	c.errMu.Lock()
 	defer c.errMu.Unlock()
@@ -348,10 +367,7 @@ func (c *ChatConnection) setError(err error) {
 	}
 	c.errMu.Unlock()
 	c.online.Store(false)
-	c.closeOnce.Do(func() {
-		close(c.closed)
-		_ = c.conn.Close()
-	})
+	c.Close()
 }
 
 func readFrame(r io.Reader) ([]byte, error) {

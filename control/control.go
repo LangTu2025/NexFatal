@@ -47,7 +47,7 @@ type Control struct {
 var ErrOperatorTimeout = errors.New("机器人未在规定时间内获得管理员权限")
 var authUnknownErrorDetailPattern = regexp.MustCompile(`Unknown error \(status=\d+,\s*body=.*\)`)
 
-const defaultAdvertisementUserCenter = "https://user.nexfatal.pro"
+const defaultAdvertisementUserCenter = "https://user.aurelrune.com"
 
 type builderAdvertisementResponse struct {
 	Success bool     `json:"Success"`

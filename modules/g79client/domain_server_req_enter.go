@@ -7,10 +7,10 @@ import (
 	"strings"
 )
 
-// 申请进入指定山头服
+// RequestEnterDomainServer 申请进入指定山头服。
 func (c *Client) RequestEnterDomainServer(sid string) (*DomainServerDetailResponse, error) {
 	if strings.TrimSpace(sid) == "" {
-		return nil, fmt.Errorf("RequestEnterDomainServer: Sid must not be empty")
+		return nil, fmt.Errorf("RequestEnterDomainServer: sid 不能为空")
 	}
 
 	api := "/domain-server/req-enter-domain-server"
@@ -20,12 +20,12 @@ func (c *Client) RequestEnterDomainServer(sid string) (*DomainServerDetailRespon
 
 	body, err := json.Marshal(requestData)
 	if err != nil {
-		return nil, fmt.Errorf("RequestEnterDomainServer: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(body)))
 	if err != nil {
-		return nil, fmt.Errorf("RequestEnterDomainServer: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -38,18 +38,18 @@ func (c *Client) RequestEnterDomainServer(sid string) (*DomainServerDetailRespon
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("RequestEnterDomainServer: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("RequestEnterDomainServer: %v", err)
+		return nil, err
 	}
 
 	var enterResp DomainServerDetailResponse
 	if err := json.Unmarshal(respBody, &enterResp); err != nil {
-		return nil, fmt.Errorf("RequestEnterDomainServer: %v", err)
+		return nil, fmt.Errorf("解析进入山头服响应失败: %v, 响应内容: %s", err, string(respBody))
 	}
 
 	return &enterResp, nil

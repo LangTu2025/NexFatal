@@ -11,6 +11,23 @@ type Response struct {
 	Details string `json:"details"`
 }
 
+// 由于网易的节点代码差异，导致部分响应字段可能返回字符串/浮点数/数字/布尔/空字符串，所以需要一个通用类型来处理
+
+// for int
+// * 0
+// * "0"
+// * "" (0)
+// * "false" (0)
+// * "(other)" (0)
+
+// for bool
+// * true
+// * "true"
+// * 1 (true)
+// * "1" (true)
+// * "" (false)
+// * "(other)" (false)
+
 // 兼容服务端数值字段可能返回字符串/浮点数/数字/布尔/空字符串的类型
 type Uncertain struct {
 	Raw    string `json:"-"`

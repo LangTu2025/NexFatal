@@ -3,7 +3,6 @@ package com4399
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 )
 
 func randomHexString(byteLen int) (string, error) {
@@ -12,7 +11,7 @@ func randomHexString(byteLen int) (string, error) {
 	}
 	buf := make([]byte, byteLen)
 	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("randomHexString: %v", err)
+		return "", err
 	}
 	return hex.EncodeToString(buf), nil
 }

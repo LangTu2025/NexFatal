@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// 描述山头服详情响应中的主要字段
+// DomainServerDetailEntity 描述山头服详情响应中的主要字段。
 type DomainServerDetailEntity struct {
 	Sid                  string         `json:"sid"`
 	WorldID              string         `json:"world_id"`
@@ -45,16 +45,16 @@ type DomainServerDetailEntity struct {
 	OnlineCount          Uncertain      `json:"online_count"`
 }
 
-// 是山头服详情接口的响应体
+// DomainServerDetailResponse 是山头服详情接口的响应体。
 type DomainServerDetailResponse struct {
 	Response
 	Entity DomainServerDetailEntity `json:"entity"`
 }
 
-// 拉取山头服详情
+// GetDomainServerDetail 拉取山头服详情。
 func (c *Client) GetDomainServerDetail(sid string) (*DomainServerDetailResponse, error) {
 	if strings.TrimSpace(sid) == "" {
-		return nil, fmt.Errorf("GetDomainServerDetail: Sid must not be empty")
+		return nil, fmt.Errorf("GetDomainServerDetail: sid 不能为空")
 	}
 
 	api := "/domain-server/get-server-detail"
@@ -64,12 +64,12 @@ func (c *Client) GetDomainServerDetail(sid string) (*DomainServerDetailResponse,
 
 	body, err := json.Marshal(requestData)
 	if err != nil {
-		return nil, fmt.Errorf("GetDomainServerDetail: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(body)))
 	if err != nil {
-		return nil, fmt.Errorf("GetDomainServerDetail: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -82,18 +82,18 @@ func (c *Client) GetDomainServerDetail(sid string) (*DomainServerDetailResponse,
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GetDomainServerDetail: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("GetDomainServerDetail: %v", err)
+		return nil, err
 	}
 
 	var detailResp DomainServerDetailResponse
 	if err := json.Unmarshal(respBody, &detailResp); err != nil {
-		return nil, fmt.Errorf("GetDomainServerDetail: %v", err)
+		return nil, fmt.Errorf("解析山头服详情响应失败: %v, 响应内容: %s", err, string(respBody))
 	}
 
 	return &detailResp, nil

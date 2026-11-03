@@ -1,6 +1,6 @@
 package block_general
 
 const (
-	UseNeteaseBlockStates    = false
+	UseNeteaseBlockStates    = true
 	UseNetworkBlockRuntimeID = true
 )

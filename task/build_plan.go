@@ -3,10 +3,10 @@ package task
 import (
 	"context"
 
+	loc "github.com/LangTu2025/NexFatal/utils/localization"
 	bwo_chunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
 	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
 	wsstructure "github.com/xingbaiawa/LycorisFlow/structure"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
 )
 
 type simpleCommandPlan struct {
@@ -135,12 +135,20 @@ func (b *BuildTask) readRegionPlan(ctx context.Context, reader wsstructure.Struc
 	if err != nil {
 		return plan, err
 	}
+	commandBlockNBTs := chunkNBTs
+	if b.Config.VerifyCommandBlocks && !b.Config.ImportNBT {
+		commandBlockNBTs, err = reader.GetChunksNBT(region.ChunkList)
+		if err != nil {
+			return plan, loc.Errf(loc.KeyBuildReadNBTFailed, err)
+		}
+		commandBlockNBTs = filterCommandBlockNBTs(chunks, commandBlockNBTs)
+	}
 	plan.commands, err = makeSimpleCommandPlan(ctx, region, chunks, buildOrigin, chunkNBTs, b.Config.ImportNBT, b.Config.AutoPlaceLight, b.Config.LightSpacing)
 	if err != nil {
 		return plan, err
 	}
 
-	tasks, err := b.collectNBTTasksFromChunks(ctx, region.ChunkList, chunks, chunkNBTs)
+	tasks, err := b.collectNBTTasksFromChunks(ctx, region.ChunkList, chunks, commandBlockNBTs)
 	if err != nil {
 		return plan, err
 	}

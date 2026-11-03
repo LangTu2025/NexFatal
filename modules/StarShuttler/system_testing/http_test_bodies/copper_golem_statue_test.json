@@ -1,0 +1,5 @@
+{
+  "block_name": "minecraft:copper_golem_statue",
+  "block_states_string": "[\"minecraft:cardinal_direction\"=\"north\"]",
+  "block_nbt_base64_string": "CgAAAwQAUG9zZQMAAAAA"
+}

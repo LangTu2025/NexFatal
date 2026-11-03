@@ -222,6 +222,7 @@ func (x *CameraAimAssistCategory) Marshal(r IO) {
 type CameraAimAssistPriorities struct {
 	Entities      []CameraAimAssistPriority
 	Blocks        []CameraAimAssistPriority
+	BlockTags     []CameraAimAssistPriority
 	EntityDefault Optional[int32]
 	BlockDefault  Optional[int32]
 }
@@ -229,6 +230,7 @@ type CameraAimAssistPriorities struct {
 func (x *CameraAimAssistPriorities) Marshal(r IO) {
 	Slice(r, &x.Entities)
 	Slice(r, &x.Blocks)
+	Slice(r, &x.BlockTags)
 	OptionalFunc(r, &x.EntityDefault, r.Int32)
 	OptionalFunc(r, &x.BlockDefault, r.Int32)
 }
@@ -246,6 +248,8 @@ func (x *CameraAimAssistPriority) Marshal(r IO) {
 type CameraAimAssistPreset struct {
 	Identifier          string
 	BlockExclusions     []string
+	EntityExclusions    []string
+	BlockTagExclusions  []string
 	LiquidTargets       []string
 	ItemSettings        []CameraAimAssistItemSettings
 	DefaultItemSettings Optional[string]
@@ -255,6 +259,8 @@ type CameraAimAssistPreset struct {
 func (x *CameraAimAssistPreset) Marshal(r IO) {
 	r.String(&x.Identifier)
 	FuncSlice(r, &x.BlockExclusions, r.String)
+	FuncSlice(r, &x.EntityExclusions, r.String)
+	FuncSlice(r, &x.BlockTagExclusions, r.String)
 	FuncSlice(r, &x.LiquidTargets, r.String)
 	Slice(r, &x.ItemSettings)
 	OptionalFunc(r, &x.DefaultItemSettings, r.String)

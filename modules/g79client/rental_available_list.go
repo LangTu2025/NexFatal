@@ -48,7 +48,9 @@ const (
 )
 
 // 按排序批量拉取可用租赁服列表
-// 排序类型支持综合、在线人数、最新和最受欢迎，结果可按升降序分页
+// sortType: 0-综合 1-在线人数 2-最新 3-最受欢迎
+// orderType: 0-降序 1-升序
+// offset: 偏移量
 func (c *Client) GetAvailableRentalServers(sortType int, orderType int, offset int) (*GetAvailableRentalServersResponse, error) {
 	api := "/rental-server/query/available-by-sort-type"
 
@@ -60,16 +62,16 @@ func (c *Client) GetAvailableRentalServers(sortType int, orderType int, offset i
 
 	jsonData, err := json.Marshal(requestData)
 	if err != nil {
-		return nil, fmt.Errorf("GetAvailableRentalServers: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return nil, fmt.Errorf("GetAvailableRentalServers: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	req.Header.Set("User-Agent", androidUserAgent)
+	req.Header.Set("User-Agent", "WPFLauncher/0.0.0.0")
 	req.Header.Set("user-id", c.UserID)
 
 	token := CalculateDynamicToken(api, string(jsonData), c.UserToken)
@@ -77,18 +79,18 @@ func (c *Client) GetAvailableRentalServers(sortType int, orderType int, offset i
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GetAvailableRentalServers: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("GetAvailableRentalServers: %v", err)
+		return nil, err
 	}
 
 	var listResp GetAvailableRentalServersResponse
 	if err := json.Unmarshal(respBody, &listResp); err != nil {
-		return nil, fmt.Errorf("GetAvailableRentalServers: %v", err)
+		return nil, fmt.Errorf("解析可用租赁服列表失败: %v", err)
 	}
 	return &listResp, nil
 }

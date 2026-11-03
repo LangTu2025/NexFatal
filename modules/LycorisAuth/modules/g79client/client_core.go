@@ -1,0 +1,116 @@
+package g79client
+
+import (
+	"net/http"
+	"net/url"
+	"strconv"
+	"time"
+)
+
+// EngineVersion matches the supplied APK's native PE authentication getter
+// at libminecraftpe.so 0x0e659a90. The resource manifest's engineVersion
+// 3.10.0.300675 is separate from this authentication request field.
+var EngineVersion = "3.10.0.300878"
+
+func Refetch() {
+	// Keep the engine version bound to the supplied APK; pack-list refreshes
+	// must not replace it with a versionName from another installation.
+	_, _ = RefreshG79PackList()
+	// _, _ = RefreshG79LatestVersion() // 已禁用动态获取 patch version
+	_, _ = RefreshG79ReleaseJSON()
+	_, _ = RefreshX19ReleaseJSON()
+	_, _ = RefreshG79ChatServers()
+	_, _ = RefreshG79LinkServers()
+	_, _ = RefreshG79TransferServers()
+}
+
+func init() {
+	//	Refetch()
+	go func() {
+		for {
+			time.Sleep(time.Second * 60)
+			//			Refetch()
+		}
+	}()
+}
+
+// Client 结构体
+type Client struct {
+	UserID    string
+	UserToken string
+	Seed      string
+	// Sead 保留旧版会话字段名称，兼容 authentication/reconnect 调用方。
+	Sead               string
+	ReleaseJSON        G79ReleaseJSON
+	X19ReleaseJSON     X19ReleaseJSON
+	EngineVersion      string
+	G79LatestVersion   string
+	patchResourcesHash string
+	UserDetail         *UserDetailEntity
+	peUserLoginAfter   *PeUserLoginAfterResponse
+	httpClient         *http.Client
+	Cookie             string
+	IsX19              bool
+}
+
+// 创建新的客户端
+func NewClient() (*Client, error) {
+	return NewClientWithHTTPClient(nil)
+}
+
+// NewClientWithProxy configures every request made while constructing and
+// using the client to use proxyURL. A nil proxyURL keeps the direct behavior.
+func NewClientWithProxy(proxyURL *url.URL) (*Client, error) {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if proxyURL != nil {
+		transport.Proxy = http.ProxyURL(proxyURL)
+	}
+	return NewClientWithHTTPClient(&http.Client{Transport: transport})
+}
+
+// NewClientWithHTTPClient 允许调用方传入自定义的 http.Client，例如配置代理等场景。
+func NewClientWithHTTPClient(httpClient *http.Client) (*Client, error) {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	c := &Client{
+		EngineVersion: EngineVersion,
+		httpClient:    httpClient,
+	}
+	var err error
+	patchMeta, err := GetGlobalG79PatchMetadataWithHTTPClient(httpClient)
+	if err != nil {
+		return nil, err
+	}
+	c.G79LatestVersion = patchMeta.Version
+	c.patchResourcesHash = patchMeta.ResourcesHash
+	ReleaseJSON, err := GetGlobalG79ReleaseJSONWithHTTPClient(httpClient)
+	if err != nil {
+		return nil, err
+	}
+	c.ReleaseJSON = *ReleaseJSON
+	X19ReleaseJSON, err := GetGlobalX19ReleaseJSONWithHTTPClient(httpClient)
+	if err != nil {
+		return nil, err
+	}
+	c.X19ReleaseJSON = *X19ReleaseJSON
+	return c, nil
+}
+
+func (c *Client) do(req *http.Request) (*http.Response, error) {
+	if c == nil || c.httpClient == nil {
+		return http.DefaultClient.Do(req)
+	}
+	return c.httpClient.Do(req)
+}
+
+// 设置用户凭证
+func (c *Client) SetCredentials(userID, userToken string) {
+	c.UserID = userID
+	c.UserToken = userToken
+}
+
+// 获取用户ID的整数形式
+func (c *Client) GetUserIDInt() (int64, error) {
+	return strconv.ParseInt(c.UserID, 10, 64)
+}

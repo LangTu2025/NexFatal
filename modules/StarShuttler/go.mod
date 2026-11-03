@@ -3,18 +3,31 @@ module github.com/xingbaiawa/StarShuttler
 go 1.26.0
 
 require (
+	github.com/LangTu2025/NexFatal/utils/safe_http v0.0.0
+	github.com/TriM-Organization/bedrock-world-operator v1.7.0
 	github.com/andreburgaud/crypt2go v1.8.0
-	github.com/TriM-Organization/bedrock-world-operator v1.6.0
-	github.com/xingbaiawa/g79client v0.0.0-00010101000000-000000000000
-	github.com/xingbaiawa/unmcpk v0.0.0-00010101000000-000000000000
+	github.com/coder/websocket v1.8.14
+	github.com/database64128/chacha8-go v0.0.0-20250815115417-e0f2726d8bd0
 	github.com/df-mc/jsonc v1.0.5
 	github.com/go-gl/mathgl v1.2.0
 	github.com/go-jose/go-jose/v3 v3.0.5
 	github.com/go-jose/go-jose/v4 v4.1.3
 	github.com/google/uuid v1.6.0
+	github.com/pion/dtls/v3 v3.0.11
+	github.com/pion/ice/v4 v4.1.0
+	github.com/pion/interceptor v0.1.42
+	github.com/pion/logging v0.2.4
+	github.com/pion/randutil v0.1.0
+	github.com/pion/rtcp v1.2.16
+	github.com/pion/rtp v1.8.26
+	github.com/pion/sdp/v3 v3.0.16
+	github.com/pion/srtp/v3 v3.0.9
+	github.com/pion/stun/v3 v3.0.2
+	github.com/pion/transport/v3 v3.1.1
 	github.com/ugorji/go/codec v1.3.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
-	github.com/LangTu2025/NexFatal/utils/safe_http v0.0.0
+	github.com/xingbaiawa/g79client v0.0.0-00010101000000-000000000000
+	github.com/xingbaiawa/unmcpk v0.0.0-00010101000000-000000000000
 	golang.org/x/text v0.36.0
 )
 
@@ -26,9 +39,7 @@ require (
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/containerd/console v1.0.3 // indirect
-	github.com/database64128/chacha8-go v0.0.0-20250815115417-e0f2726d8bd0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
@@ -45,28 +56,17 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
-	github.com/pion/dtls/v3 v3.0.11 // indirect
-	github.com/pion/ice/v4 v4.1.0 // indirect
-	github.com/pion/interceptor v0.1.42 // indirect
-	github.com/pion/logging v0.2.4 // indirect
 	github.com/pion/mdns/v2 v2.1.0 // indirect
-	github.com/pion/randutil v0.1.0 // indirect
-	github.com/pion/rtcp v1.2.16 // indirect
-	github.com/pion/rtp v1.8.26 // indirect
-	github.com/pion/sdp/v3 v3.0.16 // indirect
-	github.com/pion/srtp/v3 v3.0.9 // indirect
-	github.com/pion/stun/v3 v3.0.2 // indirect
-	github.com/pion/transport/v3 v3.1.1 // indirect
 	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/pion/turn/v4 v4.1.3 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
-	github.com/sandertv/gophertunnel v1.48.1 // indirect
+	github.com/sandertv/gophertunnel v1.51.1-0.20251123190717-e4ddb111c9d1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/arch v0.8.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/term v0.42.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
 	google.golang.org/protobuf v1.34.1 // indirect

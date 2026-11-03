@@ -256,8 +256,9 @@ const (
 	IDClientBoundControlSchemeSet  = 327
 	IDDebugDrawer                  = 328
 	IDServerBoundPackSettingChange = 329
-	IDUnused330                    = 330
+	IDUnused330                    = 330 // TODO: Implement client-bound data store.
 	IDGraphicsOverrideParameter    = 331
+	_                              = 332 // TODO: Implement server-bound data store.
 )
 
 const IDServerScriptDebugDrawer = IDDebugDrawer

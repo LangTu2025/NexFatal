@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/game_control/game_interface"
 	"github.com/xingbaiawa/StarShuttler/game_control/resources_control"
 	"github.com/xingbaiawa/StarShuttler/mapping"
@@ -219,7 +220,24 @@ func (s *Shield) Make() (resultSlot map[uint64]resources_control.SlotID, err err
 		transaction.
 			MoveToCraftingTable(bannerSlots[index], 28, 1).
 			MoveToCraftingTable(shieldSlots[index], 29, 1).
-			Crafting(3250, shieldSlots[index], 1, shieldExpectedItem[index])
+			CraftingWithDeprecatedResult(
+				3311,
+				shieldSlots[index],
+				1,
+				shieldExpectedItem[index],
+				protocol.ItemStack{
+					ItemType: protocol.ItemType{
+						NetworkID:     int32(api.Resources().ConstantPacket().ItemByName("minecraft:shield").RuntimeID),
+						MetadataValue: 0,
+					},
+					BlockRuntimeID: 0,
+					Count:          1,
+					NBTData:        map[string]any{"Damage": int32(-32767)},
+					CanBePlacedOn:  []string{},
+					CanBreak:       []string{},
+					HasNetworkID:   false,
+				},
+			)
 	}
 
 	// Step 6: Commit changes
@@ -251,11 +269,11 @@ func (s *Shield) Make() (resultSlot map[uint64]resources_control.SlotID, err err
 
 		shieldWeGet, inventoryExisted := api.Resources().Inventories().GetItemStack(resources_control.WindowNameInventory, shieldSlot)
 		if !inventoryExisted {
-			panic("Make: Should nerver happened")
+			panic("Make: Should never happened")
 		}
 
 		if shieldWeGet.Stack.NetworkID != int32(api.Resources().ConstantPacket().ItemByName("minecraft:shield").RuntimeID) {
-			panic("Make: Should nerver happened")
+			panic("Make: Should never happened")
 		}
 		newShield, err := nbt_parser_interface.ParseItemNetwork(shieldWeGet.Stack, "minecraft:shield")
 		if err != nil {
@@ -263,7 +281,7 @@ func (s *Shield) Make() (resultSlot map[uint64]resources_control.SlotID, err err
 		}
 
 		if nbt_hash.NBTItemNBTHash(newShield) != nbt_hash.NBTItemNBTHash(&shield) {
-			panic("Make: Should nerver happened")
+			panic("Make: Should never happened")
 		}
 	}
 

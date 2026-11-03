@@ -3,16 +3,18 @@ package g79client
 import (
 	"archive/zip"
 	"bytes"
-	"crypto/md5"
+
+	// "crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
+
+	// "strings"
 	"sync"
 )
 
-// 网易聊天服务器节点
+// G79ChatServerEntry represents a single chat server configuration returned by NetEase.
 type G79ChatServerEntry struct {
 	IP         string    `json:"IP"`
 	IspEnabled Uncertain `json:"Isp_Enabled"`
@@ -22,7 +24,7 @@ type G79ChatServerEntry struct {
 	Port       int       `json:"Port"`
 }
 
-// 描述一个 Link 服务器节点
+// G79LinkServerEntry 描述一个 Link 服务器节点。
 type G79LinkServerEntry struct {
 	Status     Uncertain `json:"status"`
 	IspEnabled Uncertain `json:"Isp_Enabled"`
@@ -32,7 +34,7 @@ type G79LinkServerEntry struct {
 	Port       Uncertain `json:"port"`
 }
 
-// 描述一个传输服务器节点
+// G79TransferServerEntry 描述一个传输服务器节点。
 type G79TransferServerEntry struct {
 	Status        Uncertain `json:"status"`
 	IP            string    `json:"ip"`
@@ -51,7 +53,7 @@ const (
 	g79PatchListURL = "https://g79.update.netease.com/patch_list/production/g79_rn_patchlist"
 )
 
-// 描述单个平台的安装包信息
+// G79PackListEntry 描述单个平台的安装包信息。
 type G79PackListEntry struct {
 	URL     string `json:"url"`
 	Text    string `json:"text"`
@@ -59,7 +61,7 @@ type G79PackListEntry struct {
 	MinVer  string `json:"min_ver"`
 }
 
-// 网易补丁列表
+// PatchInfo describes the patch list payload exposed by NetEase.
 type PatchInfo struct {
 	IOS     []string `json:"ios"`
 	Android []string `json:"android"`
@@ -67,19 +69,16 @@ type PatchInfo struct {
 	URLNew  string   `json:"urlNew"`
 }
 
-// Android 客户端握手所需的补丁版本与资源哈希
+// PatchMetadata wraps the patch version and resources hash needed to reproduce the Android client handshake.
 type PatchMetadata struct {
 	Version       string
 	ResourcesHash string
 }
 
 var (
-	globalG79PatchMeta = &PatchMetadata{
-		Version:       g79CurrentPatchVersion,
-		ResourcesHash: g79CurrentResourcesHash,
-	}
-
+	globalG79PatchMeta       *PatchMetadata
 	globalG79ReleaseJSON     *G79ReleaseJSON
+	globalX19ReleaseJSON     *X19ReleaseJSON
 	globalG79ChatServers     []G79ChatServerEntry
 	globalG79LinkServers     []G79LinkServerEntry
 	globalG79TransferServers []G79TransferServerEntry
@@ -87,6 +86,7 @@ var (
 
 	g79PatchMu      sync.RWMutex
 	g79ReleaseMu    sync.RWMutex
+	x19ReleaseMu    sync.RWMutex
 	g79ChatServerMu sync.RWMutex
 	g79LinkMu       sync.RWMutex
 	g79TransferMu   sync.RWMutex
@@ -100,22 +100,40 @@ func resolveHTTPClient(httpClient *http.Client) *http.Client {
 	return http.DefaultClient
 }
 
+func init() {
+	globalG79PatchMeta = &PatchMetadata{
+		Version:       "3.10.6.301389",
+		ResourcesHash: "c91713f56bbba226e4e8120c2d7a9ac4",
+	}
+
+	// 在包初始化时尝试预取；失败则忽略，后续调用会再次尝试
+	go func() {
+		_, _ = GetGlobalG79ReleaseJSON()
+		_, _ = GetGlobalX19ReleaseJSON()
+		_, _ = GetGlobalG79ChatServers()
+		_, _ = GetGlobalG79LinkServers()
+		_, _ = GetGlobalG79TransferServers()
+		_, _ = GetGlobalG79PackList()
+	}()
+}
+
 func GetGlobalG79LatestVersion() (string, error) {
 	meta, err := GetGlobalG79PatchMetadata()
 	if err != nil {
-		return "", fmt.Errorf("GetGlobalG79LatestVersion: %v", err)
+		return "", err
 	}
 	return meta.Version, nil
 }
 
-// 强制刷新缓存中的最新版本
-func RefreshG79LatestVersion() (string, error) {
-	meta, err := RefreshG79PatchMetadata()
-	if err != nil {
-		return "", fmt.Errorf("RefreshG79LatestVersion: %v", err)
-	}
-	return meta.Version, nil
-}
+// RefreshG79LatestVersion forces a refresh of the cached latest version.
+// 已禁用动态获取为了减少适配网易版本更新工作量 我们暂时移除PatchVersions
+// func RefreshG79LatestVersion() (string, error) {
+// 	meta, err := RefreshG79PatchMetadata()
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	return meta.Version, nil
+// }
 
 func GetGlobalG79PatchMetadata() (*PatchMetadata, error) {
 	return GetGlobalG79PatchMetadataWithHTTPClient(nil)
@@ -136,138 +154,144 @@ func GetGlobalG79PatchMetadataWithHTTPClient(httpClient *http.Client) (*PatchMet
 		meta := *globalG79PatchMeta
 		return &meta, nil
 	}
-	meta, err := fetchG79PatchMetadataWithHTTPClient(httpClient)
-	if err != nil {
-		return nil, fmt.Errorf("GetGlobalG79PatchMetadataWithHTTPClient: %v", err)
+	// 已禁用动态获取，直接返回固定值
+	globalG79PatchMeta = &PatchMetadata{
+		Version:       "3.10.6.301389",
+		ResourcesHash: "c91713f56bbba226e4e8120c2d7a9ac4",
 	}
-	globalG79PatchMeta = meta
-	return meta, nil
+	return globalG79PatchMeta, nil
+	// meta, err := fetchG79PatchMetadataWithHTTPClient(httpClient)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// globalG79PatchMeta = meta
+	// return meta, nil
 }
 
-func RefreshG79PatchMetadata() (*PatchMetadata, error) {
-	return RefreshG79PatchMetadataWithHTTPClient(nil)
-}
+// 已禁用动态获取
+// func RefreshG79PatchMetadata() (*PatchMetadata, error) {
+// 	return RefreshG79PatchMetadataWithHTTPClient(nil)
+// }
 
-func RefreshG79PatchMetadataWithHTTPClient(httpClient *http.Client) (*PatchMetadata, error) {
-	meta, err := fetchG79PatchMetadataWithHTTPClient(httpClient)
-	if err != nil {
-		return nil, fmt.Errorf("RefreshG79PatchMetadataWithHTTPClient: %v", err)
-	}
-	g79PatchMu.Lock()
-	globalG79PatchMeta = meta
-	g79PatchMu.Unlock()
-	return meta, nil
+// func RefreshG79PatchMetadataWithHTTPClient(httpClient *http.Client) (*PatchMetadata, error) {
+// 	meta, err := fetchG79PatchMetadataWithHTTPClient(httpClient)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	g79PatchMu.Lock()
+// 	globalG79PatchMeta = meta
+// 	g79PatchMu.Unlock()
+// 	return meta, nil
+// }
 
-}
+// func fetchG79PatchMetadata() (*PatchMetadata, error) {
+// 	return fetchG79PatchMetadataWithHTTPClient(nil)
+// }
 
-func fetchG79PatchMetadata() (*PatchMetadata, error) {
-	return fetchG79PatchMetadataWithHTTPClient(nil)
-}
+// func fetchG79PatchMetadataWithHTTPClient(httpClient *http.Client) (*PatchMetadata, error) {
+// 	req, err := http.NewRequest(http.MethodGet, g79PatchListURL, nil)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	resp, err := resolveHTTPClient(httpClient).Do(req)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	defer resp.Body.Close()
+//
+// 	body, err := readResponseBody(resp)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+//
+// 	var patchInfo PatchInfo
+// 	if err := json.Unmarshal(body, &patchInfo); err != nil {
+// 		return nil, err
+// 	}
+//
+// 	version, err := selectAndroidPatchVersion(patchInfo.Android)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+//
+// 	resourcesHash, err := fetchAndroidResourcesHashWithHTTPClient(httpClient, version, patchInfo.URLNew)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+//
+// 	return &PatchMetadata{
+// 		Version:       version,
+// 		ResourcesHash: resourcesHash,
+// 	}, nil
+// }
 
-func fetchG79PatchMetadataWithHTTPClient(httpClient *http.Client) (*PatchMetadata, error) {
-	req, err := http.NewRequest(http.MethodGet, g79PatchListURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("fetchG79PatchMetadataWithHTTPClient: %v", err)
-	}
-	resp, err := resolveHTTPClient(httpClient).Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetchG79PatchMetadataWithHTTPClient: %v", err)
-	}
-	defer resp.Body.Close()
+// func selectAndroidPatchVersion(versions []string) (string, error) {
+// 	if len(versions) == 0 {
+// 		return "", fmt.Errorf("no android patch versions available")
+// 	}
+// 	base, err := getEngineBasePrefix()
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	for i := len(versions) - 1; i >= 0; i-- {
+// 		if strings.HasPrefix(versions[i], base) {
+// 			return versions[i], nil
+// 		}
+// 	}
+// 	return "", fmt.Errorf("no android patch version matches base prefix %s", base)
+// }
 
-	body, err := readResponseBody(resp)
-	if err != nil {
-		return nil, fmt.Errorf("fetchG79PatchMetadataWithHTTPClient: %v", err)
-	}
+// func getEngineBasePrefix() (string, error) {
+// 	parts := strings.Split(EngineVersion, ".")
+// 	if len(parts) < 2 {
+// 		return "", fmt.Errorf("invalid engine version %q", EngineVersion)
+// 	}
+// 	return fmt.Sprintf("%s.%s", parts[0], parts[1]), nil
+// }
 
-	var patchInfo PatchInfo
-	if err := json.Unmarshal(body, &patchInfo); err != nil {
-		return nil, fmt.Errorf("fetchG79PatchMetadataWithHTTPClient: %v", err)
-	}
+// func fetchAndroidResourcesHash(version, baseURL string) (string, error) {
+// 	return fetchAndroidResourcesHashWithHTTPClient(nil, version, baseURL)
+// }
 
-	version, err := selectAndroidPatchVersion(patchInfo.Android)
-	if err != nil {
-		return nil, fmt.Errorf("fetchG79PatchMetadataWithHTTPClient: %v", err)
-	}
-
-	resourcesHash, err := fetchAndroidResourcesHashWithHTTPClient(httpClient, version, patchInfo.URLNew)
-	if err != nil {
-		return nil, fmt.Errorf("fetchG79PatchMetadataWithHTTPClient: %v", err)
-	}
-
-	return &PatchMetadata{
-		Version:       version,
-		ResourcesHash: resourcesHash,
-	}, nil
-}
-
-func selectAndroidPatchVersion(versions []string) (string, error) {
-	if len(versions) == 0 {
-		return "", fmt.Errorf("selectAndroidPatchVersion: No Android patch versions are available")
-	}
-	base, err := getEngineBasePrefix()
-	if err != nil {
-		return "", fmt.Errorf("selectAndroidPatchVersion: %v", err)
-	}
-	for i := len(versions) - 1; i >= 0; i-- {
-		if strings.HasPrefix(versions[i], base) {
-			return versions[i], nil
-		}
-	}
-	return "", fmt.Errorf("selectAndroidPatchVersion: No Android patch version matches base prefix %s", base)
-}
-
-func getEngineBasePrefix() (string, error) {
-	parts := strings.Split(EngineVersion, ".")
-	if len(parts) < 2 {
-		return "", fmt.Errorf("getEngineBasePrefix: Invalid engine version %q", EngineVersion)
-	}
-	return fmt.Sprintf("%s.%s", parts[0], parts[1]), nil
-}
-
-func fetchAndroidResourcesHash(version, baseURL string) (string, error) {
-	return fetchAndroidResourcesHashWithHTTPClient(nil, version, baseURL)
-}
-
-func fetchAndroidResourcesHashWithHTTPClient(httpClient *http.Client, version, baseURL string) (string, error) {
-	if baseURL == "" {
-		return "", fmt.Errorf("fetchAndroidResourcesHashWithHTTPClient: Patch base URL is empty")
-	}
-	root := strings.TrimRight(baseURL, "/")
-	pre := fmt.Sprintf("%s/android_%s/%s/android", root, version, version)
-	manifest, err := fetchFirstZipEntryWithHTTPClient(httpClient, fmt.Sprintf("%s/manifest.zip", pre))
-	if err != nil {
-		return "", fmt.Errorf("fetchAndroidResourcesHashWithHTTPClient: %v", err)
-	}
-	var manifestPayload struct {
-		Assets map[string]struct {
-			MD5 string `json:"md5"`
-		} `json:"assets"`
-	}
-	if err := json.Unmarshal(manifest, &manifestPayload); err != nil {
-		return "", fmt.Errorf("fetchAndroidResourcesHashWithHTTPClient: %v", err)
-	}
-
-	hashBase := g79BaseMCPHash
-	if asset, ok := manifestPayload.Assets["vanilla.mcp"]; ok && asset.MD5 != "" {
-		hashBase = asset.MD5
-	}
-	if asset, ok := manifestPayload.Assets["vanilla_patch.mcp"]; ok && asset.MD5 != "" {
-		hashBase += asset.MD5
-	}
-
-	rnURL := fmt.Sprintf("%s/rn/index.bundle.backup", pre)
-	rnHash := ""
-	if raw, err := downloadBytesWithHTTPClient(httpClient, rnURL); err == nil {
-		payload := raw
-		if zipped, zipErr := readFirstFileFromZipData(raw); zipErr == nil {
-			payload = zipped
-		}
-		rnHash = fmt.Sprintf("%x", md5.Sum(payload))
-	}
-	final := fmt.Sprintf("%x", md5.Sum([]byte(hashBase+rnHash)))
-	return final, nil
-}
+// func fetchAndroidResourcesHashWithHTTPClient(httpClient *http.Client, version, baseURL string) (string, error) {
+// 	if baseURL == "" {
+// 		return "", fmt.Errorf("empty patch base url")
+// 	}
+// 	root := strings.TrimRight(baseURL, "/")
+// 	pre := fmt.Sprintf("%s/android_%s/%s/android", root, version, version)
+// 	manifest, err := fetchFirstZipEntryWithHTTPClient(httpClient, fmt.Sprintf("%s/manifest.zip", pre))
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	var manifestPayload struct {
+// 		Assets map[string]struct {
+// 			MD5 string `json:"md5"`
+// 		} `json:"assets"`
+// 	}
+// 	if err := json.Unmarshal(manifest, &manifestPayload); err != nil {
+// 		return "", err
+// 	}
+//
+// 	hashBase := g79BaseMCPHash
+// 	if asset, ok := manifestPayload.Assets["vanilla.mcp"]; ok && asset.MD5 != "" {
+// 		hashBase = asset.MD5
+// 	}
+// 	if asset, ok := manifestPayload.Assets["vanilla_patch.mcp"]; ok && asset.MD5 != "" {
+// 		hashBase += asset.MD5
+// 	}
+//
+// 	rnURL := fmt.Sprintf("%s/rn/index.bundle.backup", pre)
+// 	rnHash := ""
+// 	if raw, err := downloadBytesWithHTTPClient(httpClient, rnURL); err == nil {
+// 		payload := raw
+// 		if zipped, zipErr := readFirstFileFromZipData(raw); zipErr == nil {
+// 			payload = zipped
+// 		}
+// 		rnHash = fmt.Sprintf("%x", md5.Sum(payload))
+// 	}
+// 	final := fmt.Sprintf("%x", md5.Sum([]byte(hashBase+rnHash)))
+// 	return final, nil
+// }
 
 func fetchFirstZipEntry(url string) ([]byte, error) {
 	return fetchFirstZipEntryWithHTTPClient(nil, url)
@@ -276,7 +300,7 @@ func fetchFirstZipEntry(url string) ([]byte, error) {
 func fetchFirstZipEntryWithHTTPClient(httpClient *http.Client, url string) ([]byte, error) {
 	data, err := downloadBytesWithHTTPClient(httpClient, url)
 	if err != nil {
-		return nil, fmt.Errorf("fetchFirstZipEntryWithHTTPClient: %v", err)
+		return nil, err
 	}
 	return readFirstFileFromZipData(data)
 }
@@ -284,14 +308,14 @@ func fetchFirstZipEntryWithHTTPClient(httpClient *http.Client, url string) ([]by
 func readFirstFileFromZipData(data []byte) ([]byte, error) {
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		return nil, fmt.Errorf("readFirstFileFromZipData: %v", err)
+		return nil, err
 	}
 	if len(reader.File) == 0 {
-		return nil, fmt.Errorf("readFirstFileFromZipData: Zip archive is empty")
+		return nil, fmt.Errorf("zip archive is empty")
 	}
 	rc, err := reader.File[0].Open()
 	if err != nil {
-		return nil, fmt.Errorf("readFirstFileFromZipData: %v", err)
+		return nil, err
 	}
 	defer rc.Close()
 	return io.ReadAll(rc)
@@ -304,15 +328,15 @@ func downloadBytes(url string) ([]byte, error) {
 func downloadBytesWithHTTPClient(httpClient *http.Client, url string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("downloadBytesWithHTTPClient: %v", err)
+		return nil, err
 	}
 	resp, err := resolveHTTPClient(httpClient).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("downloadBytesWithHTTPClient: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("downloadBytesWithHTTPClient: Download %s returned status %d", url, resp.StatusCode)
+		return nil, fmt.Errorf("download %s returned status %d", url, resp.StatusCode)
 	}
 	return io.ReadAll(resp.Body)
 }
@@ -324,28 +348,26 @@ func GetGlobalG79ReleaseJSON() (*G79ReleaseJSON, error) {
 func GetGlobalG79ReleaseJSONWithHTTPClient(httpClient *http.Client) (*G79ReleaseJSON, error) {
 	g79ReleaseMu.RLock()
 	if globalG79ReleaseJSON != nil {
-		value := *globalG79ReleaseJSON
+		v := globalG79ReleaseJSON
 		g79ReleaseMu.RUnlock()
-		return &value, nil
+		return v, nil
 	}
 	g79ReleaseMu.RUnlock()
 
 	g79ReleaseMu.Lock()
 	defer g79ReleaseMu.Unlock()
 	if globalG79ReleaseJSON != nil {
-		value := *globalG79ReleaseJSON
-		return &value, nil
+		return globalG79ReleaseJSON, nil
 	}
 	v, err := fetchG79ReleaseJSONWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("GetGlobalG79ReleaseJSONWithHTTPClient: %v", err)
+		return nil, err
 	}
-	value := *v
-	globalG79ReleaseJSON = &value
+	globalG79ReleaseJSON = v
 	return v, nil
 }
 
-// 强制刷新缓存中的服务地址
+// RefreshG79ReleaseJSON forces a refresh of the cached release JSON.
 func RefreshG79ReleaseJSON() (*G79ReleaseJSON, error) {
 	return RefreshG79ReleaseJSONWithHTTPClient(nil)
 }
@@ -353,11 +375,10 @@ func RefreshG79ReleaseJSON() (*G79ReleaseJSON, error) {
 func RefreshG79ReleaseJSONWithHTTPClient(httpClient *http.Client) (*G79ReleaseJSON, error) {
 	v, err := fetchG79ReleaseJSONWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("RefreshG79ReleaseJSONWithHTTPClient: %v", err)
+		return nil, err
 	}
 	g79ReleaseMu.Lock()
-	value := *v
-	globalG79ReleaseJSON = &value
+	globalG79ReleaseJSON = v
 	g79ReleaseMu.Unlock()
 	return v, nil
 }
@@ -369,28 +390,97 @@ func fetchG79ReleaseJSON() (*G79ReleaseJSON, error) {
 func fetchG79ReleaseJSONWithHTTPClient(httpClient *http.Client) (*G79ReleaseJSON, error) {
 	req, err := http.NewRequest(http.MethodGet, "https://g79.update.netease.com/serverlist/adr_release.0.17.json", nil)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79ReleaseJSONWithHTTPClient: %v", err)
+		return nil, err
 	}
 	resp, err := resolveHTTPClient(httpClient).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79ReleaseJSONWithHTTPClient: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79ReleaseJSONWithHTTPClient: %v", err)
+		return nil, err
 	}
 
 	var g79ReleaseJSON G79ReleaseJSON
 	if err := json.Unmarshal(body, &g79ReleaseJSON); err != nil {
-		return nil, fmt.Errorf("fetchG79ReleaseJSONWithHTTPClient: %v", err)
+		return nil, err
 	}
 
 	return &g79ReleaseJSON, nil
 }
 
-// 返回全局聊天服务器列表，首次调用时自动加载
+func GetGlobalX19ReleaseJSON() (*X19ReleaseJSON, error) {
+	return GetGlobalX19ReleaseJSONWithHTTPClient(nil)
+}
+
+func GetGlobalX19ReleaseJSONWithHTTPClient(httpClient *http.Client) (*X19ReleaseJSON, error) {
+	x19ReleaseMu.RLock()
+	if globalX19ReleaseJSON != nil {
+		v := globalX19ReleaseJSON
+		x19ReleaseMu.RUnlock()
+		return v, nil
+	}
+	x19ReleaseMu.RUnlock()
+
+	x19ReleaseMu.Lock()
+	defer x19ReleaseMu.Unlock()
+	if globalX19ReleaseJSON != nil {
+		return globalX19ReleaseJSON, nil
+	}
+	v, err := fetchX19ReleaseJSONWithHTTPClient(httpClient)
+	if err != nil {
+		return nil, err
+	}
+	globalX19ReleaseJSON = v
+	return v, nil
+}
+
+func RefreshX19ReleaseJSON() (*X19ReleaseJSON, error) {
+	return RefreshX19ReleaseJSONWithHTTPClient(nil)
+}
+
+func RefreshX19ReleaseJSONWithHTTPClient(httpClient *http.Client) (*X19ReleaseJSON, error) {
+	v, err := fetchX19ReleaseJSONWithHTTPClient(httpClient)
+	if err != nil {
+		return nil, err
+	}
+	x19ReleaseMu.Lock()
+	globalX19ReleaseJSON = v
+	x19ReleaseMu.Unlock()
+	return v, nil
+}
+
+func fetchX19ReleaseJSON() (*X19ReleaseJSON, error) {
+	return fetchX19ReleaseJSONWithHTTPClient(nil)
+}
+
+func fetchX19ReleaseJSONWithHTTPClient(httpClient *http.Client) (*X19ReleaseJSON, error) {
+	req, err := http.NewRequest(http.MethodGet, "https://x19.update.netease.com/serverlist/release.json", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := resolveHTTPClient(httpClient).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := readResponseBody(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var x19ReleaseJSON X19ReleaseJSON
+	if err := json.Unmarshal(body, &x19ReleaseJSON); err != nil {
+		return nil, err
+	}
+
+	return &x19ReleaseJSON, nil
+}
+
+// GetGlobalG79ChatServers returns the cached global chat server list, populating it on first use.
 func GetGlobalG79ChatServers() ([]G79ChatServerEntry, error) {
 	return GetGlobalG79ChatServersWithHTTPClient(nil)
 }
@@ -398,27 +488,30 @@ func GetGlobalG79ChatServers() ([]G79ChatServerEntry, error) {
 func GetGlobalG79ChatServersWithHTTPClient(httpClient *http.Client) ([]G79ChatServerEntry, error) {
 	g79ChatServerMu.RLock()
 	if globalG79ChatServers != nil {
-		list := cloneG79ChatServers(globalG79ChatServers)
+		v := make([]G79ChatServerEntry, len(globalG79ChatServers))
+		copy(v, globalG79ChatServers)
 		g79ChatServerMu.RUnlock()
-		return list, nil
+		return v, nil
 	}
 	g79ChatServerMu.RUnlock()
 
 	g79ChatServerMu.Lock()
 	defer g79ChatServerMu.Unlock()
 	if globalG79ChatServers != nil {
-		return cloneG79ChatServers(globalG79ChatServers), nil
+		v := make([]G79ChatServerEntry, len(globalG79ChatServers))
+		copy(v, globalG79ChatServers)
+		return v, nil
 	}
 
 	list, err := fetchG79ChatServersWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("GetGlobalG79ChatServersWithHTTPClient: %v", err)
+		return nil, err
 	}
-	globalG79ChatServers = cloneG79ChatServers(list)
-	return cloneG79ChatServers(list), nil
+	globalG79ChatServers = list
+	return list, nil
 }
 
-// 强制刷新缓存中的聊天服务器列表
+// RefreshG79ChatServers forces a refresh of the cached chat server list.
 func RefreshG79ChatServers() ([]G79ChatServerEntry, error) {
 	return RefreshG79ChatServersWithHTTPClient(nil)
 }
@@ -426,12 +519,12 @@ func RefreshG79ChatServers() ([]G79ChatServerEntry, error) {
 func RefreshG79ChatServersWithHTTPClient(httpClient *http.Client) ([]G79ChatServerEntry, error) {
 	list, err := fetchG79ChatServersWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("RefreshG79ChatServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 	g79ChatServerMu.Lock()
-	globalG79ChatServers = cloneG79ChatServers(list)
+	globalG79ChatServers = list
 	g79ChatServerMu.Unlock()
-	return cloneG79ChatServers(list), nil
+	return list, nil
 }
 
 func fetchG79ChatServers() ([]G79ChatServerEntry, error) {
@@ -441,12 +534,12 @@ func fetchG79ChatServers() ([]G79ChatServerEntry, error) {
 func fetchG79ChatServersWithHTTPClient(httpClient *http.Client) ([]G79ChatServerEntry, error) {
 	g79ReleaseJSON, err := GetGlobalG79ReleaseJSONWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79ChatServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("GET", g79ReleaseJSON.ChatServerURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79ChatServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 	req.Header.Set("User-Agent", "libhttpclient/1.0.0.0")
 	req.Header.Set("Accept-Encoding", "gzip")
@@ -454,23 +547,23 @@ func fetchG79ChatServersWithHTTPClient(httpClient *http.Client) ([]G79ChatServer
 
 	resp, err := resolveHTTPClient(httpClient).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79ChatServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79ChatServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 
 	var list []G79ChatServerEntry
 	if err := json.Unmarshal(body, &list); err != nil {
-		return nil, fmt.Errorf("fetchG79ChatServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 	return list, nil
 }
 
-// 获取全局 Link 服务器列表，如果已有缓存直接返回副本
+// GetGlobalG79LinkServers 获取全局 Link 服务器列表，如果已有缓存直接返回副本。
 func GetGlobalG79LinkServers() ([]G79LinkServerEntry, error) {
 	return GetGlobalG79LinkServersWithHTTPClient(nil)
 }
@@ -478,7 +571,8 @@ func GetGlobalG79LinkServers() ([]G79LinkServerEntry, error) {
 func GetGlobalG79LinkServersWithHTTPClient(httpClient *http.Client) ([]G79LinkServerEntry, error) {
 	g79LinkMu.RLock()
 	if globalG79LinkServers != nil {
-		list := cloneG79LinkServers(globalG79LinkServers)
+		list := make([]G79LinkServerEntry, len(globalG79LinkServers))
+		copy(list, globalG79LinkServers)
 		g79LinkMu.RUnlock()
 		return list, nil
 	}
@@ -487,18 +581,20 @@ func GetGlobalG79LinkServersWithHTTPClient(httpClient *http.Client) ([]G79LinkSe
 	g79LinkMu.Lock()
 	defer g79LinkMu.Unlock()
 	if globalG79LinkServers != nil {
-		return cloneG79LinkServers(globalG79LinkServers), nil
+		list := make([]G79LinkServerEntry, len(globalG79LinkServers))
+		copy(list, globalG79LinkServers)
+		return list, nil
 	}
 
 	list, err := fetchG79LinkServersWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("GetGlobalG79LinkServersWithHTTPClient: %v", err)
+		return nil, err
 	}
-	globalG79LinkServers = cloneG79LinkServers(list)
-	return cloneG79LinkServers(list), nil
+	globalG79LinkServers = list
+	return list, nil
 }
 
-// 强制刷新缓存
+// RefreshG79LinkServers 强制刷新缓存。
 func RefreshG79LinkServers() ([]G79LinkServerEntry, error) {
 	return RefreshG79LinkServersWithHTTPClient(nil)
 }
@@ -506,12 +602,12 @@ func RefreshG79LinkServers() ([]G79LinkServerEntry, error) {
 func RefreshG79LinkServersWithHTTPClient(httpClient *http.Client) ([]G79LinkServerEntry, error) {
 	list, err := fetchG79LinkServersWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("RefreshG79LinkServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 	g79LinkMu.Lock()
-	globalG79LinkServers = cloneG79LinkServers(list)
+	globalG79LinkServers = list
 	g79LinkMu.Unlock()
-	return cloneG79LinkServers(list), nil
+	return list, nil
 }
 
 func fetchG79LinkServers() ([]G79LinkServerEntry, error) {
@@ -521,12 +617,12 @@ func fetchG79LinkServers() ([]G79LinkServerEntry, error) {
 func fetchG79LinkServersWithHTTPClient(httpClient *http.Client) ([]G79LinkServerEntry, error) {
 	g79ReleaseJSON, err := GetGlobalG79ReleaseJSONWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79LinkServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("GET", g79ReleaseJSON.LinkServerURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79LinkServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 	req.Header.Set("User-Agent", "libhttpclient/1.0.0.0")
 	req.Header.Set("Accept-Encoding", "gzip")
@@ -534,23 +630,23 @@ func fetchG79LinkServersWithHTTPClient(httpClient *http.Client) ([]G79LinkServer
 
 	resp, err := resolveHTTPClient(httpClient).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79LinkServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79LinkServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 
 	var list []G79LinkServerEntry
 	if err := json.Unmarshal(body, &list); err != nil {
-		return nil, fmt.Errorf("fetchG79LinkServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 	return list, nil
 }
 
-// 获取传输服务器列表（全局只拉取一次，后续复用缓存）
+// GetGlobalG79TransferServers 获取传输服务器列表（全局只拉取一次，后续复用缓存）。
 func GetGlobalG79TransferServers() ([]G79TransferServerEntry, error) {
 	return GetGlobalG79TransferServersWithHTTPClient(nil)
 }
@@ -558,27 +654,30 @@ func GetGlobalG79TransferServers() ([]G79TransferServerEntry, error) {
 func GetGlobalG79TransferServersWithHTTPClient(httpClient *http.Client) ([]G79TransferServerEntry, error) {
 	g79TransferMu.RLock()
 	if globalG79TransferServers != nil {
-		list := cloneG79TransferServers(globalG79TransferServers)
+		v := make([]G79TransferServerEntry, len(globalG79TransferServers))
+		copy(v, globalG79TransferServers)
 		g79TransferMu.RUnlock()
-		return list, nil
+		return v, nil
 	}
 	g79TransferMu.RUnlock()
 
 	g79TransferMu.Lock()
 	defer g79TransferMu.Unlock()
 	if globalG79TransferServers != nil {
-		return cloneG79TransferServers(globalG79TransferServers), nil
+		v := make([]G79TransferServerEntry, len(globalG79TransferServers))
+		copy(v, globalG79TransferServers)
+		return v, nil
 	}
 
 	list, err := fetchG79TransferServersWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("GetGlobalG79TransferServersWithHTTPClient: %v", err)
+		return nil, err
 	}
-	globalG79TransferServers = cloneG79TransferServers(list)
-	return cloneG79TransferServers(list), nil
+	globalG79TransferServers = list
+	return list, nil
 }
 
-// 强制刷新传输服务器列表缓存
+// RefreshG79TransferServers 强制刷新传输服务器列表缓存。
 func RefreshG79TransferServers() ([]G79TransferServerEntry, error) {
 	return RefreshG79TransferServersWithHTTPClient(nil)
 }
@@ -586,12 +685,12 @@ func RefreshG79TransferServers() ([]G79TransferServerEntry, error) {
 func RefreshG79TransferServersWithHTTPClient(httpClient *http.Client) ([]G79TransferServerEntry, error) {
 	list, err := fetchG79TransferServersWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("RefreshG79TransferServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 	g79TransferMu.Lock()
-	globalG79TransferServers = cloneG79TransferServers(list)
+	globalG79TransferServers = list
 	g79TransferMu.Unlock()
-	return cloneG79TransferServers(list), nil
+	return list, nil
 }
 
 func fetchG79TransferServers() ([]G79TransferServerEntry, error) {
@@ -601,12 +700,12 @@ func fetchG79TransferServers() ([]G79TransferServerEntry, error) {
 func fetchG79TransferServersWithHTTPClient(httpClient *http.Client) ([]G79TransferServerEntry, error) {
 	g79ReleaseJSON, err := GetGlobalG79ReleaseJSONWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79TransferServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("GET", g79ReleaseJSON.TransferServerUrl, nil)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79TransferServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 	req.Header.Set("User-Agent", "libhttpclient/1.0.0.0")
 	req.Header.Set("Accept-Encoding", "gzip")
@@ -614,23 +713,23 @@ func fetchG79TransferServersWithHTTPClient(httpClient *http.Client) ([]G79Transf
 
 	resp, err := resolveHTTPClient(httpClient).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79TransferServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79TransferServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 
 	var list []G79TransferServerEntry
 	if err := json.Unmarshal(body, &list); err != nil {
-		return nil, fmt.Errorf("fetchG79TransferServersWithHTTPClient: %v", err)
+		return nil, err
 	}
 	return list, nil
 }
 
-// 获取全局 g79 packlist 配置，首次调用会自动拉取并缓存
+// GetGlobalG79PackList 获取全局 g79 packlist 配置，首次调用会自动拉取并缓存。
 func GetGlobalG79PackList() (map[string]G79PackListEntry, error) {
 	return GetGlobalG79PackListWithHTTPClient(nil)
 }
@@ -652,13 +751,13 @@ func GetGlobalG79PackListWithHTTPClient(httpClient *http.Client) (map[string]G79
 
 	list, err := fetchG79PackListWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("GetGlobalG79PackListWithHTTPClient: %v", err)
+		return nil, err
 	}
 	globalG79PackList = list
 	return cloneG79PackList(list), nil
 }
 
-// 强制刷新 g79 packlist 缓存
+// RefreshG79PackList 强制刷新 g79 packlist 缓存。
 func RefreshG79PackList() (map[string]G79PackListEntry, error) {
 	return RefreshG79PackListWithHTTPClient(nil)
 }
@@ -666,7 +765,7 @@ func RefreshG79PackList() (map[string]G79PackListEntry, error) {
 func RefreshG79PackListWithHTTPClient(httpClient *http.Client) (map[string]G79PackListEntry, error) {
 	list, err := fetchG79PackListWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("RefreshG79PackListWithHTTPClient: %v", err)
+		return nil, err
 	}
 	g79PackListMu.Lock()
 	globalG79PackList = list
@@ -681,7 +780,7 @@ func fetchG79PackList() (map[string]G79PackListEntry, error) {
 func fetchG79PackListWithHTTPClient(httpClient *http.Client) (map[string]G79PackListEntry, error) {
 	req, err := http.NewRequest("GET", g79PackListURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79PackListWithHTTPClient: %v", err)
+		return nil, err
 	}
 	req.Header.Set("User-Agent", "libhttpclient/1.0.0.0")
 	req.Header.Set("Accept-Encoding", "gzip")
@@ -690,18 +789,18 @@ func fetchG79PackListWithHTTPClient(httpClient *http.Client) (map[string]G79Pack
 
 	resp, err := resolveHTTPClient(httpClient).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79PackListWithHTTPClient: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79PackListWithHTTPClient: %v", err)
+		return nil, err
 	}
 
 	var list map[string]G79PackListEntry
 	if err := json.Unmarshal(body, &list); err != nil {
-		return nil, fmt.Errorf("fetchG79PackListWithHTTPClient: %v", err)
+		return nil, err
 	}
 	return list, nil
 }
@@ -715,21 +814,4 @@ func cloneG79PackList(src map[string]G79PackListEntry) map[string]G79PackListEnt
 		dst[k] = v
 	}
 	return dst
-}
-
-func cloneG79ChatServers(source []G79ChatServerEntry) []G79ChatServerEntry {
-	return append([]G79ChatServerEntry(nil), source...)
-}
-
-func cloneG79LinkServers(source []G79LinkServerEntry) []G79LinkServerEntry {
-	return append([]G79LinkServerEntry(nil), source...)
-}
-
-func cloneG79TransferServers(source []G79TransferServerEntry) []G79TransferServerEntry {
-	result := make([]G79TransferServerEntry, len(source))
-	for index, entry := range source {
-		result[index] = entry
-		result[index].Ports = append([]int(nil), entry.Ports...)
-	}
-	return result
 }

@@ -17,8 +17,8 @@ type CommandRequest struct {
 	// Internal specifies if the command request internal. Setting it to false seems to work and the usage of
 	// this field is not known.
 	Internal bool
-	// Version is the version of the command that is being executed. This field currently has no purpose or functionality.
-	Version int32
+	// Version is the version string sent by current Bedrock clients. Empty uses the latest command version.
+	Version string
 	// Netease
 	UnLimited bool
 }
@@ -30,9 +30,12 @@ func (*CommandRequest) ID() uint32 {
 
 func (pk *CommandRequest) Marshal(io protocol.IO) {
 	io.String(&pk.CommandLine)
-	protocol.CommandOriginData(io, &pk.CommandOrigin)
+	protocol.CommandOriginDataString(io, &pk.CommandOrigin)
 	io.Bool(&pk.Internal)
-	io.Varint32(&pk.Version)
-	// Netease
+	// NetEase inserts UnLimited before the 3.10 command version string.
 	io.Bool(&pk.UnLimited)
+	if pk.Version == "" {
+		pk.Version = "latest"
+	}
+	io.String(&pk.Version)
 }

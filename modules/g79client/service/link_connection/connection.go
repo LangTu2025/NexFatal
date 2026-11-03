@@ -42,7 +42,7 @@ const (
 	clientPublicKeyMD5Hex  = "3f17d36cec77e47f1d301c0cc41cd73f"
 )
 
-// 表示从 Link 服务器收到的一条消息
+// LinkMessage 表示从 Link 服务器收到的一条消息。
 type LinkMessage struct {
 	ServerID int32
 	Flag     byte
@@ -50,7 +50,7 @@ type LinkMessage struct {
 	Payload  json.RawMessage
 }
 
-// 表示 Link 服务器下发的公共频道推送
+// CommonPushData 表示 Link 服务器下发的公共频道推送。
 type CommonPushData struct {
 	Method   string          `json:"-"`
 	ServerID int32           `json:"server_id"`
@@ -68,7 +68,7 @@ type loginResult struct {
 	err error
 }
 
-// 表示一个活跃的 Link 连接
+// LinkConnection 表示一个活跃的 Link 连接。
 type LinkConnection struct {
 	service *LinkConnectionService
 	entry   g79client.G79LinkServerEntry
@@ -123,23 +123,23 @@ func newLinkConnection(service *LinkConnectionService, conn net.Conn, entry g79c
 func (c *LinkConnection) sendHandshake() error {
 	c.cipherR1 = make([]byte, 16)
 	if _, err := crand.Read(c.cipherR1); err != nil {
-		return fmt.Errorf("sendHandshake: Generate cipherR1: %v", err)
+		return fmt.Errorf("link_connection.handshake: generate cipherR1: %w", err)
 	}
 
 	enc, err := rsaEncrypt(c.cipherR1)
 	if err != nil {
-		return fmt.Errorf("sendHandshake: Encrypt cipherR1: %v", err)
+		return fmt.Errorf("link_connection.handshake: encrypt cipherR1: %w", err)
 	}
 	if _, err := c.conn.Write(enc); err != nil {
-		return fmt.Errorf("sendHandshake: Send cipherR1: %v", err)
+		return fmt.Errorf("link_connection.handshake: send cipherR1: %w", err)
 	}
 
 	md5Bytes, err := hex.DecodeString(clientPublicKeyMD5Hex)
 	if err != nil {
-		return fmt.Errorf("sendHandshake: Decode client md5: %v", err)
+		return fmt.Errorf("link_connection.handshake: decode client md5: %w", err)
 	}
 	if _, err := c.conn.Write(md5Bytes); err != nil {
-		return fmt.Errorf("sendHandshake: Send client md5: %v", err)
+		return fmt.Errorf("link_connection.handshake: send client md5: %w", err)
 	}
 
 	return nil
@@ -160,7 +160,7 @@ func (c *LinkConnection) readLoop() {
 			if errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) {
 				c.setError(err)
 			} else {
-				c.setError(fmt.Errorf("readLoop: %v", err))
+				c.setError(fmt.Errorf("link_connection.read: %w", err))
 			}
 			return
 		}
@@ -197,7 +197,7 @@ func (c *LinkConnection) sendHeartbeat() error {
 	defer c.sendMu.Unlock()
 	if c.handshakeDone {
 		if _, err := c.conn.Write([]byte{0}); err != nil {
-			return fmt.Errorf("sendHeartbeat: %v", err)
+			return fmt.Errorf("link_connection.heartbeat: %w", err)
 		}
 	}
 	return nil
@@ -233,11 +233,11 @@ func (c *LinkConnection) handleIncoming(data []byte) error {
 func (c *LinkConnection) completeHandshake(payload []byte) error {
 	plain, err := rsaDecrypt(payload)
 	if err != nil {
-		return fmt.Errorf("completeHandshake: Decrypt cipherR2: %v", err)
+		return fmt.Errorf("link_connection.handshake: decrypt cipherR2: %w", err)
 	}
 	plain = bytes.TrimRight(plain, "\x00")
 	if len(plain) != 16 {
-		return fmt.Errorf("completeHandshake: Unexpected cipherR2 length %d", len(plain))
+		return fmt.Errorf("link_connection.handshake: unexpected cipherR2 length %d", len(plain))
 	}
 
 	encryptKey := append(append([]byte{}, c.cipherR1...), plain...)
@@ -245,11 +245,11 @@ func (c *LinkConnection) completeHandshake(payload []byte) error {
 
 	enc, err := utils.NewNeteaseChaCha(encryptKey)
 	if err != nil {
-		return fmt.Errorf("completeHandshake: Create encrypter: %v", err)
+		return fmt.Errorf("link_connection.handshake: create encrypter: %w", err)
 	}
 	dec, err := utils.NewNeteaseChaCha(decryptKey)
 	if err != nil {
-		return fmt.Errorf("completeHandshake: Create decrypter: %v", err)
+		return fmt.Errorf("link_connection.handshake: create decrypter: %w", err)
 	}
 
 	c.encrypt = enc
@@ -265,20 +265,20 @@ func (c *LinkConnection) completeHandshake(payload []byte) error {
 func (c *LinkConnection) sendLoginRequest() error {
 	uid, err := c.service.client.GetUserIDInt()
 	if err != nil {
-		return fmt.Errorf("sendLoginRequest: Parse uid: %v", err)
+		return fmt.Errorf("link_connection.login: parse uid: %w", err)
 	}
 	token := utils.GetEncryptedToken(c.service.client.UserToken)
 	if len(token) != 16 {
-		return fmt.Errorf("sendLoginRequest: Unexpected token length %d", len(token))
+		return fmt.Errorf("link_connection.login: unexpected token length %d", len(token))
 	}
 
 	randBlock := make([]byte, 16)
 	if _, err := crand.Read(randBlock); err != nil {
-		return fmt.Errorf("sendLoginRequest: Generate random block: %v", err)
+		return fmt.Errorf("link_connection.login: generate random block: %w", err)
 	}
 	randEnc, err := utils.AesECBEncryptBlock(randBlock, token)
 	if err != nil {
-		return fmt.Errorf("sendLoginRequest: Encrypt random block: %v", err)
+		return fmt.Errorf("link_connection.login: encrypt random block: %w", err)
 	}
 
 	payload := map[string]interface{}{
@@ -320,26 +320,26 @@ func (c *LinkConnection) processFrames() error {
 
 func (c *LinkConnection) decodeMessage(body []byte) (*LinkMessage, error) {
 	if c.decrypt == nil {
-		return nil, errors.New("decodeMessage: Decrypt engine not ready")
+		return nil, errors.New("link_connection.decodeMessage: decrypt engine not ready")
 	}
 	plain, err := c.decrypt.Process(body)
 	if err != nil {
-		return nil, fmt.Errorf("decodeMessage: Decrypt body: %v", err)
+		return nil, fmt.Errorf("link_connection.decodeMessage: decrypt body: %w", err)
 	}
 
 	serverID, off, ok := readVarInt(plain)
 	if !ok {
-		return nil, errors.New("decodeMessage: Invalid server id")
+		return nil, errors.New("link_connection.decodeMessage: invalid server id")
 	}
 	if len(plain) < off+2 {
-		return nil, errors.New("decodeMessage: Payload too short")
+		return nil, errors.New("link_connection.decodeMessage: payload too short")
 	}
 	flag := plain[off]
 	methodLen := int(plain[off+1])
 	start := off + 2
 	end := start + methodLen
 	if methodLen < 0 || end > len(plain) {
-		return nil, errors.New("decodeMessage: Invalid method length")
+		return nil, errors.New("link_connection.decodeMessage: invalid method length")
 	}
 	method := string(plain[start:end])
 	payload := append(json.RawMessage(nil), plain[end:]...)
@@ -359,12 +359,12 @@ func (c *LinkConnection) dispatchMessage(msg *LinkMessage) error {
 		}
 		if err := json.Unmarshal(msg.Payload, &resp); err != nil {
 			select {
-			case c.loginCh <- loginResult{err: fmt.Errorf("dispatchMessage: Parse response: %v", err)}:
+			case c.loginCh <- loginResult{err: fmt.Errorf("link_connection.login: parse response: %w", err)}:
 			default:
 			}
 		} else if resp.Code != 0 {
 			select {
-			case c.loginCh <- loginResult{err: fmt.Errorf("dispatchMessage: Server returned code %d", resp.Code)}:
+			case c.loginCh <- loginResult{err: fmt.Errorf("link_connection.login: server returned code %d", resp.Code)}:
 			default:
 			}
 		} else {
@@ -398,15 +398,15 @@ func (c *LinkConnection) dispatchMessage(msg *LinkMessage) error {
 	return nil
 }
 
-// 发送一条 Link 消息
+// SendMessage 发送一条 Link 消息。
 func (c *LinkConnection) SendMessage(serverID int32, method string, payload []byte) error {
 	if !c.handshakeDone {
-		return fmt.Errorf("SendMessage: Connection is not ready")
+		return fmt.Errorf("link_connection.SendMessage: 连接尚未准备就绪")
 	}
 	return c.sendMessage(serverID, method, payload)
 }
 
-// 发送聊天相关请求
+// SendChatRequest 发送聊天相关请求。
 func (c *LinkConnection) SendChatRequest(serverID int32, method string, data map[string]interface{}) error {
 	var payload []byte
 	if data != nil && len(data) > 0 {
@@ -419,10 +419,10 @@ func (c *LinkConnection) SendChatRequest(serverID int32, method string, data map
 	return c.SendMessage(serverID, method, payload)
 }
 
-// 在世界频道发送文本消息
+// SendGlobalMessage 在世界频道发送文本消息。
 func (c *LinkConnection) SendGlobalMessage(content string) error {
 	if !c.online.Load() {
-		return fmt.Errorf("SendGlobalMessage: Connection is not logged in")
+		return fmt.Errorf("link_connection.SendGlobalMessage: 连接未登录")
 	}
 	msg := map[string]interface{}{
 		"type":               "text",
@@ -441,10 +441,10 @@ func (c *LinkConnection) SendGlobalMessage(content string) error {
 	return c.SendChatRequest(chatServerID, "SendMessage", req)
 }
 
-// 发送 GameStart，请求订阅公共频道等推送
+// SendGameStart 发送 GameStart，请求订阅公共频道等推送。
 func (c *LinkConnection) SendGameStart(data map[string]interface{}) error {
 	if !c.online.Load() {
-		return fmt.Errorf("SendGameStart: Connection is not logged in")
+		return fmt.Errorf("link_connection.SendGameStart: 连接未登录")
 	}
 	if data == nil {
 		data = map[string]interface{}{"strict_mode": true}
@@ -456,10 +456,10 @@ func (c *LinkConnection) SendGameStart(data map[string]interface{}) error {
 	return c.SendMessage(0, "GameStart", payload)
 }
 
-// 发送 GameStop，通知服务器玩家已退出游戏
+// SendGameStop 发送 GameStop，通知服务器玩家已退出游戏。
 func (c *LinkConnection) SendGameStop(data map[string]interface{}) error {
 	if !c.online.Load() {
-		return fmt.Errorf("SendGameStop: Connection is not logged in")
+		return fmt.Errorf("link_connection.SendGameStop: 连接未登录")
 	}
 	if data == nil {
 		data = map[string]interface{}{"strict_mode": true}
@@ -471,22 +471,22 @@ func (c *LinkConnection) SendGameStop(data map[string]interface{}) error {
 	return c.SendMessage(0, "GameStop", payload)
 }
 
-// 通知服务器进入在线状态
+// SendChatOnline 通知服务器进入在线状态。
 func (c *LinkConnection) SendChatOnline() error {
 	return c.SendChatRequest(chatServerID, "Online", nil)
 }
 
-// 请求服务器状态映射
+// RequestChatDumpState 请求服务器状态映射。
 func (c *LinkConnection) RequestChatDumpState() error {
 	return c.SendChatRequest(0, "DumpState", nil)
 }
 
-// 主动上报聊天室连接状态
+// RequestChatConnectState 主动上报聊天室连接状态。
 func (c *LinkConnection) RequestChatConnectState() error {
 	return c.SendChatRequest(0, "ConnectState", map[string]interface{}{"server_id": chatServerID})
 }
 
-// 请求公共频道历史消息
+// FetchGlobalMessages 请求公共频道历史消息。
 func (c *LinkConnection) FetchGlobalMessages(length int) error {
 	if length <= 0 {
 		length = 20
@@ -500,20 +500,18 @@ func (c *LinkConnection) FetchGlobalMessages(length int) error {
 	return c.SendChatRequest(chatServerID, "GetGlobalMessages", data)
 }
 
-// 返回当前连接是否已登录
+// IsOnline 返回当前连接是否已登录。
 func (c *LinkConnection) IsOnline() bool {
 	return c.online.Load()
 }
 
 func (c *LinkConnection) sendMessage(serverID int32, method string, payload []byte) error {
 	if c.encrypt == nil {
-		return fmt.Errorf("sendMessage: Encryption engine is not ready")
+		return fmt.Errorf("link_connection.sendMessage: encrypt engine 未准备")
 	}
 	if len(method) > 255 {
-		return fmt.Errorf("sendMessage: Method is longer than 255 bytes")
+		return fmt.Errorf("link_connection.sendMessage: method 长度超出 255")
 	}
-	c.sendMu.Lock()
-	defer c.sendMu.Unlock()
 
 	bodyBuf := bytes.NewBuffer(nil)
 	writeVarInt(bodyBuf, serverID)
@@ -524,23 +522,17 @@ func (c *LinkConnection) sendMessage(serverID int32, method string, payload []by
 
 	encrypted, err := c.encrypt.Process(bodyBuf.Bytes())
 	if err != nil {
-		return fmt.Errorf("sendMessage: %v", err)
+		return fmt.Errorf("link_connection.sendMessage: 加密失败: %w", err)
 	}
 
 	frame := bytes.NewBuffer(nil)
 	writeVarInt(frame, int32(len(encrypted)))
 	frame.Write(encrypted)
 
-	data := frame.Bytes()
-	for len(data) > 0 {
-		written, err := c.conn.Write(data)
-		if err != nil {
-			return fmt.Errorf("sendMessage: %v", err)
-		}
-		if written == 0 {
-			return fmt.Errorf("sendMessage: Connection wrote zero bytes")
-		}
-		data = data[written:]
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	if _, err := c.conn.Write(frame.Bytes()); err != nil {
+		return fmt.Errorf("link_connection.sendMessage: 写入失败: %w", err)
 	}
 	return nil
 }
@@ -559,12 +551,12 @@ func (c *LinkConnection) waitForLogin(ctx context.Context) error {
 	}
 }
 
-// 返回服务器推送消息通道
+// Messages 返回服务器推送消息通道。
 func (c *LinkConnection) Messages() <-chan LinkMessage {
 	return c.messages
 }
 
-// 返回解析后的公共频道推送消息
+// CommonPushMessages 返回解析后的公共频道推送消息。
 func (c *LinkConnection) CommonPushMessages() <-chan CommonPushData {
 	return c.commonPush
 }
@@ -573,7 +565,7 @@ func (c *LinkConnection) Conn() net.Conn {
 	return c.conn
 }
 
-// 关闭连接并释放资源
+// Close 关闭连接并释放资源。
 func (c *LinkConnection) Close() error {
 	c.initiateShutdown()
 	c.wg.Wait()
@@ -584,7 +576,7 @@ func (c *LinkConnection) Close() error {
 	return nil
 }
 
-// 发起关闭信号，不等待 goroutine 退出以避免死锁
+// initiateShutdown 发起关闭信号，不等待 goroutine 退出（避免死锁）。
 func (c *LinkConnection) initiateShutdown() {
 	c.closeOnce.Do(func() {
 		close(c.closed)
@@ -593,7 +585,7 @@ func (c *LinkConnection) initiateShutdown() {
 	})
 }
 
-// 返回连接的最终错误
+// Err 返回连接的最终错误。
 func (c *LinkConnection) Err() error {
 	c.errMu.Lock()
 	defer c.errMu.Unlock()
@@ -647,7 +639,7 @@ func rsaDecrypt(data []byte) ([]byte, error) {
 	var out bytes.Buffer
 	for len(data) > 0 {
 		if len(data) < chunkSize {
-			return nil, fmt.Errorf("rsaDecrypt: Chunk too small: %d", len(data))
+			return nil, fmt.Errorf("link_connection.rsaDecrypt: chunk too small: %d", len(data))
 		}
 		chunk := data[:chunkSize]
 		data = data[chunkSize:]
@@ -674,7 +666,7 @@ func serverPublicKey() (*rsa.PublicKey, error) {
 		}
 		rsaPub, ok := pub.(*rsa.PublicKey)
 		if !ok {
-			serverPublicKeyErr = errors.New("serverPublicKey: Server public key not RSA")
+			serverPublicKeyErr = errors.New("link_connection: server public key not RSA")
 			return
 		}
 		serverPublicKeyVal = rsaPub

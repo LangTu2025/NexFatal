@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/Happy2018new/worldupgrader/blockupgrader"
 	"github.com/TriM-Organization/bedrock-world-operator/block"
@@ -56,9 +55,6 @@ func (biomePaletteEncoding) decode(buf *bytes.Buffer) (uint32, error) {
 // blockPaletteEncoding implements the encoding of block palettes to disk.
 type blockPaletteEncoding struct{}
 
-// unknownRuntimeIDs prevents a repeated unknown network ID from flooding export logs.
-var unknownRuntimeIDs sync.Map
-
 func (bpe blockPaletteEncoding) encode(buf *bytes.Buffer, v uint32) {
 	_ = nbt.NewEncoderWithEncoding(buf, nbt.LittleEndian).Encode(bpe.EncodeBlockState(v))
 }
@@ -75,10 +71,15 @@ func (blockPaletteEncoding) EncodeBlockState(v uint32) define.BlockState {
 	// as we need the name and data value to store.
 	name, props, found := block.RuntimeIDToState(v)
 	if !found {
-		if _, loaded := unknownRuntimeIDs.LoadOrStore(v, struct{}{}); !loaded {
-			fmt.Printf("EncodeBlockState: unknown network block runtime ID %d without world position; exporting it as minecraft:air\n", v)
-		}
-		return define.BlockState{Name: "minecraft:air", Properties: map[string]any{}, Version: CurrentBlockVersion}
+		panic(
+			fmt.Sprintf(
+				""+
+					"EncodeBlockState: You should use the newer version of bedrock-world-operator, "+
+					"because the given block runtime ID %d can not be found in this version, "+
+					"and it seems that this block is come from newer Minecraft and need the higher version of bedrock-world-operator",
+				v,
+			),
+		)
 	}
 	return define.BlockState{Name: name, Properties: props, Version: CurrentBlockVersion}
 }

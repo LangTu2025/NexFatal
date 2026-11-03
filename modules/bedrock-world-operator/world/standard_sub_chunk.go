@@ -3,7 +3,6 @@ package world
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 
 	"github.com/TriM-Organization/bedrock-world-operator/block"
 	"github.com/TriM-Organization/bedrock-world-operator/chunk"
@@ -54,7 +53,6 @@ func (b *BedrockWorld) SaveSubChunk(dm define.Dimension, position define.SubChun
 	if c == nil {
 		return b.Delete(subChunkKey)
 	}
-	replaceUnknownBlocksWithAir(dm, position, c)
 
 	finalisation := make([]byte, 4)
 	binary.LittleEndian.PutUint32(finalisation, world_define.FinalisationGenerated)
@@ -70,35 +68,4 @@ func (b *BedrockWorld) SaveSubChunk(dm define.Dimension, position define.SubChun
 	fixedYPos := (position[1]<<4 - int32(dm.Range()[0])) >> 4
 	subChunkData := chunk.EncodeSubChunk(c, dm.Range(), int(fixedYPos), chunk.DiskEncoding)
 	return b.Put(subChunkKey, subChunkData)
-}
-
-func replaceUnknownBlocksWithAir(dm define.Dimension, position define.SubChunkPos, subChunk *chunk.SubChunk) {
-	for layer, storage := range subChunk.Layers() {
-		unknownIDs := map[uint32]struct{}{}
-		for i := range storage.Palette().Len() {
-			runtimeID := storage.Palette().Value(uint16(i))
-			if _, _, found := block.RuntimeIDToState(runtimeID); !found {
-				unknownIDs[runtimeID] = struct{}{}
-			}
-		}
-		if len(unknownIDs) == 0 {
-			continue
-		}
-
-		for x := range byte(16) {
-			for y := range byte(16) {
-				for z := range byte(16) {
-					runtimeID := subChunk.Block(x, y, z, uint8(layer))
-					if _, unknown := unknownIDs[runtimeID]; !unknown {
-						continue
-					}
-					fmt.Printf(
-						"EncodeBlockState: unknown network block runtime ID %d at dimension=%d position=(%d, %d, %d) layer=%d; exporting it as minecraft:air\n",
-						runtimeID, dm, int64(position[0])*16+int64(x), int64(position[1])*16+int64(y), int64(position[2])*16+int64(z), layer,
-					)
-					subChunk.SetBlock(x, y, z, uint8(layer), block.AirRuntimeID)
-				}
-			}
-		}
-	}
 }

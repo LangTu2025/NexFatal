@@ -1,20 +1,20 @@
 package g79client
 
-import "fmt"
+import "errors"
 
-// 更换当前账号皮肤
+// 更换皮肤
 func (c *Client) ChangeSkin(itemID string) error {
 	purchaseResponse, err := c.PurchaseItem(itemID)
 	if err != nil {
-		return fmt.Errorf("ChangeSkin: %v", err)
+		return err
 	}
 	if purchaseResponse.Code != 0 && purchaseResponse.Code != 502 {
-		return fmt.Errorf("ChangeSkin: 购买皮肤失败 (code: %d): %s", purchaseResponse.Code, purchaseResponse.Message)
+		return errors.New(purchaseResponse.Message)
 	}
 
 	_, err = c.SetUserSettingList(itemID)
 	if err != nil {
-		return fmt.Errorf("ChangeSkin: %v", err)
+		return err
 	}
 	return nil
 }

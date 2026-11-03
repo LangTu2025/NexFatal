@@ -1,5 +1,5 @@
 package g79client
 
 const (
-	GameVersion = "1.21.90"
+	GameVersion = "1.21.130"
 )

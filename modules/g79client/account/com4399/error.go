@@ -2,7 +2,7 @@ package com4399
 
 import "fmt"
 
-// 表示 4399 返回账号不存在或尚未注册
+// AccountNotFoundError 表示 4399 返回账号不存在或尚未注册。
 type AccountNotFoundError struct {
 	Username string
 	Message  string
@@ -21,7 +21,7 @@ func (e *AccountNotFoundError) Error() string {
 	return "com4399: 账号不存在或尚未注册"
 }
 
-// 表示 4399 登录流程要求输入验证码
+// NeedCaptchaError 表示 4399 登录流程要求输入验证码。
 type NeedCaptchaError struct {
 	Reason     string
 	CaptchaID  string

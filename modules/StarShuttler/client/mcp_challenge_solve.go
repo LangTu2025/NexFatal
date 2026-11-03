@@ -117,9 +117,7 @@ func (m *MCPCheckChallengesSolver) waitMCPCheckChallengesDown(commandOutput chan
 			// PhoenixBuilder specific changes.
 			// Author: LNSSPsd
 			UnLimited: false,
-			// PhoenixBuilder specific changes.
-			// Author: Liliya233
-			Version: 39,
+			Version:   "latest",
 		})
 
 		if err != nil {
@@ -139,7 +137,13 @@ func (m *MCPCheckChallengesSolver) waitMCPCheckChallengesDown(commandOutput chan
 func (m *MCPCheckChallengesSolver) onPyRpc(p *packet.PyRpc) error {
 	// prepare
 	conn := m.client.connection
-	client := m.client.authClient
+	var client interface {
+		TransferData(string) (string, error)
+		TransferCheckNum(string) (string, error)
+	} = m.client.authClient
+	if m.client.remoteAuthClient != nil {
+		client = m.client.remoteAuthClient
+	}
 	if p.Value == nil {
 		return nil
 	}

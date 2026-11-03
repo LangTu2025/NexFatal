@@ -7,16 +7,16 @@ import (
 	"strings"
 )
 
-// 描述退出山头服的响应
+// DomainLeaveServerResponse 描述退出山头服的响应。
 type DomainLeaveServerResponse struct {
 	Response
 	Entity any `json:"entity"`
 }
 
-// 申请退出指定山头服
+// RequestLeaveDomainServer 申请退出指定山头服。
 func (c *Client) RequestLeaveDomainServer(sid string) (*DomainLeaveServerResponse, error) {
 	if strings.TrimSpace(sid) == "" {
-		return nil, fmt.Errorf("RequestLeaveDomainServer: Sid must not be empty")
+		return nil, fmt.Errorf("RequestLeaveDomainServer: sid 不能为空")
 	}
 
 	api := "/domain-server/req-leave-domain-server"
@@ -26,12 +26,12 @@ func (c *Client) RequestLeaveDomainServer(sid string) (*DomainLeaveServerRespons
 
 	body, err := json.Marshal(requestData)
 	if err != nil {
-		return nil, fmt.Errorf("RequestLeaveDomainServer: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(body)))
 	if err != nil {
-		return nil, fmt.Errorf("RequestLeaveDomainServer: %v", err)
+		return nil, err
 	}
 
 	// 设置请求头
@@ -46,18 +46,18 @@ func (c *Client) RequestLeaveDomainServer(sid string) (*DomainLeaveServerRespons
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("RequestLeaveDomainServer: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("RequestLeaveDomainServer: %v", err)
+		return nil, err
 	}
 
 	var leaveResp DomainLeaveServerResponse
 	if err := json.Unmarshal(respBody, &leaveResp); err != nil {
-		return nil, fmt.Errorf("RequestLeaveDomainServer: %v", err)
+		return nil, fmt.Errorf("解析退出山头服响应失败: %v, 响应内容: %s", err, string(respBody))
 	}
 
 	return &leaveResp, nil

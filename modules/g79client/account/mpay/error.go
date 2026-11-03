@@ -2,7 +2,7 @@ package mpay
 
 import "fmt"
 
-// 表示 MPay 返回的需要额外验证的错误
+// NeedVerifyError 表示 MPay 返回的需要额外验证的错误。
 type NeedVerifyError struct {
 	Code      int
 	Reason    string

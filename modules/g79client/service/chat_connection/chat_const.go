@@ -1,6 +1,6 @@
 package chat_connection
 
-// 聊天相关的操作码，保持与原 MCP 逻辑一致
+// 聊天相关的操作码，保持与原 MCP 逻辑一致。
 const (
 	OPGroupChat    uint16 = 5
 	OPGroupFriend  uint16 = 6
@@ -28,7 +28,7 @@ const (
 	OPCloseFriendOnline uint16 = 10027
 )
 
-// 分享类型常量，保留以便后续扩展
+// 分享类型常量，保留以便后续扩展。
 const (
 	ShareTypeText       uint16 = 0
 	ShareTypeAudio      uint16 = 1
@@ -52,7 +52,7 @@ const (
 	ShareTypeActivity   uint16 = 200
 )
 
-// 组合后的聊天命令
+// Composite command helpers.
 const (
 	CommandChatPrivate = (OPGroupChat << 8) | OPChatPrivate
 	CommandChatGroup   = (OPGroupChat << 8) | OPChatGroup

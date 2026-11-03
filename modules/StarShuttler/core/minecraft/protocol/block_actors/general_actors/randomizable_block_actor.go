@@ -12,6 +12,10 @@ type RandomizableBlockActor struct {
 }
 
 func (rba *RandomizableBlockActor) Marshal(r protocol.IO) {
+	rba.marshal(r, false)
+}
+
+func (rba *RandomizableBlockActor) marshal(r protocol.IO, lootTableFlagWhenPresent bool) {
 	f := func() *string {
 		if rba.LootTable == nil {
 			rba.LootTable = new(string)
@@ -19,7 +23,7 @@ func (rba *RandomizableBlockActor) Marshal(r protocol.IO) {
 		return rba.LootTable
 	}
 
-	protocol.NBTOptionalFunc(r, rba.LootTable, f, false, r.String)
+	protocol.NBTOptionalFunc(r, rba.LootTable, f, lootTableFlagWhenPresent, r.String)
 
 	if rba.LootTable != nil && len(*rba.LootTable) > 0 {
 		protocol.NBTInt(&rba.LootTableSeed, r.Varint64)

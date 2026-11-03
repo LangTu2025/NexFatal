@@ -6,12 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
-	wsstructure "github.com/xingbaiawa/LycorisFlow/structure"
 	"github.com/LangTu2025/NexFatal/control"
 	"github.com/LangTu2025/NexFatal/defines"
 	"github.com/LangTu2025/NexFatal/utils"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
+	wsstructure "github.com/xingbaiawa/LycorisFlow/structure"
 	"go.uber.org/ratelimit"
 )
 
@@ -276,7 +276,10 @@ func (b *BuildTask) Start(ctx context.Context, ctrl *game_control.Control) error
 
 		verification := regionBuildVerification{Skipped: true}
 		if b.Config.VerifyRegion {
-			v, err := b.verifyRegionBuild(ctx, ctrl, currentPlan.verify)
+			regionVerifyPlan := currentPlan.verify
+			// 命令方块已在所属区块写入后立即校验，这里只保留区域方块完整度校验。
+			regionVerifyPlan.CommandBlocks = nil
+			v, err := b.verifyRegionBuild(ctx, ctrl, regionVerifyPlan)
 			if err != nil {
 				discardRegionPlan(&currentPlan)
 				return err

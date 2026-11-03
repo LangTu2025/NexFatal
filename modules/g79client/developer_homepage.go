@@ -7,19 +7,19 @@ import (
 	"strings"
 )
 
-// 表示开发者主页查询请求
+// LoadDeveloperHomepageRequest 表示开发者主页查询请求。
 type LoadDeveloperHomepageRequest struct {
 	ID int64 `json:"id"`
 }
 
-// 表示开发者主页查询响应
+// LoadDeveloperHomepageResponse 表示开发者主页查询响应。
 type LoadDeveloperHomepageResponse struct {
 	Response
 	SummaryMD5 string                  `json:"summary_md5"`
 	Entity     DeveloperHomepageEntity `json:"entity"`
 }
 
-// 表示开发者主页基础信息
+// DeveloperHomepageEntity 表示开发者主页基础信息。
 type DeveloperHomepageEntity struct {
 	ShortIntro      string    `json:"short_intro"`
 	FellowNum       Uncertain `json:"fellow_num"`
@@ -37,20 +37,20 @@ type DeveloperHomepageEntity struct {
 	DeveloperInfoID Uncertain `json:"developer_info_id"`
 }
 
-// 表示开发者动态列表请求
+// GetDeveloperUploadRequest 表示开发者动态列表请求。
 type GetDeveloperUploadRequest struct {
 	DeveloperInfoID int64 `json:"developer_info_id"`
 	Length          int   `json:"length"`
 	Offset          int   `json:"offset"`
 }
 
-// 表示开发者动态列表响应
+// GetDeveloperUploadResponse 表示开发者动态列表响应。
 type GetDeveloperUploadResponse struct {
 	Response
 	Entities []DeveloperUploadEntity `json:"entities"`
 }
 
-// 表示开发者单条动态记录
+// DeveloperUploadEntity 表示开发者单条动态记录。
 type DeveloperUploadEntity struct {
 	DeveloperInfoID Uncertain `json:"developer_info_id"`
 	IID             string    `json:"iid"`
@@ -60,20 +60,20 @@ type DeveloperUploadEntity struct {
 	GoodNum         Uncertain `json:"good_num"`
 }
 
-// 表示开发者成员列表请求
+// LoadDeveloperNumberListRequest 表示开发者成员列表请求。
 type LoadDeveloperNumberListRequest struct {
 	Length          int   `json:"length"`
 	DeveloperInfoID int64 `json:"developer_info_id"`
 	Offset          int   `json:"offset"`
 }
 
-// 表示开发者成员列表响应
+// LoadDeveloperNumberListResponse 表示开发者成员列表响应。
 type LoadDeveloperNumberListResponse struct {
 	Response
 	Entities []DeveloperNumberListEntity `json:"entities"`
 }
 
-// 表示开发者成员条目
+// DeveloperNumberListEntity 表示开发者成员条目。
 type DeveloperNumberListEntity struct {
 	UID                 Uncertain                `json:"uid"`
 	DeveloperInfoID     Uncertain                `json:"developer_info_id"`
@@ -92,7 +92,7 @@ type DeveloperNumberListEntity struct {
 	GrowthLevel         Uncertain                `json:"growth_lv"`
 }
 
-// 表示开发者成员的会员权益
+// DeveloperRechargeVIPInfo 表示开发者成员的会员权益。
 type DeveloperRechargeVIPInfo struct {
 	Level1 Uncertain `json:"1"`
 	Level5 Uncertain `json:"5"`
@@ -100,7 +100,7 @@ type DeveloperRechargeVIPInfo struct {
 	Level7 Uncertain `json:"7"`
 }
 
-// 表示开发者作品列表请求
+// LoadItemsByDeveloperInfoIDRequest 表示开发者作品列表请求。
 type LoadItemsByDeveloperInfoIDRequest struct {
 	SortType        *int  `json:"sort_type,omitempty"`
 	ChannelID       int   `json:"channel_id"`
@@ -109,14 +109,14 @@ type LoadItemsByDeveloperInfoIDRequest struct {
 	Offset          int   `json:"offset"`
 }
 
-// 表示开发者作品列表响应
+// LoadItemsByDeveloperInfoIDResponse 表示开发者作品列表响应。
 type LoadItemsByDeveloperInfoIDResponse struct {
 	Response
 	Entities []DeveloperHomepageItem `json:"entities"`
 	Total    Uncertain               `json:"total"`
 }
 
-// 表示开发者主页下的单个资源
+// DeveloperHomepageItem 表示开发者主页下的单个资源。
 type DeveloperHomepageItem struct {
 	ItemID               string    `json:"item_id"`
 	FirstType            Uncertain `json:"first_type"`
@@ -167,22 +167,22 @@ type DeveloperHomepageItem struct {
 	JellyID              string    `json:"jelly_id"`
 }
 
-// 获取开发者主页基础信息
+// LoadDeveloperHomepage 获取开发者主页基础信息。
 func (c *Client) LoadDeveloperHomepage(request LoadDeveloperHomepageRequest) (*LoadDeveloperHomepageResponse, error) {
 	if request.ID <= 0 {
-		return nil, fmt.Errorf("LoadDeveloperHomepage: Id must be greater than 0")
+		return nil, fmt.Errorf("LoadDeveloperHomepage: id 必须大于 0")
 	}
 
 	api := "/pe-developer-homepage/load_developer_homepage/get"
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		return nil, fmt.Errorf("LoadDeveloperHomepage: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return nil, fmt.Errorf("LoadDeveloperHomepage: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -195,39 +195,39 @@ func (c *Client) LoadDeveloperHomepage(request LoadDeveloperHomepageRequest) (*L
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("LoadDeveloperHomepage: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("LoadDeveloperHomepage: %v", err)
+		return nil, err
 	}
 
 	var result LoadDeveloperHomepageResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("LoadDeveloperHomepage: %v", err)
+		return nil, fmt.Errorf("解析开发者主页失败: %v, 响应内容: %s", err, string(respBody))
 	}
 
 	return &result, nil
 }
 
-// 获取开发者动态列表
+// GetDeveloperUpload 获取开发者动态列表。
 func (c *Client) GetDeveloperUpload(request GetDeveloperUploadRequest) (*GetDeveloperUploadResponse, error) {
 	if request.DeveloperInfoID <= 0 {
-		return nil, fmt.Errorf("GetDeveloperUpload: Developer_info_id must be greater than 0")
+		return nil, fmt.Errorf("GetDeveloperUpload: developer_info_id 必须大于 0")
 	}
 
 	api := "/pe-developer-homepage/get-developer-upload"
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		return nil, fmt.Errorf("GetDeveloperUpload: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return nil, fmt.Errorf("GetDeveloperUpload: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -240,27 +240,27 @@ func (c *Client) GetDeveloperUpload(request GetDeveloperUploadRequest) (*GetDeve
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GetDeveloperUpload: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("GetDeveloperUpload: %v", err)
+		return nil, err
 	}
 
 	var result GetDeveloperUploadResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("GetDeveloperUpload: %v", err)
+		return nil, fmt.Errorf("解析开发者动态列表失败: %v, 响应内容: %s", err, string(respBody))
 	}
 
 	return &result, nil
 }
 
-// 获取开发者成员列表
+// LoadDeveloperNumberList 获取开发者成员列表。
 func (c *Client) LoadDeveloperNumberList(request LoadDeveloperNumberListRequest) (*LoadDeveloperNumberListResponse, error) {
 	if request.DeveloperInfoID <= 0 {
-		return nil, fmt.Errorf("LoadDeveloperNumberList: Developer_info_id must be greater than 0")
+		return nil, fmt.Errorf("LoadDeveloperNumberList: developer_info_id 必须大于 0")
 	}
 
 	// 服务端路径中 develoer 为拼写错误，这里保持与实际接口一致。
@@ -268,12 +268,12 @@ func (c *Client) LoadDeveloperNumberList(request LoadDeveloperNumberListRequest)
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		return nil, fmt.Errorf("LoadDeveloperNumberList: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return nil, fmt.Errorf("LoadDeveloperNumberList: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -286,39 +286,39 @@ func (c *Client) LoadDeveloperNumberList(request LoadDeveloperNumberListRequest)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("LoadDeveloperNumberList: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("LoadDeveloperNumberList: %v", err)
+		return nil, err
 	}
 
 	var result LoadDeveloperNumberListResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("LoadDeveloperNumberList: %v", err)
+		return nil, fmt.Errorf("解析开发者成员列表失败: %v, 响应内容: %s", err, string(respBody))
 	}
 
 	return &result, nil
 }
 
-// 获取开发者主页资源列表
+// LoadItemsByDeveloperInfoID 获取开发者主页资源列表。
 func (c *Client) LoadItemsByDeveloperInfoID(request LoadItemsByDeveloperInfoIDRequest) (*LoadItemsByDeveloperInfoIDResponse, error) {
 	if request.DeveloperInfoID <= 0 {
-		return nil, fmt.Errorf("LoadItemsByDeveloperInfoID: Developer_info_id must be greater than 0")
+		return nil, fmt.Errorf("LoadItemsByDeveloperInfoID: developer_info_id 必须大于 0")
 	}
 
 	api := "/pe-developer-homepage/load_items_by_developer_info_id"
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		return nil, fmt.Errorf("LoadItemsByDeveloperInfoID: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return nil, fmt.Errorf("LoadItemsByDeveloperInfoID: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -331,18 +331,18 @@ func (c *Client) LoadItemsByDeveloperInfoID(request LoadItemsByDeveloperInfoIDRe
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("LoadItemsByDeveloperInfoID: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("LoadItemsByDeveloperInfoID: %v", err)
+		return nil, err
 	}
 
 	var result LoadItemsByDeveloperInfoIDResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("LoadItemsByDeveloperInfoID: %v", err)
+		return nil, fmt.Errorf("解析开发者资源列表失败: %v, 响应内容: %s", err, string(respBody))
 	}
 
 	return &result, nil

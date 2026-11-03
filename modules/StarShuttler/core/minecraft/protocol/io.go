@@ -31,6 +31,7 @@ type IO interface {
 	Varint32(x *int32)
 	Varuint32(x *uint32)
 	String(x *string)
+	StringConst(x string)
 	StringUTF(x *string)
 	ByteSlice(x *[]byte)
 	Vec3(x *mgl32.Vec3)

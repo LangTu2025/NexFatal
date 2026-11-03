@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 )
 
-// 表示热门话题列表响应
+// HotCategoriesResponse 表示热门话题列表响应。
 type HotCategoriesResponse struct {
 	Status int `json:"status"`
 	Data   struct {
@@ -14,17 +15,18 @@ type HotCategoriesResponse struct {
 	} `json:"data"`
 }
 
-// 获取热门话题列表
+// GetHotCategories 获取热门话题列表。
 func (c *Client) GetHotCategories() (*HotCategoriesResponse, error) {
 	after, err := c.GetPeUserLoginAfter()
 	if err != nil {
-		return nil, fmt.Errorf("GetHotCategories: %v", err)
+		return nil, err
 	}
 	momentID := after.Entity.MomentID
 
-	u, err := c.momentEndpoint("/message/apps/x19/client/hot_categories")
-	if err != nil {
-		return nil, fmt.Errorf("GetHotCategories: %v", err)
+	u := &url.URL{
+		Scheme: "https",
+		Host:   "x19-pyq.webcgi.163.com",
+		Path:   "/message/apps/x19/client/hot_categories",
 	}
 	query := u.Query()
 	query.Set("uid", momentID)
@@ -32,7 +34,7 @@ func (c *Client) GetHotCategories() (*HotCategoriesResponse, error) {
 
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("GetHotCategories: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("User-Agent", "libhttpclient/1.0.0.0")
@@ -41,18 +43,18 @@ func (c *Client) GetHotCategories() (*HotCategoriesResponse, error) {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GetHotCategories: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("GetHotCategories: %v", err)
+		return nil, err
 	}
 
 	var result HotCategoriesResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("GetHotCategories: %v", err)
+		return nil, fmt.Errorf("解析热门话题响应失败: %v, 响应内容: %s", err, string(body))
 	}
 	return &result, nil
 }

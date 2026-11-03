@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// 保存玩家当前所在位置的信息
+// PlayerLocation 保存玩家当前所在位置的信息
 type PlayerLocation struct {
 	// 在线大厅
 	RoomID string // 当前房间ID（若在大厅）
@@ -15,19 +15,19 @@ type PlayerLocation struct {
 	ServerID string // 服务器ID（唯一ID）
 }
 
-// 根据昵称尝试定位玩家当前所在的房间或租赁服信息
+// FindPlayerByNickname 根据昵称尝试定位玩家当前所在的房间或租赁服信息
 // 逻辑：
-// 1) 使用精确搜索接口按昵称查询用户，解析返回的 game_info 提取 room_id/server_id
-// 2) 若未解析到，再兜底用在线大厅关键字搜索匹配房主名/房间名
+// 1) 使用精确搜索接口按昵称查询用户，解析返回的 game_info 提取 room_id/server_id。
+// 2) 若未解析到，再兜底用在线大厅关键字搜索匹配房主名/房间名。
 func (c *Client) FindPlayerByNickname(nickname string) (*PlayerLocation, error) {
 	if nickname == "" {
-		return nil, fmt.Errorf("FindPlayerByNickname: Nickname must not be empty")
+		return nil, fmt.Errorf("昵称不能为空")
 	}
 
 	// 优先：按昵称精确搜索用户
-	userResp, err := c.SearchFriend(SearchFriendRequest{NameOrMail: nickname})
+	userResp, err := c.SearchUserByNameOrMail(nickname, 0, 20)
 	if err != nil {
-		return nil, fmt.Errorf("FindPlayerByNickname: User search failed: %v", err)
+		return nil, fmt.Errorf("搜索用户失败: %v", err)
 	}
 	if userResp.Code == 0 && len(userResp.Entities) > 0 {
 		gi := userResp.Entities[0].GameInfo
@@ -66,10 +66,10 @@ func (c *Client) FindPlayerByNickname(nickname string) (*PlayerLocation, error) 
 		}
 	}
 
-	return nil, fmt.Errorf("FindPlayerByNickname: Player location could not be determined")
+	return nil, fmt.Errorf("未解析到玩家所在位置")
 }
 
-// 判断字符串是否包含目标内容，不区分大小写
+// containsFold 大小写不敏感包含判断（简化实现，避免引入strings.EqualFold以外依赖）
 func containsFold(s, sub string) bool {
 	// 直接使用标准库更稳妥
 	return strings.Contains(strings.ToLower(s), strings.ToLower(sub))

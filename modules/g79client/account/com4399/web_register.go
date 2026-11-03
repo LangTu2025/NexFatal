@@ -12,36 +12,40 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
 const (
-	webRegisterClientID          = "a9a16636dbaeb917e2ffb16f0d52006e"
-	webRegisterCallbackReturnURL = "https://h.4399.com/wap/user.htm"
-	webRegisterUserAgent         = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36"
-	webRegisterXRequestedWith    = "mark.via.gp"
-	webRegisterCryptoPassphrase  = "lzYW5qaXVqa"
+	webRegisterClientID             = "a9a16636dbaeb917e2ffb16f0d52006e"
+	webRegisterCallbackReturnURL    = "https://h.4399.com/wap/user.htm"
+	webRegisterUserAgent            = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36"
+	webRegisterXRequestedWith       = "mark.via.gp"
+	webRegisterCryptoPassphrase     = "lzYW5qaXVqa"
+	maxWebRegisterPleaseWaitRetries = 0
+	webRegisterRealNameSubmitDelay  = 500 * time.Millisecond
 )
 
 var (
-	ErrInvalidRegisterInput = errors.New("com4399: 注册参数无效")
-	ErrUsernameExists       = errors.New("com4399: 用户名已存在")
-	ErrRegisterRejected     = errors.New("com4399: 注册被拒绝")
-	ErrRealNameRejected     = errors.New("com4399: 实名认证被拒绝")
-	ErrRiskControlTriggered = errors.New("com4399: 触发风控")
+	ErrInvalidRegisterInput = errors.New("com4399: invalid register input")
+	ErrUsernameExists       = errors.New("com4399: username already exists")
+	ErrRegisterRejected     = errors.New("com4399: register rejected")
+	ErrRealNameRejected     = errors.New("com4399: real-name rejected")
+	ErrRiskControlTriggered = errors.New("com4399: risk control triggered")
 
 	registerUsernamePattern = regexp.MustCompile(`^[\w@]{3,20}$`)
 	registerPasswordPattern = regexp.MustCompile(`^[\w\.(!@#$%&)]{6,20}$`)
 	registerIDCardPattern   = regexp.MustCompile(`^(\d{15}|\d{17}[\dXx])$`)
 )
 
-// 描述网页版 4399 账号注册参数
+// WebRegisterRequest 描述网页版 4399 账号注册参数。
 type WebRegisterRequest struct {
 	Username    string
 	Password    string
@@ -50,7 +54,7 @@ type WebRegisterRequest struct {
 	CaptchaCode string
 }
 
-// 描述网页版 4399 注册结果
+// WebRegisterResult 描述网页版 4399 注册结果。
 type WebRegisterResult struct {
 	UID               string         `json:"uid"`
 	Username          string         `json:"username"`
@@ -61,13 +65,13 @@ type WebRegisterResult struct {
 	Cookies           []*http.Cookie `json:"cookies,omitempty"`
 }
 
-// 描述注册后自动 com4399 登录换取 Cookie 的结果
+// WebRegisterCookieResult 描述注册后自动 com4399 登录换取 Cookie 的结果。
 type WebRegisterCookieResult struct {
 	Register *WebRegisterResult `json:"register"`
 	Cookie   string             `json:"cookie"`
 }
 
-// 表示网页版注册需要图形验证码
+// WebCaptchaRequiredError 表示网页版注册需要图形验证码。
 type WebCaptchaRequiredError struct {
 	Message      string
 	CaptchaID    string
@@ -82,7 +86,7 @@ func (e *WebCaptchaRequiredError) Error() string {
 	return "com4399: " + e.Message
 }
 
-// 封装网页版 4399 注册流程
+// WebRegisterClient 封装网页版 4399 注册流程。
 type WebRegisterClient struct {
 	httpClient *http.Client
 	userAgent  string
@@ -99,7 +103,7 @@ type webFormField struct {
 	Value string
 }
 
-// 创建网页版注册客户端
+// NewWebRegisterClient 创建网页版注册客户端。
 func NewWebRegisterClient(httpClient *http.Client) *WebRegisterClient {
 	if httpClient == nil {
 		jar, _ := cookiejar.New(nil)
@@ -111,86 +115,134 @@ func NewWebRegisterClient(httpClient *http.Client) *WebRegisterClient {
 	return &WebRegisterClient{httpClient: httpClient, userAgent: webRegisterUserAgent}
 }
 
-// 执行网页版 4399 账号注册
+// RegisterWeb 执行网页版 4399 账号注册。
 func RegisterWeb(ctx context.Context, req WebRegisterRequest) (*WebRegisterResult, error) {
-	result, err := NewWebRegisterClient(nil).Register(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("RegisterWeb: %v", err)
-	}
-	return result, nil
+	return NewWebRegisterClient(nil).Register(ctx, req)
 }
 
-// 执行网页版 4399 账号注册，然后使用 com4399 登录并返回 Cookie
+// RegisterWebCookie 执行网页版 4399 账号注册，然后使用 com4399 登录并返回 Cookie。
 func RegisterWebCookie(ctx context.Context, req WebRegisterRequest) (*WebRegisterCookieResult, error) {
 	client := NewWebRegisterClient(nil)
-	result, err := client.RegisterAndLoginCookie(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("RegisterWebCookie: %v", err)
-	}
-	return result, nil
+	return client.RegisterAndLoginCookie(ctx, req)
 }
 
-// 执行网页版 4399 账号注册，然后使用 com4399 登录并返回 Cookie
+// RegisterAndLoginCookie 执行网页版 4399 账号注册，然后使用 com4399 登录并返回 Cookie。
 func (c *WebRegisterClient) RegisterAndLoginCookie(ctx context.Context, req WebRegisterRequest) (*WebRegisterCookieResult, error) {
 	result, err := c.Register(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("RegisterAndLoginCookie: %v", err)
+		return nil, err
 	}
 	cookie, err := RegisterCookieWithPassword(ctx, req.Username, req.Password)
 	if err != nil {
-		return nil, fmt.Errorf("RegisterAndLoginCookie: %v", err)
+		return nil, err
 	}
 	return &WebRegisterCookieResult{Register: result, Cookie: cookie}, nil
 }
 
-// 执行网页版 4399 账号注册
+// Register 执行网页版 4399 账号注册。
 func (c *WebRegisterClient) Register(ctx context.Context, req WebRegisterRequest) (*WebRegisterResult, error) {
 	if err := validateWebRegisterRequest(req); err != nil {
-		return nil, fmt.Errorf("Register: %v", err)
+		return nil, err
 	}
-	page, reused, err := c.registrationPageForAttempt(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("Register: %v", err)
-	}
-	if !reused {
-		exists, message, err := c.usernameExists(ctx, req.Username, page.fieldOrDefault("reg_mode", "reg_normal"))
+	const maxOCRAttempts = 3
+	for attempt := 0; attempt <= maxOCRAttempts; attempt++ {
+		page, reused, err := c.registrationPageForAttempt(ctx, req)
 		if err != nil {
-			return nil, fmt.Errorf("Register: %v", err)
+			return nil, err
 		}
-		if exists {
-			return nil, fmt.Errorf("Register: %v: %s", ErrUsernameExists, message)
+		if !reused {
+			exists, message, err := c.usernameExists(ctx, req.Username, page.fieldOrDefault("reg_mode", "reg_normal"))
+			if err != nil {
+				return nil, err
+			}
+			if exists {
+				return nil, fmt.Errorf("%w: %s", ErrUsernameExists, message)
+			}
 		}
+		err = c.submitRegistration(ctx, page, req)
+		for retry := 0; isWebRegisterPleaseWait(err) && retry < maxWebRegisterPleaseWaitRetries; retry++ {
+			if !waitWebRegisterRetry(ctx) {
+				return nil, ctx.Err()
+			}
+			err = c.submitRegistration(ctx, page, req)
+		}
+		if err != nil {
+			var captchaErr *WebCaptchaRequiredError
+			if errors.As(err, &captchaErr) && captchaErr.CaptchaURL != "" && attempt < maxOCRAttempts {
+				ocrResult, ocrErr := RecognizeCaptcha(captchaErr.CaptchaURL)
+				if ocrErr != nil {
+					log.Printf("[OCR] 注册验证码自动识别失败: %v", ocrErr)
+					return nil, err
+				}
+				log.Printf("[OCR] 注册验证码自动识别结果: %s", ocrResult)
+				req.CaptchaCode = ocrResult
+				// c.pending 已在 submitRegistration 中被设为含新 captcha_id 的页面，
+				// 不要清空它，让 registrationPageForAttempt 复用该页面
+				continue
+			}
+			return nil, err
+		}
+		c.pending = nil
+		if !waitWebRegisterRealNameSubmit(ctx) {
+			return nil, ctx.Err()
+		}
+		callbackURL, err := c.submitRealName(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		if err := c.followCallback(ctx, callbackURL); err != nil {
+			return nil, err
+		}
+		return c.buildWebRegisterResult(callbackURL), nil
 	}
-	if err := c.submitRegistration(ctx, page, req); err != nil {
-		return nil, fmt.Errorf("Register: %v", err)
-	}
-	c.pending = nil
-	callbackURL, err := c.submitRealName(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("Register: %v", err)
-	}
-	if err := c.followCallback(ctx, callbackURL); err != nil {
-		return nil, fmt.Errorf("Register: %v", err)
-	}
-	return c.buildWebRegisterResult(callbackURL), nil
+	return nil, fmt.Errorf("com4399: 注册验证码自动识别失败: 超过最大重试次数 %d", maxOCRAttempts)
 }
 
-// 保存注册验证码图片
+// SaveCaptchaImage 保存注册验证码图片。
+func isWebRegisterPleaseWait(err error) bool {
+	if err == nil || !errors.Is(err, ErrRegisterRejected) {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "status=202") ||
+		strings.Contains(message, "请稍后再试") ||
+		strings.Contains(message, "please wait")
+}
+
+func waitWebRegisterRetry(ctx context.Context) bool {
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+func waitWebRegisterRealNameSubmit(ctx context.Context) bool {
+	timer := time.NewTimer(webRegisterRealNameSubmitDelay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
 func (c *WebRegisterClient) SaveCaptchaImage(ctx context.Context, captchaURL, path string) error {
 	if strings.TrimSpace(captchaURL) == "" {
-		return errors.New("SaveCaptchaImage: 验证码地址为空")
+		return errors.New("com4399: captcha url is empty")
 	}
 	resp, body, err := c.webRequest(ctx, captchaURL, http.MethodGet, nil, map[string]string{"Referer": webAuthorizeSubmitURL()}, true)
 	if err != nil {
-		return fmt.Errorf("SaveCaptchaImage: %v", err)
+		return err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("SaveCaptchaImage: 获取验证码图片失败 (status: %d)", resp.StatusCode)
+		return fmt.Errorf("com4399: captcha image status %d", resp.StatusCode)
 	}
-	if err := os.WriteFile(path, body, 0o600); err != nil {
-		return fmt.Errorf("SaveCaptchaImage: %v", err)
-	}
-	return nil
+	return os.WriteFile(path, body, 0o600)
 }
 
 func (c *WebRegisterClient) registrationPageForAttempt(ctx context.Context, req WebRegisterRequest) (*webRegistrationPage, bool, error) {
@@ -199,19 +251,16 @@ func (c *WebRegisterClient) registrationPageForAttempt(ctx context.Context, req 
 	}
 	c.pending = nil
 	page, err := c.openRegistrationPage(ctx)
-	if err != nil {
-		return nil, false, fmt.Errorf("registrationPageForAttempt: %v", err)
-	}
-	return page, false, nil
+	return page, false, err
 }
 
 func (c *WebRegisterClient) openRegistrationPage(ctx context.Context) (*webRegistrationPage, error) {
 	resp, body, err := c.webRequest(ctx, webAuthorizeLandingURL(), http.MethodGet, nil, nil, true)
 	if err != nil {
-		return nil, fmt.Errorf("openRegistrationPage: %v", err)
+		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK || len(body) == 0 {
-		return nil, fmt.Errorf("openRegistrationPage: 打开授权页失败 (status: %d)", resp.StatusCode)
+		return nil, fmt.Errorf("com4399: authorize landing status %d", resp.StatusCode)
 	}
 	form := []webFormField{
 		{Name: "username", Value: ""}, {Name: "phone", Value: ""}, {Name: "phone_captcha", Value: ""},
@@ -228,14 +277,14 @@ func (c *WebRegisterClient) openRegistrationPage(ctx context.Context) (*webRegis
 		"Origin": webOrigin(loginBaseURL), "Referer": webAuthorizeLandingURL(),
 	}, true)
 	if err != nil {
-		return nil, fmt.Errorf("openRegistrationPage: %v", err)
+		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("openRegistrationPage: 提交授权页失败 (status: %d)", resp.StatusCode)
+		return nil, fmt.Errorf("com4399: authorize submit status %d", resp.StatusCode)
 	}
 	page := webPageFromDocument(string(body), loginBaseURL)
 	if page.fieldOrDefault("reg_req_id", "") == "" || page.fieldOrDefault("sec", "") == "" {
-		return nil, errors.New("openRegistrationPage: 注册页缺少必要字段")
+		return nil, fmt.Errorf("com4399: registration page is missing hidden fields")
 	}
 	return page, nil
 }
@@ -250,10 +299,10 @@ func (c *WebRegisterClient) usernameExists(ctx context.Context, username, regMod
 	u.RawQuery = query.Encode()
 	resp, body, err := c.webRequest(ctx, u.String(), http.MethodGet, nil, nil, true)
 	if err != nil {
-		return false, "", fmt.Errorf("usernameExists: %v", err)
+		return false, "", err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return false, "", fmt.Errorf("usernameExists: 检查用户名失败 (status: %d)", resp.StatusCode)
+		return false, "", fmt.Errorf("com4399: username exists status %d", resp.StatusCode)
 	}
 	text := strings.TrimSpace(string(body))
 	return text != "0", text, nil
@@ -262,7 +311,7 @@ func (c *WebRegisterClient) usernameExists(ctx context.Context, username, regMod
 func (c *WebRegisterClient) submitRegistration(ctx context.Context, page *webRegistrationPage, req WebRegisterRequest) error {
 	encryptedPassword, err := encryptWebRegisterAES(req.Password)
 	if err != nil {
-		return fmt.Errorf("submitRegistration: %v", err)
+		return err
 	}
 	form := []webFormField{{Name: "phone_captcha", Value: ""}, {Name: "password", Value: encryptedPassword}, {Name: "username", Value: req.Username}}
 	if captchaID := page.fieldOrDefault("captcha_id", ""); captchaID != "" {
@@ -285,10 +334,10 @@ func (c *WebRegisterClient) submitRegistration(ctx context.Context, page *webReg
 		"Origin": webOrigin(loginBaseURL), "Referer": webAuthorizeSubmitURL(),
 	}, false)
 	if err != nil {
-		return fmt.Errorf("submitRegistration: %v", err)
+		return err
 	}
 	doc := string(body)
-	if resp.StatusCode == http.StatusOK && webLooksLikeRealNamePage(doc) && c.hasWebCookie("Pauth") {
+	if resp.StatusCode == http.StatusOK && webLooksLikeRealNamePageV2(doc) {
 		return nil
 	}
 	if challenge := extractWebCaptchaChallenge(doc, loginBaseURL); challenge != nil {
@@ -301,56 +350,68 @@ func (c *WebRegisterClient) submitRegistration(ctx context.Context, page *webReg
 	}
 	message := firstNonEmptyString(extractWebPageErrors(doc)...)
 	if strings.Contains(message, "验证码") || strings.Contains(message, "风险") || strings.Contains(message, "异常") {
-		return fmt.Errorf("submitRegistration: %v: %s", ErrRiskControlTriggered, message)
+		return fmt.Errorf("%w: %s", ErrRiskControlTriggered, message)
 	}
 	if message == "" {
-		message = "注册页未进入实名表单"
+		message = describeUnexpectedRegistrationResponse(resp, doc)
 	}
-	return fmt.Errorf("submitRegistration: %v: %s", ErrRegisterRejected, message)
+	return fmt.Errorf("%w: %s", ErrRegisterRejected, message)
+}
+
+func (c *WebRegisterClient) SubmitRealName(ctx context.Context, req WebRegisterRequest) (string, error) {
+	return c.submitRealName(ctx, req)
 }
 
 func (c *WebRegisterClient) submitRealName(ctx context.Context, req WebRegisterRequest) (string, error) {
 	realName, err := encryptWebRegisterAES(strings.TrimSpace(req.RealName))
 	if err != nil {
-		return "", fmt.Errorf("submitRealName: %v", err)
+		return "", err
 	}
 	idCard, err := encryptWebRegisterAES(strings.TrimSpace(req.IDCard))
 	if err != nil {
-		return "", fmt.Errorf("submitRealName: %v", err)
+		return "", err
 	}
 	form := []webFormField{{Name: "sec", Value: "1"}, {Name: "realname", Value: realName}, {Name: "idcard", Value: idCard}, {Name: "bizId", Value: ""}, {Name: "isReg", Value: "true"}, {Name: "needValidate", Value: "true"}, {Name: "policy", Value: "on"}}
 	resp, body, err := c.webRequest(ctx, loginBaseURL+"/oauth2/setIdcardAndRealname.do", http.MethodPost, form, map[string]string{
 		"Origin": webOrigin(loginBaseURL), "Referer": loginBaseURL + "/oauth2/registerAndAuthorize.do",
 	}, false)
 	if err != nil {
-		return "", fmt.Errorf("submitRealName: %v", err)
+		return "", err
 	}
 	if resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusSeeOther {
 		location, err := resp.Location()
 		if err != nil {
-			return "", errors.New("submitRealName: 回调地址缺失")
+			return "", fmt.Errorf("com4399: missing callback location")
 		}
 		if strings.Contains(location.Path, "/unifiedLogin/user/login/callback") {
 			return location.String(), nil
 		}
-		return "", fmt.Errorf("submitRealName: %v: 回调地址无效", ErrRealNameRejected)
+		return "", fmt.Errorf("%w: unexpected redirect location %s", ErrRealNameRejected, location.String())
 	}
 	message := firstNonEmptyString(extractWebPageErrors(string(body))...)
 	if message == "" {
-		message = "实名提交后未跳转到回调地址"
+		message = "real-name submission did not redirect to callback"
 	}
-	return "", fmt.Errorf("submitRealName: %v: %s", ErrRealNameRejected, message)
+	return "", fmt.Errorf("%w: %s", ErrRealNameRejected, message)
+}
+
+func (c *WebRegisterClient) FollowCallback(ctx context.Context, callbackURL string) error {
+	return c.followCallback(ctx, callbackURL)
 }
 
 func (c *WebRegisterClient) followCallback(ctx context.Context, callbackURL string) error {
 	resp, _, err := c.webRequest(ctx, callbackURL, http.MethodGet, nil, map[string]string{"Referer": webRegisterCallbackReturnURL}, true)
 	if err != nil {
-		return fmt.Errorf("followCallback: %v", err)
+		return err
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("followCallback: 跟随回调失败 (status: %d)", resp.StatusCode)
+		return fmt.Errorf("com4399: callback follow status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+func (c *WebRegisterClient) BuildRegisterResult(callbackURL string) *WebRegisterResult {
+	return c.buildWebRegisterResult(callbackURL)
 }
 
 func (c *WebRegisterClient) buildWebRegisterResult(callbackURL string) *WebRegisterResult {
@@ -374,7 +435,7 @@ func (c *WebRegisterClient) webRequest(ctx context.Context, target, method strin
 	}
 	req, err := http.NewRequestWithContext(ctx, method, target, body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("webRequest: %v", err)
+		return nil, nil, err
 	}
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
@@ -388,14 +449,11 @@ func (c *WebRegisterClient) webRequest(ctx context.Context, target, method strin
 	client := c.redirectClient(followRedirect)
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, nil, fmt.Errorf("webRequest: %v", err)
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("webRequest: %v", err)
-	}
-	return resp, data, nil
+	return resp, data, err
 }
 
 func (c *WebRegisterClient) redirectClient(follow bool) *http.Client {
@@ -411,15 +469,15 @@ func (c *WebRegisterClient) redirectClient(follow bool) *http.Client {
 func validateWebRegisterRequest(req WebRegisterRequest) error {
 	switch {
 	case !registerUsernamePattern.MatchString(req.Username):
-		return fmt.Errorf("validateWebRegisterRequest: %v: 用户名格式不符合要求", ErrInvalidRegisterInput)
+		return fmt.Errorf("%w: username must match ^[\\w@]{3,20}$", ErrInvalidRegisterInput)
 	case !registerPasswordPattern.MatchString(req.Password):
-		return fmt.Errorf("validateWebRegisterRequest: %v: 密码必须为 6 至 20 个字符并符合站点规则", ErrInvalidRegisterInput)
+		return fmt.Errorf("%w: password must be 6-20 characters and match site rules", ErrInvalidRegisterInput)
 	case strings.TrimSpace(req.RealName) == "":
-		return fmt.Errorf("validateWebRegisterRequest: %v: 真实姓名不能为空", ErrInvalidRegisterInput)
+		return fmt.Errorf("%w: real name is required", ErrInvalidRegisterInput)
 	case utf8.RuneCountInString(strings.TrimSpace(req.RealName)) < 2:
-		return fmt.Errorf("validateWebRegisterRequest: %v: 真实姓名过短", ErrInvalidRegisterInput)
+		return fmt.Errorf("%w: real name is too short", ErrInvalidRegisterInput)
 	case !isValidWebIDCard(req.IDCard):
-		return fmt.Errorf("validateWebRegisterRequest: %v: 身份证号无效", ErrInvalidRegisterInput)
+		return fmt.Errorf("%w: invalid id card", ErrInvalidRegisterInput)
 	default:
 		return nil
 	}
@@ -567,9 +625,79 @@ func webLooksLikeRealNamePage(doc string) bool {
 	return strings.Contains(doc, `id="set_register_idcard"`) || strings.Contains(doc, `/oauth2/setIdcardAndRealname.do`) || strings.Contains(doc, "身份认证")
 }
 
+func webLooksLikeRealNamePageV2(doc string) bool {
+	if webLooksLikeRealNamePage(doc) {
+		return true
+	}
+	lower := strings.ToLower(doc)
+	if strings.Contains(lower, `/oauth2/setidcardandrealname.do`) ||
+		strings.Contains(lower, `setidcardandrealname`) {
+		return true
+	}
+	fields := extractWebInputValues(doc)
+	_, hasRealName := fields["realname"]
+	_, hasIDCard := fields["idcard"]
+	return hasRealName && hasIDCard
+}
+
+func describeUnexpectedRegistrationResponse(resp *http.Response, doc string) string {
+	parts := []string{"registration page did not transition to real-name form"}
+	if resp != nil {
+		parts = append(parts, fmt.Sprintf("status=%d", resp.StatusCode))
+		if location := strings.TrimSpace(resp.Header.Get("Location")); location != "" {
+			parts = append(parts, "location="+location)
+		}
+	}
+	doc = strings.TrimSpace(doc)
+	if doc == "" {
+		parts = append(parts, "body=empty")
+		return strings.Join(parts, " ")
+	}
+	if title := extractWebTitle(doc); title != "" {
+		parts = append(parts, "title="+title)
+	}
+	if snippet := compactWebText(doc, 160); snippet != "" {
+		parts = append(parts, "body="+snippet)
+	}
+	return strings.Join(parts, " ")
+}
+
+func extractWebTitle(doc string) string {
+	titlePattern := regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
+	matches := titlePattern.FindStringSubmatch(doc)
+	if len(matches) < 2 {
+		return ""
+	}
+	return compactPlainText(matches[1], 80)
+}
+
+func compactWebText(doc string, limit int) string {
+	bodyPattern := regexp.MustCompile(`(?is)<body[^>]*>(.*?)</body>`)
+	if matches := bodyPattern.FindStringSubmatch(doc); len(matches) > 1 {
+		doc = matches[1]
+	}
+	scriptPattern := regexp.MustCompile(`(?is)<(?:script|style)[^>]*>.*?</(?:script|style)>`)
+	doc = scriptPattern.ReplaceAllString(doc, " ")
+	tagPattern := regexp.MustCompile(`(?is)<[^>]+>`)
+	return compactPlainText(tagPattern.ReplaceAllString(doc, " "), limit)
+}
+
+func compactPlainText(text string, limit int) string {
+	text = strings.TrimSpace(html.UnescapeString(text))
+	for strings.Contains(text, "  ") {
+		text = strings.ReplaceAll(text, "  ", " ")
+	}
+	if limit > 0 && len(text) > limit {
+		text = text[:limit] + "..."
+	}
+	return text
+}
+
 func extractWebPageErrors(doc string) []string {
 	idPattern := regexp.MustCompile(`(?is)<(?:p|div)[^>]*id="(?:username\d?_err_msg|captcha\d?_err_msg|protocol\d?_err_msg|login_err_msg)"[^>]*>(.*?)</(?:p|div)>`)
 	warnPattern := regexp.MustCompile(`(?is)<div[^>]*class="[^"]*ipt_error_warntip[^"]*"[^>]*>.*?<p>(.*?)</p>`)
+	tipPattern := regexp.MustCompile(`(?is)<(?:p|div|span)[^>]*(?:class|id)="[^"]*(?:error|err|warn|tip|message|msg)[^"]*"[^>]*>(.*?)</(?:p|div|span)>`)
+	alertPattern := regexp.MustCompile(`(?is)alert\s*\(\s*["']([^"']+)["']\s*\)`)
 	tagPattern := regexp.MustCompile(`(?is)<[^>]+>`)
 	messages := make([]string, 0, 2)
 	for _, match := range idPattern.FindAllStringSubmatch(doc, -1) {
@@ -579,6 +707,16 @@ func extractWebPageErrors(doc string) []string {
 	}
 	for _, match := range warnPattern.FindAllStringSubmatch(doc, -1) {
 		if text := strings.TrimSpace(html.UnescapeString(tagPattern.ReplaceAllString(match[1], ""))); text != "" {
+			messages = append(messages, text)
+		}
+	}
+	for _, match := range tipPattern.FindAllStringSubmatch(doc, -1) {
+		if text := strings.TrimSpace(html.UnescapeString(tagPattern.ReplaceAllString(match[1], ""))); text != "" {
+			messages = append(messages, text)
+		}
+	}
+	for _, match := range alertPattern.FindAllStringSubmatch(doc, -1) {
+		if text := strings.TrimSpace(html.UnescapeString(match[1])); text != "" {
 			messages = append(messages, text)
 		}
 	}
@@ -617,12 +755,12 @@ func (c *WebRegisterClient) hasWebCookie(name string) bool {
 func encryptWebRegisterAES(plain string) (string, error) {
 	salt := make([]byte, 8)
 	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
-		return "", fmt.Errorf("encryptWebRegisterAES: %v", err)
+		return "", fmt.Errorf("generate salt: %w", err)
 	}
 	key, iv := webEvpBytesToKey([]byte(webRegisterCryptoPassphrase), salt, 32, aes.BlockSize)
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return "", fmt.Errorf("encryptWebRegisterAES: %v", err)
+		return "", fmt.Errorf("create cipher: %w", err)
 	}
 	padded := webPKCS7Pad([]byte(plain), aes.BlockSize)
 	ciphertext := make([]byte, len(padded))

@@ -13,18 +13,18 @@ import (
 
 const (
 	defaultBaseURL   = "https://service.mkey.163.com"
-	defaultUserAgent = "com.netease.x19/840297099 NeteaseMobileGame/a5.16.0 (V2166A;32)"
+	defaultUserAgent = "com.netease.x19/840300878 NeteaseMobileGame/a5.16.0 (V2166A;32)"
 	requestTimeout   = 5 * time.Second
 )
 
-// 封装与网易 MPay 服务交互的 HTTP 客户端
+// Client 封装与网易 MPay 服务交互的 HTTP 客户端。
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
 	userAgent  string
 }
 
-// 使用默认超时和 User-Agent 创建 MPay 客户端
+// NewClient 使用默认超时和 User-Agent 创建 MPay 客户端。
 func NewClient(httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: requestTimeout}
@@ -36,7 +36,7 @@ func NewClient(httpClient *http.Client) *Client {
 	}
 }
 
-// 允许自定义请求使用的 User-Agent
+// SetUserAgent 允许自定义请求使用的 User-Agent。
 func (c *Client) SetUserAgent(userAgent string) {
 	if userAgent != "" {
 		c.userAgent = userAgent
@@ -45,11 +45,11 @@ func (c *Client) SetUserAgent(userAgent string) {
 
 func (c *Client) postForm(ctx context.Context, path string, form url.Values) ([]byte, int, error) {
 	if c == nil {
-		return nil, 0, errors.New("postForm: Client is not initialized")
+		return nil, 0, errors.New("mpay: client 未初始化")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, strings.NewReader(form.Encode()))
 	if err != nil {
-		return nil, 0, fmt.Errorf("postForm: %v", err)
+		return nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if c.userAgent != "" {
@@ -58,24 +58,24 @@ func (c *Client) postForm(ctx context.Context, path string, form url.Values) ([]
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("postForm: %v", err)
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, resp.StatusCode, fmt.Errorf("postForm: %v", err)
+		return nil, resp.StatusCode, err
 	}
 	return body, resp.StatusCode, nil
 }
 
 func (c *Client) postEncoded(ctx context.Context, path string, payload string) ([]byte, int, error) {
 	if c == nil {
-		return nil, 0, errors.New("postEncoded: Client is not initialized")
+		return nil, 0, errors.New("mpay: client 未初始化")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, strings.NewReader(payload))
 	if err != nil {
-		return nil, 0, fmt.Errorf("postEncoded: %v", err)
+		return nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if c.userAgent != "" {
@@ -84,13 +84,13 @@ func (c *Client) postEncoded(ctx context.Context, path string, payload string) (
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("postEncoded: %v", err)
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, resp.StatusCode, fmt.Errorf("postEncoded: %v", err)
+		return nil, resp.StatusCode, err
 	}
 	return body, resp.StatusCode, nil
 }
@@ -133,7 +133,7 @@ func (c *Client) buildDeviceForm(mac, ursUDID, uniqueID, udid, extCI, mcountID, 
 
 func (c *Client) ensureResponse(status int, expect int, body []byte, context string) error {
 	if status != expect {
-		return fmt.Errorf("ensureResponse: %s 失败 (status: %d)", context, status)
+		return fmt.Errorf("mpay: %s失败 status=%d body=%s", context, status, string(body))
 	}
 	return nil
 }

@@ -22,8 +22,8 @@ const (
 	realNameEndpoint        = "/mpay/api/users/realname/update_by_token"
 	realNameVerifyEndpoint  = "/mpay/api/users/realname/verify"
 	defaultGameID           = "aecfrxodyqaaaajp-g-x19"
-	defaultGV               = "840297099"
-	defaultGVN              = "3.9.5.297099"
+	defaultGV               = "840300878"
+	defaultGVN              = "3.10.0.300878"
 	defaultCV               = "a5.16.0"
 	defaultSV               = "32"
 	defaultAppType          = "games"
@@ -43,7 +43,7 @@ const (
 	defaultSC               = "0"
 )
 
-// 描述网易 MPay 服务返回的设备信息
+// Device 描述网易 MPay 服务返回的设备信息。
 type Device struct {
 	Key                 string `json:"key"`
 	ID                  string `json:"id"`
@@ -60,7 +60,7 @@ type Device struct {
 	client *Client
 }
 
-// 返回设备的浅拷贝，保留原有 client 以便继续调用接口
+// Clone 返回设备的浅拷贝，保留原有 client 以便继续调用接口。
 func (d *Device) Clone() *Device {
 	if d == nil {
 		return nil
@@ -69,34 +69,34 @@ func (d *Device) Clone() *Device {
 	return &cloned
 }
 
-// 便捷函数，使用默认客户端生成设备
+// GenerateDevice 便捷函数，使用默认客户端生成设备。
 func GenerateDevice(ctx context.Context) (*Device, error) {
 	client := NewClient(nil)
 	return client.GenerateDevice(ctx)
 }
 
-// 调用 MPay 接口生成设备凭据
+// GenerateDevice 调用 MPay 接口生成设备凭据。
 func (c *Client) GenerateDevice(ctx context.Context) (*Device, error) {
 	if c == nil {
-		return nil, errors.New("GenerateDevice: Client is not initialized")
+		return nil, errors.New("mpay: client 未初始化")
 	}
 
 	timestamp := time.Now().UnixMilli()
 	macHex, err := randomHex(16)
 	if err != nil {
-		return nil, fmt.Errorf("GenerateDevice: %v", err)
+		return nil, err
 	}
 	ursUDID, err := randomHex(20)
 	if err != nil {
-		return nil, fmt.Errorf("GenerateDevice: %v", err)
+		return nil, err
 	}
 	udid, err := randomHex(8)
 	if err != nil {
-		return nil, fmt.Errorf("GenerateDevice: %v", err)
+		return nil, err
 	}
 	extCI, err := randomHex(32)
 	if err != nil {
-		return nil, fmt.Errorf("GenerateDevice: %v", err)
+		return nil, err
 	}
 
 	uniqueID := fmt.Sprintf("%s%d", uuid.NewString(), timestamp)
@@ -107,13 +107,13 @@ func (c *Client) GenerateDevice(ctx context.Context) (*Device, error) {
 
 	body, status, err := c.postForm(ctx, deviceEndpoint, form)
 	if err != nil {
-		return nil, fmt.Errorf("GenerateDevice: %v", err)
+		return nil, err
 	}
 	if status != http.StatusCreated {
 		if err := checkMPayError(body); err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("GenerateDevice: 生成设备失败 (status: %d)", status)
+		return nil, fmt.Errorf("mpay: 生成设备失败 status=%d body=%s", status, string(body))
 	}
 
 	var parsed struct {
@@ -123,10 +123,10 @@ func (c *Client) GenerateDevice(ctx context.Context) (*Device, error) {
 		} `json:"device"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("GenerateDevice: %v", err)
+		return nil, err
 	}
 	if parsed.Device.ID == "" || parsed.Device.Key == "" {
-		return nil, errors.New("GenerateDevice: 设备响应缺少必要字段")
+		return nil, fmt.Errorf("mpay: 设备响应缺少必要字段: %s", string(body))
 	}
 
 	device := &Device{
@@ -147,40 +147,41 @@ func (c *Client) GenerateDevice(ctx context.Context) (*Device, error) {
 	return device, nil
 }
 
-// 使用邮箱账号登录
+// LoginEmail 使用邮箱账号登录。
+
 func (d *Device) LoginEmail(ctx context.Context, email, password string) (*User, error) {
 	if err := d.ensureClient(); err != nil {
-		return nil, fmt.Errorf("LoginEmail: %v", err)
+		return nil, err
 	}
 	if email == "" || password == "" {
-		return nil, errors.New("LoginEmail: 邮箱和密码不能为空")
+		return nil, errors.New("mpay: email 与 password 不能为空")
 	}
 
 	hash := md5.Sum([]byte(password))
 	return d.loginEmailWithHash(ctx, email, hex.EncodeToString(hash[:]), password)
 }
 
-// 使用邮箱账号登录，接受 32 位 MD5 密码
+// LoginEmailMD5 使用邮箱账号登录，接受 32 位 MD5 密码。
 func (d *Device) LoginEmailMD5(ctx context.Context, email, passwordMD5 string) (*User, error) {
 	if err := d.ensureClient(); err != nil {
-		return nil, fmt.Errorf("LoginEmailMD5: %v", err)
+		return nil, err
 	}
 	if email == "" || passwordMD5 == "" {
-		return nil, errors.New("LoginEmailMD5: 邮箱和密码摘要不能为空")
+		return nil, errors.New("mpay: email 与 password_md5 不能为空")
 	}
 	hash := strings.ToLower(strings.TrimSpace(passwordMD5))
 	if len(hash) != 32 {
-		return nil, errors.New("LoginEmailMD5: 密码摘要长度无效")
+		return nil, fmt.Errorf("mpay: password_md5 长度非法: %s", passwordMD5)
 	}
 	if _, err := hex.DecodeString(hash); err != nil {
-		return nil, fmt.Errorf("LoginEmailMD5: %v", err)
+		return nil, fmt.Errorf("mpay: password_md5 非法: %w", err)
 	}
 	return d.loginEmailWithHash(ctx, email, hash, hash)
 }
 
 func (d *Device) loginEmailWithHash(ctx context.Context, email, passwordHash, storedPassword string) (*User, error) {
 	if email == "" || passwordHash == "" {
-		return nil, errors.New("loginEmailWithHash: 邮箱和密码不能为空")
+		return nil, errors.New("mpay: email 与 password 不能为空")
 	}
 	loginURL := fmt.Sprintf("%s/%s/users?un=ZmdsbmIxMjNAMTYzLmNvbQ%%3D%%3D", deviceEndpoint, d.ID)
 
@@ -191,16 +192,16 @@ func (d *Device) loginEmailWithHash(ctx context.Context, email, passwordHash, st
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("loginEmailWithHash: %v", err)
+		return nil, err
 	}
 
 	aesKey, err := hex.DecodeString(d.Key)
 	if err != nil {
-		return nil, fmt.Errorf("loginEmailWithHash: %v", err)
+		return nil, err
 	}
 	encrypted, err := utils.AesECBEncrypt(payloadBytes, aesKey)
 	if err != nil {
-		return nil, fmt.Errorf("loginEmailWithHash: %v", err)
+		return nil, err
 	}
 
 	form := d.baseForm()
@@ -209,13 +210,13 @@ func (d *Device) loginEmailWithHash(ctx context.Context, email, passwordHash, st
 
 	body, status, err := d.client.postForm(ctx, loginURL, form)
 	if err != nil {
-		return nil, fmt.Errorf("loginEmailWithHash: %v", err)
+		return nil, err
 	}
 	if status != http.StatusOK {
 		if err := checkMPayError(body); err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("loginEmailWithHash: 邮箱登录失败 (status: %d)", status)
+		return nil, fmt.Errorf("mpay: 邮箱登录失败 status=%d body=%s", status, string(body))
 	}
 	if err := checkMPayError(body); err != nil {
 		return nil, err
@@ -226,20 +227,20 @@ func (d *Device) loginEmailWithHash(ctx context.Context, email, passwordHash, st
 	return d.decodeUser(body, false, email, storedPassword)
 }
 
-// 生成游客账号
+// Guest 生成游客账号。
 func (d *Device) Guest(ctx context.Context) (*User, error) {
 	if err := d.ensureClient(); err != nil {
-		return nil, fmt.Errorf("Guest: %v", err)
+		return nil, err
 	}
 	guestURL := fmt.Sprintf("%s/%s/users/by_guest", deviceEndpoint, d.ID)
 
 	aesKey, err := hex.DecodeString(d.Key)
 	if err != nil {
-		return nil, fmt.Errorf("Guest: %v", err)
+		return nil, err
 	}
 	encrypted, err := utils.AesECBEncrypt([]byte("{}"), aesKey)
 	if err != nil {
-		return nil, fmt.Errorf("Guest: %v", err)
+		return nil, err
 	}
 
 	form := d.baseForm()
@@ -248,13 +249,13 @@ func (d *Device) Guest(ctx context.Context) (*User, error) {
 
 	body, status, err := d.client.postForm(ctx, guestURL, form)
 	if err != nil {
-		return nil, fmt.Errorf("Guest: %v", err)
+		return nil, err
 	}
 	if status != http.StatusCreated {
 		if err := checkMPayError(body); err != nil {
 			return nil, err
 		}
-		return nil, fmt.Errorf("Guest: 生成游客账号失败 (status: %d)", status)
+		return nil, fmt.Errorf("mpay: 生成游客账号失败 status=%d body=%s", status, string(body))
 	}
 	if err := checkMPayError(body); err != nil {
 		return nil, err
@@ -262,13 +263,14 @@ func (d *Device) Guest(ctx context.Context) (*User, error) {
 	return d.decodeUser(body, true, "", "")
 }
 
-// 上传设备信息。上传失败由调用方决定是否忽略
+// AuthRealName 调用 MPay 接口完成实名认证。
+// Upload 上传设备信息。上传失败由调用方决定是否忽略。
 func (d *Device) Upload(ctx context.Context) error {
 	if err := d.ensureClient(); err != nil {
-		return fmt.Errorf("Upload: %v", err)
+		return err
 	}
 	if d.ID == "" {
-		return errors.New("Upload: 设备 ID 不能为空")
+		return errors.New("mpay: device id 不能为空")
 	}
 
 	form := d.client.buildDeviceForm(d.Mac, "", d.UniqueID, d.UDID, d.ExtCI, d.MCountTransactionID, d.TransID)
@@ -277,45 +279,35 @@ func (d *Device) Upload(ctx context.Context) error {
 
 	body, status, err := d.client.postForm(ctx, deviceUploadEndpoint, form)
 	if err != nil {
-		return fmt.Errorf("Upload: %v", err)
+		return err
 	}
 	if status != http.StatusOK {
 		if err := checkMPayError(body); err != nil {
 			return err
 		}
-		return fmt.Errorf("Upload: 上传设备信息失败 (status: %d)", status)
+		return fmt.Errorf("mpay: 上传设备信息失败 status=%d body=%s", status, string(body))
 	}
-	if err := checkMPayError(body); err != nil {
-		return err
-	}
-	return nil
+	return checkMPayError(body)
 }
 
-// 调用 MPay 接口完成实名认证
 func (d *Device) AuthRealName(ctx context.Context, user *User, realName, idNum string) error {
-	if err := d.postRealName(ctx, realNameEndpoint, user, realName, idNum); err != nil {
-		return fmt.Errorf("AuthRealName: %v", err)
-	}
-	return nil
+	return d.postRealName(ctx, realNameEndpoint, user, realName, idNum)
 }
 
-// 调用 MPay 实名验证接口
+// VerifyRealName 调用 MPay 实名验证接口。
 func (d *Device) VerifyRealName(ctx context.Context, user *User, realName, idNum string) error {
-	if err := d.postRealName(ctx, realNameVerifyEndpoint, user, realName, idNum); err != nil {
-		return fmt.Errorf("VerifyRealName: %v", err)
-	}
-	return nil
+	return d.postRealName(ctx, realNameVerifyEndpoint, user, realName, idNum)
 }
 
 func (d *Device) postRealName(ctx context.Context, path string, user *User, realName, idNum string) error {
 	if err := d.ensureClient(); err != nil {
-		return fmt.Errorf("postRealName: %v", err)
+		return err
 	}
 	if user == nil {
-		return errors.New("postRealName: 用户不能为空")
+		return errors.New("mpay: user 不能为空")
 	}
 	if realName == "" || idNum == "" {
-		return errors.New("postRealName: 姓名和身份证号不能为空")
+		return errors.New("mpay: realName 与 idNum 不能为空")
 	}
 
 	form := d.baseForm()
@@ -328,13 +320,13 @@ func (d *Device) postRealName(ctx context.Context, path string, user *User, real
 
 	body, status, err := d.client.postForm(ctx, path, form)
 	if err != nil {
-		return fmt.Errorf("postRealName: %v", err)
+		return err
 	}
 	if status != http.StatusOK {
 		if err := checkMPayError(body); err != nil {
 			return err
 		}
-		return fmt.Errorf("postRealName: 实名认证失败 (status: %d)", status)
+		return fmt.Errorf("mpay: 实名认证失败 status=%d body=%s", status, string(body))
 	}
 	return checkMPayError(body)
 }
@@ -364,34 +356,28 @@ func (d *Device) decodeUser(body []byte, isGuest bool, email, password string) (
 		User map[string]any `json:"user"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, fmt.Errorf("decodeUser: %v", err)
+		return nil, err
 	}
 	if payload.User == nil {
-		return nil, errors.New("decodeUser: 响应缺少 user 字段")
+		return nil, fmt.Errorf("mpay: 响应缺少 user 字段: %s", string(body))
 	}
 
 	tokenVal, ok := payload.User["token"]
 	if !ok {
-		return nil, errors.New("decodeUser: 用户信息缺少 token 字段")
+		return nil, fmt.Errorf("mpay: user 缺少 token 字段: %s", string(body))
 	}
 	token, err := toString(tokenVal)
 	if err != nil || token == "" {
-		if err != nil {
-			return nil, fmt.Errorf("decodeUser: %v", err)
-		}
-		return nil, errors.New("decodeUser: token 字段为空")
+		return nil, fmt.Errorf("mpay: 无法解析 token 字段: %w", err)
 	}
 
 	idVal, ok := payload.User["id"]
 	if !ok {
-		return nil, errors.New("decodeUser: 用户信息缺少 ID 字段")
+		return nil, fmt.Errorf("mpay: user 缺少 id 字段: %s", string(body))
 	}
 	sdkuid, err := toString(idVal)
 	if err != nil || sdkuid == "" {
-		if err != nil {
-			return nil, fmt.Errorf("decodeUser: %v", err)
-		}
-		return nil, errors.New("decodeUser: ID 字段为空")
+		return nil, fmt.Errorf("mpay: 无法解析 id 字段: %w", err)
 	}
 
 	if udidVal, ok := payload.User["udid"]; ok {
@@ -405,7 +391,7 @@ func (d *Device) decodeUser(body []byte, isGuest bool, email, password string) (
 
 func (d *Device) ensureClient() error {
 	if d == nil {
-		return errors.New("ensureClient: Device is not initialized")
+		return errors.New("mpay: 设备未初始化")
 	}
 	if d.client == nil {
 		d.client = NewClient(nil)
@@ -471,6 +457,6 @@ func toString(v any) (string, error) {
 	case uint32:
 		return fmt.Sprintf("%d", value), nil
 	default:
-		return "", fmt.Errorf("toString: Unsupported type %T", v)
+		return "", fmt.Errorf("mpay: 不支持的类型 %T", v)
 	}
 }

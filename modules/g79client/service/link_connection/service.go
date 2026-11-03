@@ -12,12 +12,12 @@ import (
 	g79client "github.com/xingbaiawa/g79client"
 )
 
-// 描述一个可用的 Link 服务器节点
+// LinkEndpoint 描述一个可用的 Link 服务器节点。
 type LinkEndpoint struct {
 	Entry g79client.G79LinkServerEntry
 }
 
-// 管理 Link 服务器列表与连接创建
+// LinkConnectionService 管理 Link 服务器列表与连接创建。
 type LinkConnectionService struct {
 	client *g79client.Client
 
@@ -28,10 +28,10 @@ type LinkConnectionService struct {
 	rnd    *rand.Rand
 }
 
-// 根据客户端信息创建服务
+// NewLinkConnectionService 根据客户端信息创建服务。
 func NewLinkConnectionService(client *g79client.Client) (*LinkConnectionService, error) {
 	if client == nil {
-		return nil, errors.New("NewLinkConnectionService: Client must not be empty")
+		return nil, errors.New("link_connection.NewLinkConnectionService: client 不能为空")
 	}
 
 	svc := &LinkConnectionService{
@@ -57,12 +57,12 @@ func (s *LinkConnectionService) primeServers() error {
 	return nil
 }
 
-// 返回底层 G79 客户端
+// Client 返回底层 G79 客户端。
 func (s *LinkConnectionService) Client() *g79client.Client {
 	return s.client
 }
 
-// 返回缓存的服务器列表，如果缓存为空则尝试刷新
+// Servers 返回缓存的服务器列表，如果缓存为空则尝试刷新。
 func (s *LinkConnectionService) Servers() ([]g79client.G79LinkServerEntry, error) {
 	s.mu.RLock()
 	if s.servers != nil {
@@ -74,7 +74,7 @@ func (s *LinkConnectionService) Servers() ([]g79client.G79LinkServerEntry, error
 	return s.RefreshServers()
 }
 
-// 强制刷新服务器列表缓存
+// RefreshServers 强制刷新服务器列表缓存。
 func (s *LinkConnectionService) RefreshServers() ([]g79client.G79LinkServerEntry, error) {
 	list, err := g79client.RefreshG79LinkServers()
 	if err != nil {
@@ -86,20 +86,20 @@ func (s *LinkConnectionService) RefreshServers() ([]g79client.G79LinkServerEntry
 	return cloneLinkServers(list), nil
 }
 
-// 随机选择一个可用节点
+// SelectEndpoint 随机选择一个可用节点。
 func (s *LinkConnectionService) SelectEndpoint() (*LinkEndpoint, error) {
 	servers, err := s.Servers()
 	if err != nil {
 		return nil, err
 	}
 	if len(servers) == 0 {
-		return nil, errors.New("SelectEndpoint: No Link server is available")
+		return nil, errors.New("link_connection.SelectEndpoint: 当前没有可用的 link 服务器")
 	}
 	entry := s.pickRandom(servers)
 	return &LinkEndpoint{Entry: entry}, nil
 }
 
-// 选择节点并建立连接，等待登录完成
+// Dial 选择节点并建立连接，等待登录完成。
 func (s *LinkConnectionService) Dial(ctx context.Context) (*LinkConnection, error) {
 	endpoint, err := s.SelectEndpoint()
 	if err != nil {
@@ -108,10 +108,10 @@ func (s *LinkConnectionService) Dial(ctx context.Context) (*LinkConnection, erro
 	return s.DialEndpoint(ctx, endpoint)
 }
 
-// 使用指定节点建立连接
+// DialEndpoint 使用指定节点建立连接。
 func (s *LinkConnectionService) DialEndpoint(ctx context.Context, endpoint *LinkEndpoint) (*LinkConnection, error) {
 	if endpoint == nil {
-		return nil, errors.New("DialEndpoint: Endpoint must not be empty")
+		return nil, errors.New("link_connection.DialEndpoint: endpoint 不能为空")
 	}
 
 	d := &net.Dialer{}
@@ -121,7 +121,7 @@ func (s *LinkConnectionService) DialEndpoint(ctx context.Context, endpoint *Link
 
 	port := int(endpoint.Entry.Port.Int64())
 	if port == 0 {
-		return nil, errors.New("DialEndpoint: Endpoint port is invalid")
+		return nil, errors.New("link_connection.DialEndpoint: 节点端口无效")
 	}
 	addr := net.JoinHostPort(endpoint.Entry.IP, strconv.Itoa(port))
 	conn, err := d.DialContext(ctx, "tcp", addr)

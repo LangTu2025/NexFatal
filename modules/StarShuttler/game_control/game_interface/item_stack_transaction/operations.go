@@ -624,6 +624,25 @@ func (i *ItemStackTransaction) Crafting(
 	return i
 }
 
+// CraftingWithDeprecatedResult is used for recipes whose server-side validation
+// still expects the legacy craft-result action after CraftRecipe.
+func (i *ItemStackTransaction) CraftingWithDeprecatedResult(
+	recipeNetworkID uint32,
+	resultSlotID resources_control.SlotID,
+	resultCount uint8,
+	resultItem resources_control.ExpectedNewItem,
+	deprecatedResultItems ...protocol.ItemStack,
+) *ItemStackTransaction {
+	i.operations = append(i.operations, item_stack_operation.Crafting{
+		RecipeNetworkID:       recipeNetworkID,
+		ResultSlotID:          resultSlotID,
+		ResultCount:           resultCount,
+		ResultItem:            resultItem,
+		DeprecatedResultItems: deprecatedResultItems,
+	})
+	return i
+}
+
 // Trimming 将下面列出的物品放置在锻造台中，
 // 并进行对于的锻造台的纹饰操作。
 //

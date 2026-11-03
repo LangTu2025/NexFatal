@@ -9,10 +9,11 @@ import (
 	"time"
 )
 
-// 向 DRPF 服务报告主城退出事件
+// LeaveEnteredGame sends a telemetry log to drpf service to mark the main city exit event.
+// It returns an error if the request fails or a non-OK response is received.
 func (c *Client) LeaveEnteredGame() error {
 	if c.UserID == "" {
-		return fmt.Errorf("LeaveEnteredGame: Missing user id")
+		return fmt.Errorf("leave entered game: missing user id")
 	}
 
 	if c.UserDetail == nil {
@@ -27,6 +28,10 @@ func (c *Client) LeaveEnteredGame() error {
 	}
 
 	sessionID := fmt.Sprintf("%s%d", c.UserID, time.Now().UnixNano())
+	seed := c.Seed
+	if seed == "" {
+		seed = c.Sead
+	}
 
 	payload := map[string]any{
 		"is_emulator":       "None",
@@ -42,7 +47,7 @@ func (c *Client) LeaveEnteredGame() error {
 		"transid":           "None",
 		"operate_type":      "leave_main_city_no_game",
 		"isp_name":          "default",
-		"sead":              c.Sead,
+		"sead":              seed,
 		"os_ver":            "11",
 		"network":           "CHANNEL_UNKNOW",
 		"login_channel":     "netease",
@@ -83,12 +88,12 @@ func (c *Client) LeaveEnteredGame() error {
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("LeaveEnteredGame: %v", err)
+		return fmt.Errorf("leave entered game: %w", err)
 	}
 
 	req, err := http.NewRequest("POST", "https://drpf-g79.proxima.nie.netease.com", strings.NewReader(string(body)))
 	if err != nil {
-		return fmt.Errorf("LeaveEnteredGame: %v", err)
+		return fmt.Errorf("leave entered game: %w", err)
 	}
 
 	req.Header.Set("User-Agent", "libhttpclient/1.0.0.0")
@@ -97,21 +102,21 @@ func (c *Client) LeaveEnteredGame() error {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("LeaveEnteredGame: %v", err)
+		return fmt.Errorf("leave entered game: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("LeaveEnteredGame: %v", err)
+		return fmt.Errorf("leave entered game: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("LeaveEnteredGame: Unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		return fmt.Errorf("leave entered game: unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 
 	if strings.TrimSpace(string(respBody)) != "ok" {
-		return fmt.Errorf("LeaveEnteredGame: Unexpected response %q", strings.TrimSpace(string(respBody)))
+		return fmt.Errorf("leave entered game: unexpected response %q", strings.TrimSpace(string(respBody)))
 	}
 
 	return nil

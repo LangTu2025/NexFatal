@@ -7,14 +7,14 @@ import (
 	"strings"
 )
 
-// 进入主城接口的响应
+// EnterMainCityResponse describes the payload returned by /enter-main-city.
 type EnterMainCityResponse struct {
 	Response
 	Details string              `json:"details"`
 	Entity  EnterMainCityEntity `json:"entity"`
 }
 
-// 目标版本对应的主城服务器地址
+// EnterMainCityEntity contains the resolved server endpoints for the target version.
 type EnterMainCityEntity struct {
 	Code             int    `json:"code"`
 	CityNo           int    `json:"city_no"`
@@ -36,7 +36,7 @@ type EnterMainCityEntity struct {
 	CUCCServerHostV6 string `json:"cucc_server_host_v6"`
 }
 
-// 使用当前客户端版本进入主城
+// EnterMainCity posts the desired client version to the ApiGateway enter-main-city endpoint.
 func (c *Client) EnterMainCity() (*EnterMainCityResponse, error) {
 	api := "/enter-main-city"
 	payload := map[string]any{
@@ -45,16 +45,16 @@ func (c *Client) EnterMainCity() (*EnterMainCityResponse, error) {
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("EnterMainCity: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(body)))
 	if err != nil {
-		return nil, fmt.Errorf("EnterMainCity: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	req.Header.Set("User-Agent", androidUserAgent)
+	req.Header.Set("User-Agent", "WPFLauncher/0.0.0.0")
 	req.Header.Set("user-id", c.UserID)
 
 	token := CalculateDynamicToken(api, string(body), c.UserToken)
@@ -63,18 +63,18 @@ func (c *Client) EnterMainCity() (*EnterMainCityResponse, error) {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("EnterMainCity: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("EnterMainCity: %v", err)
+		return nil, err
 	}
 
 	var result EnterMainCityResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("EnterMainCity: Decode enter main city response: %v", err)
+		return nil, fmt.Errorf("decode enter main city response: %w", err)
 	}
 
 	return &result, nil

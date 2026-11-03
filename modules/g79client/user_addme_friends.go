@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// 表示申请列表中的单个申请人
+// AddMeFriendEntity 表示申请列表中的单个申请人。
 type AddMeFriendEntity struct {
 	UID                  Uncertain      `json:"uid"`
 	Nickname             string         `json:"nickname"`
@@ -24,20 +24,20 @@ type AddMeFriendEntity struct {
 	RechargeBenefitLevel Uncertain      `json:"recharge_benefit_level"`
 }
 
-// 表示拉取好友申请列表的响应结构
+// AddMeFriendsResponse 表示拉取好友申请列表的响应结构。
 type AddMeFriendsResponse struct {
 	Response
 	SummaryMD5 string              `json:"summary_md5"`
 	Entities   []AddMeFriendEntity `json:"entities"`
 }
 
-// 获取向当前玩家发起好友申请的列表
+// GetAddMeFriends 获取向当前玩家发起好友申请的列表。
 func (c *Client) GetAddMeFriends() (*AddMeFriendsResponse, error) {
 	api := "/user-addme-friends/"
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader("{}"))
 	if err != nil {
-		return nil, fmt.Errorf("GetAddMeFriends: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -50,18 +50,18 @@ func (c *Client) GetAddMeFriends() (*AddMeFriendsResponse, error) {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GetAddMeFriends: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("GetAddMeFriends: %v", err)
+		return nil, err
 	}
 
 	var result AddMeFriendsResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("GetAddMeFriends: %v", err)
+		return nil, fmt.Errorf("解析好友申请列表响应失败: %v, 响应内容: %s", err, string(respBody))
 	}
 
 	return &result, nil

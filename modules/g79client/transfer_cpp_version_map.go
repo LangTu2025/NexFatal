@@ -8,13 +8,13 @@ import (
 	"sync"
 )
 
-// 表示 cpp-version-map 接口返回的版本映射
+// G79CPPVersionMap 表示 cpp-version-map 接口返回的版本映射。
 type G79CPPVersionMap struct {
 	PC int                    `json:"pc"`
 	PE []G79CPPVersionMapItem `json:"pe"`
 }
 
-// 表示单个 PE 版本映射项
+// G79CPPVersionMapItem 表示单个 PE 版本映射项。
 type G79CPPVersionMapItem struct {
 	Version string `json:"version"`
 	Value   int    `json:"value"`
@@ -25,7 +25,7 @@ var (
 	g79CPPVersionMapMu     sync.RWMutex
 )
 
-// 获取全局 cpp 版本映射，首次调用时会自动拉取并缓存
+// GetGlobalG79CPPVersionMap 获取全局 cpp 版本映射，首次调用时会自动拉取并缓存。
 func GetGlobalG79CPPVersionMap() (*G79CPPVersionMap, error) {
 	return GetGlobalG79CPPVersionMapWithHTTPClient(nil)
 }
@@ -47,13 +47,13 @@ func GetGlobalG79CPPVersionMapWithHTTPClient(httpClient *http.Client) (*G79CPPVe
 
 	result, err := fetchG79CPPVersionMapWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("GetGlobalG79CPPVersionMapWithHTTPClient: %v", err)
+		return nil, err
 	}
 	globalG79CPPVersionMap = cloneG79CPPVersionMap(result)
 	return cloneG79CPPVersionMap(result), nil
 }
 
-// 强制刷新 cpp 版本映射缓存
+// RefreshG79CPPVersionMap 强制刷新 cpp 版本映射缓存。
 func RefreshG79CPPVersionMap() (*G79CPPVersionMap, error) {
 	return RefreshG79CPPVersionMapWithHTTPClient(nil)
 }
@@ -61,7 +61,7 @@ func RefreshG79CPPVersionMap() (*G79CPPVersionMap, error) {
 func RefreshG79CPPVersionMapWithHTTPClient(httpClient *http.Client) (*G79CPPVersionMap, error) {
 	result, err := fetchG79CPPVersionMapWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("RefreshG79CPPVersionMapWithHTTPClient: %v", err)
+		return nil, err
 	}
 
 	g79CPPVersionMapMu.Lock()
@@ -77,17 +77,17 @@ func fetchG79CPPVersionMap() (*G79CPPVersionMap, error) {
 func fetchG79CPPVersionMapWithHTTPClient(httpClient *http.Client) (*G79CPPVersionMap, error) {
 	releaseJSON, err := GetGlobalG79ReleaseJSONWithHTTPClient(httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79CPPVersionMapWithHTTPClient: %v", err)
+		return nil, err
 	}
 
 	baseURL := strings.TrimRight(releaseJSON.TransferServerNewHttpUrl, "/")
 	if baseURL == "" {
-		return nil, fmt.Errorf("fetchG79CPPVersionMapWithHTTPClient: TransferServerNewHTTPURL is empty")
+		return nil, fmt.Errorf("empty TransferServerNewHttpUrl")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, baseURL+"/cpp-version-map", nil)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79CPPVersionMapWithHTTPClient: %v", err)
+		return nil, err
 	}
 	req.Header.Set("User-Agent", "libhttpclient/1.0.0.0")
 	req.Header.Set("Accept-Encoding", "gzip")
@@ -95,18 +95,18 @@ func fetchG79CPPVersionMapWithHTTPClient(httpClient *http.Client) (*G79CPPVersio
 
 	resp, err := resolveHTTPClient(httpClient).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79CPPVersionMapWithHTTPClient: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("fetchG79CPPVersionMapWithHTTPClient: %v", err)
+		return nil, err
 	}
 
 	var result G79CPPVersionMap
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("fetchG79CPPVersionMapWithHTTPClient: %v", err)
+		return nil, err
 	}
 	return &result, nil
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/xingbaiawa/StarShuttler/client"
+	"github.com/xingbaiawa/StarShuttler/core/bunker/auth"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/game_control/game_interface"
 	"github.com/xingbaiawa/StarShuttler/game_control/resources_control"
@@ -38,6 +39,7 @@ func RunServer(
 	rentalServerPasscode string,
 	authServerAddress string,
 	authServerToken string,
+	authMode auth.AuthenticationMode,
 	standardServerPort int,
 	consoleDimensionID int,
 	consoleCenterX int,
@@ -48,6 +50,7 @@ func RunServer(
 	cfg := client.Config{
 		AuthServerAddress:    authServerAddress,
 		AuthServerToken:      authServerToken,
+		AuthMode:             authMode,
 		RentalServerCode:     rentalServerCode,
 		RentalServerPasscode: rentalServerPasscode,
 	}

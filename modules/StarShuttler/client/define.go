@@ -17,6 +17,7 @@ import (
 type Config struct {
 	AuthServerAddress    string
 	AuthServerToken      string
+	AuthMode             auth.AuthenticationMode
 	RentalServerCode     string
 	RentalServerPasscode string
 	LoginCookieFallback  func(context.Context) (string, error)
@@ -28,6 +29,7 @@ type Config struct {
 type Client struct {
 	connection            *minecraft.Conn
 	authClient            *auth.Client
+	remoteAuthClient      *auth.RemoteClient
 	getCheckNumEverPassed bool
 	cachedPacket          chan packet.Packet
 	skipMCPCheckChallenge bool

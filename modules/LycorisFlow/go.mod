@@ -3,7 +3,7 @@ module github.com/xingbaiawa/LycorisFlow
 go 1.26.0
 
 require (
-	github.com/TriM-Organization/bedrock-world-operator v1.4.0
+	github.com/TriM-Organization/bedrock-world-operator v1.7.0
 	github.com/TriM-Organization/merry-memory v0.2.0
 	github.com/andybalholm/brotli v1.2.0
 	github.com/mholt/archiver/v3 v3.5.1

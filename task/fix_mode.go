@@ -408,6 +408,7 @@ func runRepairChatLoop(
 	}
 
 	broadcaster.sendFixModeMessage(ctrl, loc.Text(loc.KeyFixModeExited))
+	broadcaster.sendFixModeMessage(ctrl, loc.Text(loc.KeyFixModeGoodbye))
 	return resultErr
 }
 

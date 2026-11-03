@@ -8,13 +8,13 @@ import (
 	"strings"
 )
 
-// 按名称转移房间的请求参数
+// TransferRoomWithName 请求
 type TransferRoomWithNameRequest struct {
 	Name string `json:"name"`
 	UID  int64  `json:"uid"`
 }
 
-// 简化的房间条目（可按需求扩展）
+// TransferRoomWithNameListItem 简化的房间条目（可按需求扩展）
 type TransferRoomWithNameListItem struct {
 	HID          Uncertain   `json:"hid"`
 	RID          Uncertain   `json:"rid"`
@@ -48,13 +48,13 @@ type TransferRoomWithNameResponse struct {
 	List []TransferRoomWithNameListItem `json:"list"`
 }
 
-// 根据房间名查询
+// GetTransferRoomWithName 根据房间名查询
 func (c *Client) GetTransferRoomWithName(name string) (*TransferRoomWithNameResponse, error) {
 	apiBase := c.ReleaseJSON.TransferServerNewHttpUrl
 	api := "/room-with-name"
 	userID, err := strconv.ParseInt(c.UserID, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("GetTransferRoomWithName: %v", err)
+		return nil, err
 	}
 
 	reqBody := TransferRoomWithNameRequest{
@@ -64,12 +64,12 @@ func (c *Client) GetTransferRoomWithName(name string) (*TransferRoomWithNameResp
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("GetTransferRoomWithName: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", apiBase+api, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return nil, fmt.Errorf("GetTransferRoomWithName: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("User-Agent", "libhttpclient/1.0.0.0")
@@ -77,20 +77,24 @@ func (c *Client) GetTransferRoomWithName(name string) (*TransferRoomWithNameResp
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("user-id", c.UserID)
 
+	// 该接口看起来不需要动态签名，但若后端校验头存在，可按需要补充
+	// 若需签名：token := CalculateDynamicToken(api, string(jsonData), c.UserToken)
+	// req.Header.Set("user-token", token)
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GetTransferRoomWithName: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("GetTransferRoomWithName: %v", err)
+		return nil, err
 	}
 
 	var result TransferRoomWithNameResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("GetTransferRoomWithName: %v", err)
+		return nil, fmt.Errorf("解析 room-with-name 响应失败: %v, 响应内容: %s", err, string(body))
 	}
 	return &result, nil
 }

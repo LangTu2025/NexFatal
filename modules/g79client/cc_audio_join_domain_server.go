@@ -7,19 +7,21 @@ import (
 	"strings"
 )
 
-// 通用 HTTP 和 HTTPS 地址
+// -------------------------- 内层最深结构体 --------------------------
+
+// CCVoiceSubUrlInfo 通用http/https地址对
 type CCVoiceSubUrlInfo struct {
 	Http  string `json:"http"`
 	Https string `json:"https"`
 }
 
-// SDK 配置地址
+// CCVoiceSDKConfig sdk配置地址组
 type CCVoiceSDKConfig struct {
 	StaticResUrl CCVoiceSubUrlInfo `json:"static_res_url"`
 	ConfigUrl    CCVoiceSubUrlInfo `json:"config_url"`
 }
 
-// 语音服务的连接信息
+// CCVoiceInfoInnerData data里info内部结构
 type CCVoiceInfoInnerData struct {
 	StreamName       string            `json:"stream_name"`
 	Account          string            `json:"account"`
@@ -35,7 +37,7 @@ type CCVoiceInfoInnerData struct {
 	SDKConfigs       CCVoiceSDKConfig  `json:"sdk_configs"`
 }
 
-// 语音服务返回的内部数据
+// CCVoiceDataInnerEntity entity->data 解析后的内层
 type CCVoiceDataInnerEntity struct {
 	Info       string   `json:"info"`
 	StreamName string   `json:"stream_name"`
@@ -45,11 +47,13 @@ type CCVoiceDataInnerEntity struct {
 	Streamid   string   `json:"streamid"`
 	Nodes      []string `json:"nodes"`
 
-	// 二次解析 info 中嵌入的 JSON
+	// 手动二次解析info内嵌json
 	InfoData CCVoiceInfoInnerData `json:"-"`
 }
 
-// 最外层 entity
+// -------------------------- 对外暴露标准响应体 --------------------------
+
+// CCVoiceLoginInfoEntity 最外层 entity
 type CCVoiceLoginInfoEntity struct {
 	ChannelType string `json:"channel_type"`
 	Stream      string `json:"stream"`
@@ -59,7 +63,7 @@ type CCVoiceLoginInfoEntity struct {
 	DataEntity CCVoiceDataInnerEntity `json:"-"`
 }
 
-// 接口标准返回结构（跟项目统一）
+// CCVoiceLoginInfoResponse 接口标准返回结构（跟项目统一）
 type CCVoiceLoginInfoResponse struct {
 	Response
 	Entity CCVoiceLoginInfoEntity `json:"entity"`
@@ -67,29 +71,29 @@ type CCVoiceLoginInfoResponse struct {
 
 // -------------------------- 请求方法 完全对标项目风格 --------------------------
 
-// 请求参数结构体
+// GetCCVoiceLoginInfoRequest 请求参数结构体
 type GetCCVoiceLoginInfoRequest struct {
 	Sid string `json:"sid"`
 }
 
-// 获取语音登录信息
+// GetCCVoiceLoginInfo 获取语音登录信息
 func (c *Client) GetCCVoiceLoginInfo(sid string) (*CCVoiceLoginInfoResponse, error) {
 	var request GetCCVoiceLoginInfoRequest
 	request.Sid = strings.TrimSpace(sid)
 	if request.Sid == "" {
-		return nil, fmt.Errorf("GetCCVoiceLoginInfo: Sid must not be empty")
+		return nil, fmt.Errorf("GetCCVoiceLoginInfo: sid 不能为空")
 	}
 
 	api := "/cc-audio/join-domain-server"
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		return nil, fmt.Errorf("GetCCVoiceLoginInfo: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.WebServerUrl+api, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return nil, fmt.Errorf("GetCCVoiceLoginInfo: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -102,31 +106,31 @@ func (c *Client) GetCCVoiceLoginInfo(sid string) (*CCVoiceLoginInfoResponse, err
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GetCCVoiceLoginInfo: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("GetCCVoiceLoginInfo: %v", err)
+		return nil, err
 	}
 
 	var result CCVoiceLoginInfoResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("GetCCVoiceLoginInfo: %v", err)
+		return nil, fmt.Errorf("解析语音登录外层响应失败: %v, 响应内容: %s", err, string(respBody))
 	}
 
 	// 第一层：解析 entity.data 里面的json字符串
 	var dataInner CCVoiceDataInnerEntity
 	if err := json.Unmarshal([]byte(result.Entity.Data), &dataInner); err != nil {
-		return nil, fmt.Errorf("GetCCVoiceLoginInfo: %v", err)
+		return nil, fmt.Errorf("解析data内嵌json失败: %v", err)
 	}
 	result.Entity.DataEntity = dataInner
 
 	// 第二层：解析 data.info 里面再嵌一层的json字符串
 	var infoInner CCVoiceInfoInnerData
 	if err := json.Unmarshal([]byte(dataInner.Info), &infoInner); err != nil {
-		return nil, fmt.Errorf("GetCCVoiceLoginInfo: %v", err)
+		return nil, fmt.Errorf("解析info深层内嵌json失败: %v", err)
 	}
 	result.Entity.DataEntity.InfoData = infoInner
 

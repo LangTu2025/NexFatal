@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// 定义发布动态时的可选参数
+// SendMomentOptions 定义发布动态时的可选参数。
 type SendMomentOptions struct {
 	CommentAuth  int    `json:"comment_auth"`
 	Category     string `json:"category"`
@@ -21,12 +21,7 @@ type SendMomentOptions struct {
 	SourceMsgID  string `json:"source_msg_id"`
 }
 
-type sendMomentRequest struct {
-	Content string `json:"content"`
-	SendMomentOptions
-}
-
-// 表示发送动态后的响应体
+// SendMomentResponse 表示发送动态后的响应体。
 type SendMomentResponse struct {
 	Response
 	Entity struct {
@@ -37,26 +32,21 @@ type SendMomentResponse struct {
 	} `json:"entity"`
 }
 
-// 发布个人动态
+// SendMoment 发布个人动态。
 func (c *Client) SendMoment(content string, opts *SendMomentOptions) (*SendMomentResponse, error) {
 	if strings.TrimSpace(content) == "" {
-		return nil, fmt.Errorf("SendMoment: Content must not be empty")
+		return nil, fmt.Errorf("SendMoment: content 不能为空")
 	}
 
-	requestData := sendMomentRequest{Content: content}
-	if opts != nil {
-		requestData.SendMomentOptions = *opts
-	}
-
-	jsonData, err := json.Marshal(requestData)
+	jsonData, err := json.Marshal(opts)
 	if err != nil {
-		return nil, fmt.Errorf("SendMoment: %v", err)
+		return nil, err
 	}
 
 	api := "/user-send-moment"
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return nil, fmt.Errorf("SendMoment: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -68,18 +58,18 @@ func (c *Client) SendMoment(content string, opts *SendMomentOptions) (*SendMomen
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("SendMoment: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("SendMoment: %v", err)
+		return nil, err
 	}
 
 	var result SendMomentResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("SendMoment: %v", err)
+		return nil, fmt.Errorf("解析发送动态响应失败: %v, 响应内容: %s", err, string(respBody))
 	}
 	return &result, nil
 }

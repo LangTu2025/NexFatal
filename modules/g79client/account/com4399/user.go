@@ -3,7 +3,6 @@ package com4399
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -16,7 +15,7 @@ const (
 	defaultROM     = "134208294912"
 )
 
-// 描述 g79client Cookie 中的 sauth_json
+// Sauth 描述 g79client Cookie 中的 sauth_json。
 type Sauth struct {
 	AimInfo          string `json:"aim_info"`
 	AppChannel       string `json:"app_channel"`
@@ -40,7 +39,7 @@ type Sauth struct {
 	UserID           string `json:"userid,omitempty"`
 }
 
-// 描述 4399 登录后的 Cookie 生成数据
+// User 描述 4399 登录后的 Cookie 生成数据。
 type User struct {
 	Sauth    Sauth    `json:"sauth"`
 	Info     UserInfo `json:"info"`
@@ -76,7 +75,7 @@ func newUser(info *UserInfo) *User {
 			LoginChannel:     "4399com",
 			Platform:         "ad",
 			RealName:         `{"realname_type":"0"}`,
-			SDKVersion:       oauthSDKVersion,
+			SDKVersion:       "3.18.0",
 			SDKUID:           strconv.FormatInt(info.UID, 10),
 			SessionID:        info.State,
 			SourceAppChannel: "4399com",
@@ -94,14 +93,14 @@ func newUser(info *UserInfo) *User {
 	}
 }
 
-// 返回 g79client.G79AuthenticateWithCookie 可直接使用的 Cookie 字符串
+// CookieString 返回 g79client.G79AuthenticateWithCookie 可直接使用的 Cookie 字符串。
 func (u *User) CookieString() (string, error) {
 	if u == nil {
-		return "", errors.New("CookieString: 用户不能为空")
+		return "", errors.New("com4399: user 不能为空")
 	}
 	sauthJSON, err := json.Marshal(u.Sauth)
 	if err != nil {
-		return "", fmt.Errorf("CookieString: %v", err)
+		return "", err
 	}
 	payload := map[string]any{
 		"sauth_json": string(sauthJSON),
@@ -113,7 +112,7 @@ func (u *User) CookieString() (string, error) {
 	}
 	cookie, err := json.Marshal(payload)
 	if err != nil {
-		return "", fmt.Errorf("CookieString: %v", err)
+		return "", err
 	}
 	return string(cookie), nil
 }

@@ -32,22 +32,26 @@ type PeGameGetServerAddressResponse struct {
 // 获取网络游戏进入的服务器地址
 // 对应：POST /pe-game/query/get-server-address
 // 参数：itemID（必填），ticket（可为空；nil 将以 JSON null 发送）
-func (c *Client) GetPeGameServerAddress(itemID string, ticket *string) (*PeGameGetServerAddressResponse, error) {
+func (c *Client) GetPeGameServerAddress(itemID string, ticket ...interface{}) (*PeGameGetServerAddressResponse, error) {
 	api := "/pe-game/query/get-server-address"
 
 	requestData := map[string]interface{}{
 		"item_id": itemID,
-		"ticket":  ticket,
+	}
+	if len(ticket) > 0 {
+		requestData["ticket"] = ticket[0]
+	} else {
+		requestData["ticket"] = nil
 	}
 
 	jsonData, err := json.Marshal(requestData)
 	if err != nil {
-		return nil, fmt.Errorf("GetPeGameServerAddress: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return nil, fmt.Errorf("GetPeGameServerAddress: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -60,18 +64,18 @@ func (c *Client) GetPeGameServerAddress(itemID string, ticket *string) (*PeGameG
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GetPeGameServerAddress: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("GetPeGameServerAddress: %v", err)
+		return nil, err
 	}
 
 	var getResp PeGameGetServerAddressResponse
 	if err := json.Unmarshal(respBody, &getResp); err != nil {
-		return nil, fmt.Errorf("GetPeGameServerAddress: %v", err)
+		return nil, fmt.Errorf("解析网络游戏进入响应失败: %v, 响应内容: %s", err, string(respBody))
 	}
 	return &getResp, nil
 }

@@ -19,7 +19,7 @@ const (
 	defaultAppChannel          = "netease"
 	defaultPlatform            = "ad"
 	defaultSDKVersion          = "5.16.0"
-	defaultAppVersionGV        = "840297099"
+	defaultAppVersionGV        = "840300878"
 	defaultUniSauthUserAgent   = "Dalvik/2.1.0 (Linux; U; Android 12; V2166A Build/b27cb4b.0)"
 	defaultCheckEnterUserAgent = "Anti-Addiction/1.11.0 (V2166A;32)"
 	defaultCommonSDK           = "ad=2.0.5"
@@ -40,7 +40,7 @@ const (
 	defaultOperator            = ""
 )
 
-// 封装与 x19 sdk 接口交互的 HTTP 客户端
+// Client 封装与 x19 sdk 接口交互的 HTTP 客户端。
 type Client struct {
 	httpClient          *http.Client
 	baseURL             string
@@ -50,7 +50,7 @@ type Client struct {
 	commonSDK           string
 }
 
-// 创建 x19 sdk 客户端
+// NewClient 创建 x19 sdk 客户端。
 func NewClient(httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
@@ -65,7 +65,7 @@ func NewClient(httpClient *http.Client) *Client {
 	}
 }
 
-// 表示账号 cookie 结构
+// CookieData 表示账号 cookie 结构。
 type CookieData struct {
 	SauthJSON string `json:"sauth_json"`
 	MacAddr   string `json:"mac_addr"`
@@ -75,7 +75,7 @@ type CookieData struct {
 	Emulator  *int   `json:"emulator"`
 }
 
-// 表示 cookie 中内嵌的 sauth 数据
+// SauthData 表示 cookie 中内嵌的 sauth 数据。
 type SauthData struct {
 	GameID           string `json:"gameid"`
 	LoginChannel     string `json:"login_channel"`
@@ -95,7 +95,7 @@ type SauthData struct {
 	AccessToken      string `json:"access_token"`
 }
 
-// 表示 uni_sauth 请求中的 aim_info
+// AimInfo 表示 uni_sauth 请求中的 aim_info。
 type AimInfo struct {
 	Aim          string `json:"aim"`
 	Country      string `json:"country"`
@@ -106,7 +106,7 @@ type AimInfo struct {
 	IsVPNEnabled bool   `json:"is_vpn_enabled"`
 }
 
-// 表示 uni_sauth 请求中的 sdklog
+// UniSauthSDKLog 表示 uni_sauth 请求中的 sdklog。
 type UniSauthSDKLog struct {
 	DeviceModel string `json:"device_model"`
 	OSName      string `json:"os_name"`
@@ -121,7 +121,7 @@ type UniSauthSDKLog struct {
 	MSAOAID     string `json:"msa_oaid,omitempty"`
 }
 
-// 表示 /x19/sdk/uni_sauth 请求体
+// UniSauthRequest 表示 /x19/sdk/uni_sauth 请求体。
 type UniSauthRequest struct {
 	GameID           string         `json:"gameid"`
 	LoginChannel     string         `json:"login_channel"`
@@ -145,15 +145,15 @@ type UniSauthRequest struct {
 	SDKLog           UniSauthSDKLog `json:"-"`
 }
 
-// 将强类型字段编码为服务端要求的字符串 JSON 字段
+// MarshalJSON 将强类型字段编码为服务端要求的字符串 JSON 字段。
 func (r UniSauthRequest) MarshalJSON() ([]byte, error) {
 	aimInfoJSON, err := json.Marshal(r.AimInfo)
 	if err != nil {
-		return nil, fmt.Errorf("MarshalJSON: %v", err)
+		return nil, err
 	}
 	sdkLogJSON, err := json.Marshal(r.SDKLog)
 	if err != nil {
-		return nil, fmt.Errorf("MarshalJSON: %v", err)
+		return nil, err
 	}
 
 	type payload struct {
@@ -203,7 +203,7 @@ func (r UniSauthRequest) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// 表示从 cookie 构造 uni_sauth 请求时的扩展参数
+// UniSauthBuildOptions 表示从 cookie 构造 uni_sauth 请求时的扩展参数。
 type UniSauthBuildOptions struct {
 	AppChannel string
 	Platform   string
@@ -216,7 +216,7 @@ type UniSauthBuildOptions struct {
 	SDKLog     *UniSauthSDKLog
 }
 
-// 表示 /x19/sdk/uni_sauth 响应
+// UniSauthResponse 表示 /x19/sdk/uni_sauth 响应。
 type UniSauthResponse struct {
 	Code               int                     `json:"code"`
 	Subcode            int                     `json:"subcode"`
@@ -234,13 +234,13 @@ type UniSauthResponse struct {
 	RawBody            string                  `json:"-"`
 }
 
-// 表示 uni_sauth 响应中的 data 字段
+// UniSauthResponseData 表示 uni_sauth 响应中的 data 字段。
 type UniSauthResponseData struct {
 	AppChannel string `json:"app_channel"`
 	LoginType  int    `json:"login_type"`
 }
 
-// 表示实名认证信息
+// UniSauthRealnameMessage 表示实名认证信息。
 type UniSauthRealnameMessage struct {
 	Oversea      bool   `json:"oversea"`
 	IDHash       string `json:"id_hash"`
@@ -252,13 +252,13 @@ type UniSauthRealnameMessage struct {
 	AgeRangeV2   int    `json:"age_range_v2"`
 }
 
-// 表示防沉迷状态
+// UniSauthAASBan 表示防沉迷状态。
 type UniSauthAASBan struct {
 	Ban    int    `json:"ban"`
 	BanMsg string `json:"ban_msg"`
 }
 
-// 表示解码后的 unisdk_login_json
+// DecodedUniSDKLoginPayload 表示解码后的 unisdk_login_json。
 type DecodedUniSDKLoginPayload struct {
 	AID                      string                        `json:"aid"`
 	SDKUID                   string                        `json:"sdkuid"`
@@ -280,13 +280,13 @@ type DecodedUniSDKLoginPayload struct {
 	IsSelectedForGrayRelease bool                          `json:"is_selected_for_gray_release"`
 }
 
-// 表示解码后的实名认证状态
+// DecodedUniSDKLoginRealnameMsg 表示解码后的实名认证状态。
 type DecodedUniSDKLoginRealnameMsg struct {
 	RealnameStatus string `json:"realname_status"`
 	IsAdult        string `json:"is_adult"`
 }
 
-// 表示解码后的渠道登录信息
+// DecodedUniSDKLoginChlSDKJSON 表示解码后的渠道登录信息。
 type DecodedUniSDKLoginChlSDKJSON struct {
 	GameID       string `json:"gameid"`
 	LoginChannel string `json:"login_channel"`
@@ -297,7 +297,7 @@ type DecodedUniSDKLoginChlSDKJSON struct {
 	Sign         string `json:"sign"`
 }
 
-// 表示解码后的 extra 信息
+// DecodedUniSDKLoginExtra 表示解码后的 extra 信息。
 type DecodedUniSDKLoginExtra struct {
 	SDKOpenID              string `json:"sdk_open_id"`
 	ExternalUsername       string `json:"external_username"`
@@ -308,34 +308,207 @@ type DecodedUniSDKLoginExtra struct {
 	OriginSDKUID           string `json:"origin_sdkuid"`
 }
 
-// 表示解码后的 oauth2 信息
+// DecodedUniSDKLoginOAuth2 表示解码后的 oauth2 信息。
 type DecodedUniSDKLoginOAuth2 struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 }
 
-// 解码 base64 的 unisdk_login_json
+// DecodeUniSDKLoginJSON 解码 base64 的 unisdk_login_json。
 func (r *UniSauthResponse) DecodeUniSDKLoginJSON() (*DecodedUniSDKLoginPayload, error) {
 	if r == nil {
-		return nil, fmt.Errorf("DecodeUniSDKLoginJSON: Uni_sauth response is nil")
+		return nil, fmt.Errorf("uni_sauth 响应为空")
 	}
-	if strings.TrimSpace(r.UniSDKLoginJSON) == "" {
-		return nil, fmt.Errorf("DecodeUniSDKLoginJSON: Uni_sauth response is missing unisdk_login_json")
+	encoded := strings.TrimSpace(r.UniSDKLoginJSON)
+	if encoded == "" && strings.TrimSpace(r.RawBody) != "" {
+		// 某些网关把字段包在 data/extra 中；不要只依赖顶层结构体字段。
+		var envelope any
+		if err := json.Unmarshal([]byte(r.RawBody), &envelope); err == nil {
+			if value, ok := findUniSDKLoginJSON(envelope, 0); ok {
+				encoded = value
+			}
+		}
+	}
+	if encoded == "" {
+		return nil, fmt.Errorf("uni_sauth 响应缺少 unisdk_login_json")
 	}
 
-	raw, err := base64.StdEncoding.DecodeString(r.UniSDKLoginJSON)
+	raw, err := decodeUniSDKLoginJSON(encoded)
 	if err != nil {
-		return nil, fmt.Errorf("DecodeUniSDKLoginJSON: %v", err)
+		return nil, err
 	}
 
 	var result DecodedUniSDKLoginPayload
-	if err := json.Unmarshal(raw, &result); err != nil {
-		return nil, fmt.Errorf("DecodeUniSDKLoginJSON: %v", err)
+	// 直接反序列化保留已知结构字段；如果服务端把 aid 等字段编码成
+	// 数字/字符串混合格式，则由下面的通用提取逻辑继续解析 token。
+	_ = json.Unmarshal(raw, &result)
+
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, fmt.Errorf("解析 unisdk_login_json 失败: %w", err)
+	}
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("解析 unisdk_login_json 失败: JSON 根节点不是对象")
+	}
+	collectUniSDKLoginFields(value, &result, 0)
+	// APK setBackSauthLoginJson 只读取当前登录对象的 token；不能从其他
+	// 嵌套对象补出一个无关 token。gas_token 存在但为空时也应保留空值。
+	result.SDKToken = jsonStringValue(object["sdk_token"])
+	result.GasToken = jsonStringValue(object["gas_token"])
+	if token, exists := object["gas_token"]; !exists || token == nil {
+		result.GasToken = result.SDKToken
+	}
+	if strings.TrimSpace(result.SDKUID) == "" {
+		result.SDKUID = firstNonEmptyString(result.ChlSDKJSON.SDKUID, result.Extra.OriginSDKUID)
 	}
 	return &result, nil
 }
 
-// 表示 /x19/sdk/check_enter 请求体
+// decodeUniSDKLoginJSON 解码 Base64(UTF-8 JSON)，也接受原始 JSON。
+func decodeUniSDKLoginJSON(value string) ([]byte, error) {
+	trimmed := strings.TrimSpace(value)
+	if len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') {
+		return []byte(trimmed), nil
+	}
+	compact := strings.Map(func(r rune) rune {
+		switch r {
+		case ' ', '\t', '\r', '\n':
+			return -1
+		default:
+			return r
+		}
+	}, trimmed)
+	decoders := []*base64.Encoding{
+		base64.StdEncoding,
+		base64.RawStdEncoding,
+		base64.URLEncoding,
+		base64.RawURLEncoding,
+	}
+	var lastErr error
+	for _, decoder := range decoders {
+		raw, err := decoder.DecodeString(compact)
+		if err == nil {
+			return raw, nil
+		}
+		lastErr = err
+	}
+	return nil, fmt.Errorf("解码 unisdk_login_json 失败: %w", lastErr)
+}
+
+// findUniSDKLoginJSON 在网关包装对象中查找登录 JSON。只返回字符串字段，
+// 避免把普通 data 对象误当作 Base64 内容。
+func findUniSDKLoginJSON(value any, depth int) (string, bool) {
+	if depth > 6 {
+		return "", false
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		for _, key := range []string{"unisdk_login_json", "UNISDK_LOGIN_JSON", "login_json", "loginJsonB64"} {
+			if nested, ok := typed[key].(string); ok && strings.TrimSpace(nested) != "" {
+				return strings.TrimSpace(nested), true
+			}
+		}
+		for _, nested := range typed {
+			if found, ok := findUniSDKLoginJSON(nested, depth+1); ok {
+				return found, true
+			}
+		}
+	case []any:
+		for _, nested := range typed {
+			if found, ok := findUniSDKLoginJSON(nested, depth+1); ok {
+				return found, true
+			}
+		}
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') {
+			var nested any
+			if err := json.Unmarshal([]byte(trimmed), &nested); err == nil {
+				return findUniSDKLoginJSON(nested, depth+1)
+			}
+		}
+	}
+	return "", false
+}
+
+func collectUniSDKLoginFields(value any, result *DecodedUniSDKLoginPayload, depth int) {
+	if depth > 6 || result == nil {
+		return
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		if result.AID == "" {
+			result.AID = jsonStringValue(typed["aid"])
+		}
+		if result.SDKUID == "" {
+			result.SDKUID = jsonStringValue(typed["sdkuid"])
+		}
+		if result.SDKToken == "" {
+			result.SDKToken = jsonStringValue(typed["sdk_token"])
+		}
+		if result.GasToken == "" {
+			result.GasToken = jsonStringValue(typed["gas_token"])
+		}
+		if result.AccessToken == "" {
+			result.AccessToken = jsonStringValue(typed["access_token"])
+		}
+		if result.RefreshToken == "" {
+			result.RefreshToken = jsonStringValue(typed["refresh_token"])
+		}
+		if oauth2, ok := typed["oauth2"].(map[string]any); ok {
+			if result.OAuth2.AccessToken == "" {
+				result.OAuth2.AccessToken = jsonStringValue(oauth2["access_token"])
+			}
+			if result.OAuth2.RefreshToken == "" {
+				result.OAuth2.RefreshToken = jsonStringValue(oauth2["refresh_token"])
+			}
+		}
+		for _, nested := range typed {
+			collectUniSDKLoginFields(nested, result, depth+1)
+		}
+	case []any:
+		for _, nested := range typed {
+			collectUniSDKLoginFields(nested, result, depth+1)
+		}
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') {
+			var nested any
+			if err := json.Unmarshal([]byte(trimmed), &nested); err == nil {
+				collectUniSDKLoginFields(nested, result, depth+1)
+			}
+		}
+	}
+}
+
+func jsonStringValue(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case json.Number:
+		return typed.String()
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(typed), 'f', -1, 32)
+	case int:
+		return strconv.Itoa(typed)
+	default:
+		return ""
+	}
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+// CheckEnterRequest 表示 /x19/sdk/check_enter 请求体。
 type CheckEnterRequest struct {
 	Platform      string `json:"platform"`
 	UDID          string `json:"udid"`
@@ -347,7 +520,7 @@ type CheckEnterRequest struct {
 	ClientLoginSN string `json:"client_login_sn"`
 }
 
-// 表示 /x19/sdk/check_enter 响应
+// CheckEnterResponse 表示 /x19/sdk/check_enter 响应。
 type CheckEnterResponse struct {
 	Code      int             `json:"code"`
 	Subcode   int             `json:"subcode"`
@@ -358,14 +531,14 @@ type CheckEnterResponse struct {
 	RawBody   string          `json:"-"`
 }
 
-// 表示基于 cookie 检测 check_enter 的参数
+// CookieCheckEnterOptions 表示基于 cookie 检测 check_enter 的参数。
 type CookieCheckEnterOptions struct {
 	UniSauth *UniSauthBuildOptions
 	RoleID   string
 	HostID   int
 }
 
-// 表示基于 cookie 的完整检测结果
+// CookieCheckEnterResult 表示基于 cookie 的完整检测结果。
 type CookieCheckEnterResult struct {
 	UniSauth                  *UniSauthResponse
 	DecodedUniSDKLoginPayload *DecodedUniSDKLoginPayload
@@ -373,38 +546,34 @@ type CookieCheckEnterResult struct {
 	CheckEnter                *CheckEnterResponse
 }
 
-// 解析 cookie 字符串
+// ParseCookieString 解析 cookie 字符串。
 func ParseCookieString(cookieStr string) (*CookieData, *SauthData, error) {
 	var cookie CookieData
 	if err := json.Unmarshal([]byte(cookieStr), &cookie); err != nil {
-		return nil, nil, fmt.Errorf("ParseCookieString: %v", err)
+		return nil, nil, fmt.Errorf("解析 cookie 失败: %w", err)
 	}
 
 	var sauth SauthData
 	if err := json.Unmarshal([]byte(cookie.SauthJSON), &sauth); err != nil {
-		return nil, nil, fmt.Errorf("ParseCookieString: %v", err)
+		return nil, nil, fmt.Errorf("解析 sauth_json 失败: %w", err)
 	}
 
 	return &cookie, &sauth, nil
 }
 
-// 从 cookie 构造 uni_sauth 请求
+// BuildUniSauthRequestFromCookieString 从 cookie 构造 uni_sauth 请求。
 func BuildUniSauthRequestFromCookieString(cookieStr string, opts *UniSauthBuildOptions) (*UniSauthRequest, error) {
 	cookie, sauth, err := ParseCookieString(cookieStr)
 	if err != nil {
-		return nil, fmt.Errorf("BuildUniSauthRequestFromCookieString: %v", err)
+		return nil, err
 	}
-	request, err := BuildUniSauthRequestFromCookieData(cookie, sauth, opts)
-	if err != nil {
-		return nil, fmt.Errorf("BuildUniSauthRequestFromCookieString: %v", err)
-	}
-	return request, nil
+	return BuildUniSauthRequestFromCookieData(cookie, sauth, opts)
 }
 
-// 从解析后的 cookie 和 sauth 构造 uni_sauth 请求
+// BuildUniSauthRequestFromCookieData 从解析后的 cookie 和 sauth 构造 uni_sauth 请求。
 func BuildUniSauthRequestFromCookieData(cookie *CookieData, sauth *SauthData, opts *UniSauthBuildOptions) (*UniSauthRequest, error) {
 	if sauth == nil {
-		return nil, fmt.Errorf("BuildUniSauthRequestFromCookieData: Sauth data is nil")
+		return nil, fmt.Errorf("sauth 数据不能为空")
 	}
 
 	appChannel := defaultAppChannel
@@ -491,24 +660,24 @@ func BuildUniSauthRequestFromCookieData(cookie *CookieData, sauth *SauthData, op
 
 	if strings.TrimSpace(request.SDKUID) == "" || strings.TrimSpace(request.SessionID) == "" ||
 		strings.TrimSpace(request.UDID) == "" || strings.TrimSpace(request.DeviceID) == "" {
-		return nil, fmt.Errorf("BuildUniSauthRequestFromCookieData: Cookie is missing required uni_sauth fields")
+		return nil, fmt.Errorf("cookie 中缺少 uni_sauth 必填字段")
 	}
 
 	return request, nil
 }
 
-// 从 cookie 构造 check_enter 请求
+// BuildCheckEnterRequestFromCookieString 从 cookie 构造 check_enter 请求。
 func BuildCheckEnterRequestFromCookieString(cookieStr string, aid int64, roleID string, hostID int) (*CheckEnterRequest, error) {
 	_, sauth, err := ParseCookieString(cookieStr)
 	if err != nil {
-		return nil, fmt.Errorf("BuildCheckEnterRequestFromCookieString: %v", err)
+		return nil, err
 	}
 
 	if aid <= 0 {
-		return nil, fmt.Errorf("BuildCheckEnterRequestFromCookieString: AID must be greater than 0")
+		return nil, fmt.Errorf("aid 必须大于 0")
 	}
 	if strings.TrimSpace(roleID) == "" {
-		return nil, fmt.Errorf("BuildCheckEnterRequestFromCookieString: Role ID must not be empty")
+		return nil, fmt.Errorf("roleID 不能为空")
 	}
 	if hostID <= 0 {
 		hostID = defaultHostID
@@ -526,16 +695,16 @@ func BuildCheckEnterRequestFromCookieString(cookieStr string, aid int64, roleID 
 	}, nil
 }
 
-// 使用 cookie 执行 uni_sauth，并在满足条件时继续 check_enter
+// CheckEnterWithCookie 使用 cookie 执行 uni_sauth，并在满足条件时继续 check_enter。
 func (c *Client) CheckEnterWithCookie(cookieStr string, opts *CookieCheckEnterOptions) (*CookieCheckEnterResult, error) {
 	uniReq, err := BuildUniSauthRequestFromCookieString(cookieStr, optionsUniSauth(opts))
 	if err != nil {
-		return nil, fmt.Errorf("CheckEnterWithCookie: %v", err)
+		return nil, err
 	}
 
 	uniResp, err := c.UniSauth(uniReq)
 	if err != nil {
-		return nil, fmt.Errorf("CheckEnterWithCookie: %v", err)
+		return nil, err
 	}
 
 	result := &CookieCheckEnterResult{
@@ -549,7 +718,7 @@ func (c *Client) CheckEnterWithCookie(cookieStr string, opts *CookieCheckEnterOp
 	if strings.TrimSpace(uniResp.UniSDKLoginJSON) != "" {
 		decoded, err := uniResp.DecodeUniSDKLoginJSON()
 		if err != nil {
-			return nil, fmt.Errorf("CheckEnterWithCookie: %v", err)
+			return nil, err
 		}
 		result.DecodedUniSDKLoginPayload = decoded
 	}
@@ -566,33 +735,33 @@ func (c *Client) CheckEnterWithCookie(cookieStr string, opts *CookieCheckEnterOp
 
 	checkReq, err := BuildCheckEnterRequestFromCookieString(cookieStr, uniResp.AID, roleID, hostID)
 	if err != nil {
-		return nil, fmt.Errorf("CheckEnterWithCookie: %v", err)
+		return nil, err
 	}
 	result.CheckEnterRequest = checkReq
 
 	checkResp, err := c.CheckEnter(checkReq)
 	if err != nil {
-		return nil, fmt.Errorf("CheckEnterWithCookie: %v", err)
+		return nil, err
 	}
 	result.CheckEnter = checkResp
 	return result, nil
 }
 
-// 调用 /x19/sdk/uni_sauth
+// UniSauth 调用 /x19/sdk/uni_sauth。
 func (c *Client) UniSauth(request *UniSauthRequest) (*UniSauthResponse, error) {
 	if request == nil {
-		return nil, fmt.Errorf("UniSauth: Uni_sauth request is nil")
+		return nil, fmt.Errorf("uni_sauth 请求不能为空")
 	}
 
 	body, err := json.Marshal(request)
 	if err != nil {
-		return nil, fmt.Errorf("UniSauth: %v", err)
+		return nil, fmt.Errorf("序列化 uni_sauth 请求失败: %w", err)
 	}
 
 	gasTimestamp := strconv.FormatInt(time.Now().Unix(), 10)
 	gasNonce, err := randomHexString(16)
 	if err != nil {
-		return nil, fmt.Errorf("UniSauth: %v", err)
+		return nil, fmt.Errorf("生成 X-Gas-Nonce 失败: %w", err)
 	}
 
 	path := "/x19/sdk/uni_sauth"
@@ -601,7 +770,7 @@ func (c *Client) UniSauth(request *UniSauthRequest) (*UniSauthResponse, error) {
 
 	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(c.baseURL, "/")+path, strings.NewReader(string(body)))
 	if err != nil {
-		return nil, fmt.Errorf("UniSauth: %v", err)
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Client-Sign", signature)
@@ -614,32 +783,32 @@ func (c *Client) UniSauth(request *UniSauthRequest) (*UniSauthResponse, error) {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("UniSauth: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("UniSauth: %v", err)
+		return nil, err
 	}
 
 	var result UniSauthResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("UniSauth: %v", err)
+		return nil, fmt.Errorf("解析 uni_sauth 响应失败: %w, 响应内容: %s", err, string(respBody))
 	}
 	result.RawBody = string(respBody)
 	return &result, nil
 }
 
-// 调用 /x19/sdk/check_enter
+// CheckEnter 调用 /x19/sdk/check_enter。
 func (c *Client) CheckEnter(request *CheckEnterRequest) (*CheckEnterResponse, error) {
 	if request == nil {
-		return nil, fmt.Errorf("CheckEnter: Check_enter request is nil")
+		return nil, fmt.Errorf("check_enter 请求不能为空")
 	}
 
 	body, err := json.Marshal(request)
 	if err != nil {
-		return nil, fmt.Errorf("CheckEnter: %v", err)
+		return nil, fmt.Errorf("序列化 check_enter 请求失败: %w", err)
 	}
 
 	path := "/x19/sdk/check_enter"
@@ -648,7 +817,7 @@ func (c *Client) CheckEnter(request *CheckEnterRequest) (*CheckEnterResponse, er
 
 	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(c.baseURL, "/")+path, strings.NewReader(string(body)))
 	if err != nil {
-		return nil, fmt.Errorf("CheckEnter: %v", err)
+		return nil, err
 	}
 	req.Header.Set("Accept-Charset", "UTF-8")
 	req.Header.Set("Content-Type", "application/json")
@@ -660,18 +829,18 @@ func (c *Client) CheckEnter(request *CheckEnterRequest) (*CheckEnterResponse, er
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("CheckEnter: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("CheckEnter: %v", err)
+		return nil, err
 	}
 
 	var result CheckEnterResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("CheckEnter: %v", err)
+		return nil, fmt.Errorf("解析 check_enter 响应失败: %w, 响应内容: %s", err, string(respBody))
 	}
 	result.RawBody = string(respBody)
 	return &result, nil
@@ -730,7 +899,7 @@ func randomDigits(length int) string {
 func randomHexString(byteLen int) (string, error) {
 	buf := make([]byte, byteLen)
 	if _, err := rand.Read(buf); err != nil {
-		return "", fmt.Errorf("randomHexString: %v", err)
+		return "", err
 	}
 	return fmt.Sprintf("%x", buf), nil
 }
@@ -765,11 +934,11 @@ func defaultSDKLog(udid string, cookie *CookieData) UniSauthSDKLog {
 
 func parseAimInfo(raw string) (*AimInfo, error) {
 	if strings.TrimSpace(raw) == "" {
-		return nil, fmt.Errorf("parseAimInfo: Aim info is empty")
+		return nil, fmt.Errorf("empty aim_info")
 	}
 	var result AimInfo
 	if err := json.Unmarshal([]byte(raw), &result); err != nil {
-		return nil, fmt.Errorf("parseAimInfo: %v", err)
+		return nil, err
 	}
 	return &result, nil
 }

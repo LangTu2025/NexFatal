@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
-	wsstructure "github.com/xingbaiawa/LycorisFlow/structure"
 	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
 	"github.com/LangTu2025/NexFatal/constants"
 	"github.com/LangTu2025/NexFatal/control"
@@ -22,6 +20,8 @@ import (
 	"github.com/LangTu2025/NexFatal/utils"
 	convertpkg "github.com/LangTu2025/NexFatal/utils/convert"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
+	wsstructure "github.com/xingbaiawa/LycorisFlow/structure"
 )
 
 func runBuildQueue(ctx context.Context, serverConfig defines.ControlConfig, tasks []defines.BuildTaskConfig) error {
@@ -267,6 +267,7 @@ func collectBuildTask(previous *defines.BuildTaskConfig) (defines.BuildTaskConfi
 		task.Speed = previous.Speed
 		task.RegionSize = previous.RegionSize
 		task.VerifyRegion = previous.VerifyRegion
+		task.VerifyCommandBlocks = previous.VerifyCommandBlocks
 		task.AutoPlaceLight = previous.AutoPlaceLight
 		task.LightSpacing = previous.LightSpacing
 		task.StartChunk = previous.StartChunk
@@ -286,6 +287,7 @@ func collectBuildTask(previous *defines.BuildTaskConfig) (defines.BuildTaskConfi
 		task.LightSpacing = ui.InputInfoIntWithDefault("亮度方块最小间距(3~12):", defines.DefaultLightSpacing)
 	}
 	task.VerifyRegion = ui.ConfirmInfoWithDefault(loc.Text(loc.KeyBuildPromptVerifyIntegrity), true)
+	task.VerifyCommandBlocks = ui.ConfirmInfoWithDefault(loc.Text(loc.KeyBuildPromptVerifyCommandBlocks), true)
 	setResumeStart(&task, readResumeStart(task.FilePath))
 	task.Normalize()
 	return task, nil

@@ -39,7 +39,7 @@ type OnlineLobbyRoomSearchEntity struct {
 	MemberUIDs           []string    `json:"member_uids"`
 }
 
-// 返回房间唯一标识，兼容 room_id/entity_id 两种字段
+// ID 返回房间唯一标识，兼容 room_id/entity_id 两种字段
 func (e OnlineLobbyRoomSearchEntity) ID() string {
 	if id := e.RoomID.String(); id != "" {
 		return id
@@ -54,24 +54,29 @@ type OnlineLobbyRoomSearchResponse struct {
 	Total    Uncertain                     `json:"total"`
 }
 
-// 通过房间号或部分房名分页搜索在线大厅房间
+// 通过关键词搜索在线大厅房间（对应 /online-lobby-room/query/search-by-name-v2）
+// keyword 通常传入“房间号”或部分房名。length/offset 可用于分页，version/res_id 可留空或根据需要填写。
 func (c *Client) SearchOnlineLobbyRoomByKeyword(keyword string, length, offset int) (*OnlineLobbyRoomSearchResponse, error) {
 	api := "/online-lobby-room/query/search-by-name-v2"
+	if c.IsX19 {
+		api = "/online-lobby-room/query/search-by-name"
+	}
+
 	requestData := map[string]interface{}{
-		"length":  length,
-		"version": GameVersion,
-		"res_id":  "",
-		"keyword": keyword,
-		"offset":  offset,
+		"length":    length,
+		"version":   GameVersion,
+		"res_id":    "",
+		"room_name": keyword,
+		"offset":    offset,
 	}
 
 	jsonData, err := json.Marshal(requestData)
 	if err != nil {
-		return nil, fmt.Errorf("SearchOnlineLobbyRoomByKeyword: %v", err)
+		return nil, err
 	}
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return nil, fmt.Errorf("SearchOnlineLobbyRoomByKeyword: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -83,17 +88,17 @@ func (c *Client) SearchOnlineLobbyRoomByKeyword(keyword string, length, offset i
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("SearchOnlineLobbyRoomByKeyword: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("SearchOnlineLobbyRoomByKeyword: %v", err)
+		return nil, err
 	}
 	var searchResp OnlineLobbyRoomSearchResponse
 	if err := json.Unmarshal(respBody, &searchResp); err != nil {
-		return nil, fmt.Errorf("SearchOnlineLobbyRoomByKeyword: %v", err)
+		return nil, fmt.Errorf("解析在线大厅搜索响应失败: %v, 响应内容: %s", err, string(respBody))
 	}
 	return &searchResp, nil
 }
@@ -109,10 +114,10 @@ type OnlineLobbyRoomBrief struct {
 func (c *Client) FindOnlineLobbyRoomsByRoomNumber(roomNumber string) ([]OnlineLobbyRoomBrief, error) {
 	resp, err := c.SearchOnlineLobbyRoomByKeyword(roomNumber, 20, 0)
 	if err != nil {
-		return nil, fmt.Errorf("FindOnlineLobbyRoomsByRoomNumber: %v", err)
+		return nil, err
 	}
 	if resp.Code != 0 {
-		return nil, fmt.Errorf("FindOnlineLobbyRoomsByRoomNumber: Search failed (code=%d): %s", resp.Code, resp.Message)
+		return nil, fmt.Errorf("搜索失败(%d): %s", resp.Code, resp.Message)
 	}
 	results := make([]OnlineLobbyRoomBrief, 0, len(resp.Entities))
 	for _, e := range resp.Entities {

@@ -12,7 +12,7 @@ func randomBytes(length int) ([]byte, error) {
 	}
 	buf := make([]byte, length)
 	if _, err := rand.Read(buf); err != nil {
-		return nil, fmt.Errorf("randomBytes: %v", err)
+		return nil, err
 	}
 	return buf, nil
 }
@@ -20,7 +20,7 @@ func randomBytes(length int) ([]byte, error) {
 func randomHex(byteLen int) (string, error) {
 	bytes, err := randomBytes(byteLen)
 	if err != nil {
-		return "", fmt.Errorf("randomHex: %v", err)
+		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
 }
@@ -28,7 +28,7 @@ func randomHex(byteLen int) (string, error) {
 func randomMacLowerCase() (string, error) {
 	bytes, err := randomBytes(6)
 	if err != nil {
-		return "", fmt.Errorf("randomMacLowerCase: %v", err)
+		return "", err
 	}
 	bytes[0] = (bytes[0] | 0x02) & 0xFE
 	return fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x", bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5]), nil

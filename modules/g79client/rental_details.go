@@ -7,12 +7,12 @@ import (
 	"strings"
 )
 
-// 表示租赁服详情请求
+// GetRentalServerDetailsRequest 表示租赁服详情请求。
 type GetRentalServerDetailsRequest struct {
 	ServerID string `json:"server_id"`
 }
 
-// 表示租赁服详情实体
+// RentalServerDetailsEntity 表示租赁服详情实体。
 type RentalServerDetailsEntity struct {
 	EntityID               string    `json:"entity_id"`
 	WorldID                string    `json:"world_id"`
@@ -37,17 +37,17 @@ type RentalServerDetailsEntity struct {
 	PVP                    bool      `json:"pvp"`
 }
 
-// 表示租赁服详情响应
+// GetRentalServerDetailsResponse 表示租赁服详情响应。
 type GetRentalServerDetailsResponse struct {
 	Response
 	Entity RentalServerDetailsEntity `json:"entity"`
 }
 
-// 获取租赁服详情
+// GetRentalServerDetails 获取租赁服详情。
 func (c *Client) GetRentalServerDetails(serverID string) (*GetRentalServerDetailsResponse, error) {
 	serverID = strings.TrimSpace(serverID)
 	if serverID == "" {
-		return nil, fmt.Errorf("GetRentalServerDetails: Server_id must not be empty")
+		return nil, fmt.Errorf("GetRentalServerDetails: server_id 不能为空")
 	}
 
 	api := "/rental-server-details/get"
@@ -58,12 +58,12 @@ func (c *Client) GetRentalServerDetails(serverID string) (*GetRentalServerDetail
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		return nil, fmt.Errorf("GetRentalServerDetails: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return nil, fmt.Errorf("GetRentalServerDetails: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -76,18 +76,18 @@ func (c *Client) GetRentalServerDetails(serverID string) (*GetRentalServerDetail
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GetRentalServerDetails: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("GetRentalServerDetails: %v", err)
+		return nil, err
 	}
 
 	var detailsResp GetRentalServerDetailsResponse
 	if err := json.Unmarshal(respBody, &detailsResp); err != nil {
-		return nil, fmt.Errorf("GetRentalServerDetails: %v", err)
+		return nil, fmt.Errorf("解析租赁服详情响应失败: %v, 响应内容: %s", err, string(respBody))
 	}
 	return &detailsResp, nil
 }

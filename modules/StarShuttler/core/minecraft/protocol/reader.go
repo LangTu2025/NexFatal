@@ -666,6 +666,22 @@ func (r *Reader) EventOrdinal(x *Event) {
 	r.Varuint32(&ordinal)
 }
 
+// StringConst reads a string and checks it against the expected constant.
+func (r *Reader) StringConst(expected string) {
+	var length uint32
+	r.Varuint32(&length)
+	if length != uint32(len(expected)) {
+		r.panicf("expected string with a length of %x, got %v", len(expected), length)
+	}
+	data := make([]byte, len(expected))
+	if _, err := io.ReadFull(r.r, data); err != nil {
+		r.panic(err)
+	}
+	if string(data) != expected {
+		r.panicf("expected string to be %q, got %q", expected, data)
+	}
+}
+
 // TransactionDataType reads an InventoryTransactionData type from the reader.
 func (r *Reader) TransactionDataType(x *InventoryTransactionData) {
 	var transactionType uint32

@@ -24,45 +24,35 @@ type SearchUserEntity struct {
 	VipLevel     Uncertain      `json:"recharge_vip_level"`
 }
 
-// 表示 3.9 好友搜索响应
-type SearchFriendResponse struct {
+// 搜索用户响应
+type SearchUserByNameOrMailResponse struct {
 	Response
 	Entities []SearchUserEntity `json:"entities"`
 }
 
-// 当前客户端支持的好友搜索条件，昵称或角色 ID 至少填写一个
-type SearchFriendRequest struct {
-	NameOrMail string
-	RoleID     string
-}
-
-// 按 3.9 客户端格式搜索好友
-func (c *Client) SearchFriend(search SearchFriendRequest) (*SearchFriendResponse, error) {
+// 通过名称或邮箱搜索用户
+// searchType: 0-精确 1-模糊；limit: 返回数量
+func (c *Client) SearchUserByNameOrMail(nameOrMail string, searchType, limit int) (*SearchUserByNameOrMailResponse, error) {
 	api := "/user-search-friend/"
 
-	requestData := make(map[string]any, 2)
-	if name := strings.TrimSpace(search.NameOrMail); name != "" {
-		requestData["name_or_mail"] = name
-	}
-	if roleID := strings.TrimSpace(search.RoleID); roleID != "" {
-		requestData["role_id"] = roleID
-	}
-	if len(requestData) == 0 {
-		return nil, fmt.Errorf("SearchFriend: NameOrMail and RoleID must not both be empty")
+	requestData := map[string]any{
+		"name_or_mail": nameOrMail,
+		"search_type":  searchType,
+		"limit":        limit,
 	}
 
 	jsonData, err := json.Marshal(requestData)
 	if err != nil {
-		return nil, fmt.Errorf("SearchFriend: %v", err)
+		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(jsonData)))
+	req, err := http.NewRequest("POST", c.ReleaseJSON.WebServerUrl+api, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return nil, fmt.Errorf("SearchFriend: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	req.Header.Set("User-Agent", androidUserAgent)
+	req.Header.Set("User-Agent", "WPFLauncher/0.0.0.0")
 	req.Header.Set("user-id", c.UserID)
 
 	token := CalculateDynamicToken(api, string(jsonData), c.UserToken)
@@ -70,18 +60,18 @@ func (c *Client) SearchFriend(search SearchFriendRequest) (*SearchFriendResponse
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("SearchFriend: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("SearchFriend: %v", err)
+		return nil, err
 	}
 
-	var result SearchFriendResponse
+	var result SearchUserByNameOrMailResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("SearchFriend: %v", err)
+		return nil, fmt.Errorf("解析用户搜索响应失败: %v, 响应内容: %s", err, string(respBody))
 	}
 	return &result, nil
 }

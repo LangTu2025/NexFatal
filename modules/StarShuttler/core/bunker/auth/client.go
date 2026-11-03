@@ -11,7 +11,7 @@ import (
 	g79 "github.com/xingbaiawa/g79client"
 )
 
-const defaultAuthServer = "https://user.nexfatal.pro"
+const defaultAuthServer = "https://user.aurelrune.com"
 
 type ClientOptions struct {
 	AuthServer          string

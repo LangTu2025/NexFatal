@@ -24,10 +24,10 @@ const (
 	//
 	// 部分方块需要客户端以点击方块的形式来放置，
 	// 例如告示牌和不同朝向的潜影盒。
-	// 这里则选择了绿宝石块作为被点击的方块。
+	// 这里则选择了荧石作为被点击的方块。
 	//
-	// SuperScript 最喜欢绿宝石块了！
-	BasePlaceBlock string = "minecraft:emerald_block"
+	// SuperScript 最喜欢荧石了！
+	BasePlaceBlock string = "minecraft:glowstone"
 )
 
 // UseItemOnBlocks 是机器人在使用手
@@ -114,7 +114,7 @@ func (b *BotClick) clickBlock(
 			LegacySetItemSlots: nil,
 			Actions:            nil,
 			ActionType:         protocol.UseItemActionClickBlock,
-			TriggerType:        protocol.TriggerTypeUnknown,
+			TriggerType:        protocol.TriggerTypePlayerInput,
 			BlockPosition:      request.BlockPos,
 			BlockFace:          blockFace,
 			HotBarSlot:         int32(request.HotbarSlotID),

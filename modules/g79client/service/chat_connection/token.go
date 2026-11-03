@@ -41,5 +41,5 @@ func decodeToken(token string) ([]byte, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("decodeToken: Token does not contain a valid key length: %d", len(token))
+	return nil, fmt.Errorf("chat_connection: 无法根据 token 推导有效密钥长度 (%d)", len(token))
 }

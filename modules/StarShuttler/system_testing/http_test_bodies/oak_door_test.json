@@ -1,0 +1,5 @@
+{
+  "block_name": "minecraft:oak_door",
+  "block_states_string": "[\"direction\"=1,\"door_hinge_bit\"=true,\"open_bit\"=false,\"upper_block_bit\"=false]",
+  "block_nbt_base64_string": "CgAAAA=="
+}

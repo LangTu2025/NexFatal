@@ -7,13 +7,13 @@ import (
 	"strings"
 )
 
-// 表示 /pe-user-login-after 接口的响应体
+// PeUserLoginAfterResponse 表示 /pe-user-login-after 接口的响应体。
 type PeUserLoginAfterResponse struct {
 	Response
 	Entity UserSocialState `json:"entity"`
 }
 
-// 请求 /pe-user-login-after 接口并缓存响应
+// GetPeUserLoginAfter 请求 /pe-user-login-after 接口并缓存响应。
 func (c *Client) GetPeUserLoginAfter() (*PeUserLoginAfterResponse, error) {
 	if c.peUserLoginAfter != nil {
 		return c.peUserLoginAfter, nil
@@ -26,12 +26,12 @@ func (c *Client) GetPeUserLoginAfter() (*PeUserLoginAfterResponse, error) {
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("GetPeUserLoginAfter: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(body)))
 	if err != nil {
-		return nil, fmt.Errorf("GetPeUserLoginAfter: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -44,18 +44,18 @@ func (c *Client) GetPeUserLoginAfter() (*PeUserLoginAfterResponse, error) {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GetPeUserLoginAfter: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("GetPeUserLoginAfter: %v", err)
+		return nil, err
 	}
 
 	var result PeUserLoginAfterResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("GetPeUserLoginAfter: %v", err)
+		return nil, fmt.Errorf("解析 pe-user-login-after 响应失败: %v, 响应内容: %s", err, string(respBody))
 	}
 
 	c.peUserLoginAfter = &result

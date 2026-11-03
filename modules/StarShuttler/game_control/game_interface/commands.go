@@ -101,7 +101,7 @@ func packCommandRequest(command string, origin uint32, requestID uuid.UUID) *pac
 		},
 		Internal:  false,
 		UnLimited: false,
-		Version:   44,
+		Version:   "latest",
 	}
 }
 

@@ -129,6 +129,9 @@ func (m *accountManager) acquire(ctx context.Context) (*g79.Client, error) {
 			m.selectedCookie = record.Cookie
 			return client, nil
 		}
+		if g79.IsClientVersionTooLowError(authErr) {
+			return nil, authErr
+		}
 		lastFailure = describeAccountFailure(authErr)
 		switch {
 		case IsBannedLoginError(authErr):

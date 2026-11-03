@@ -10,21 +10,23 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	bwochunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
-	bwodefine "github.com/TriM-Organization/bedrock-world-operator/define"
-	bwoworld "github.com/TriM-Organization/bedrock-world-operator/world"
-	"github.com/mholt/archiver/v3"
-	"github.com/mitchellh/mapstructure"
-	structure_define "github.com/xingbaiawa/LycorisFlow/define"
 	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
 	"github.com/LangTu2025/NexFatal/control"
 	"github.com/LangTu2025/NexFatal/defines"
 	builderutils "github.com/LangTu2025/NexFatal/utils"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	bwochunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
+	bwodefine "github.com/TriM-Organization/bedrock-world-operator/define"
+	bwoworld "github.com/TriM-Organization/bedrock-world-operator/world"
+	"github.com/google/uuid"
+	"github.com/mholt/archiver/v3"
+	"github.com/mitchellh/mapstructure"
+	structure_define "github.com/xingbaiawa/LycorisFlow/define"
 	mcnbt "github.com/xingbaiawa/StarShuttler/core/minecraft/nbt"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/block_actors"
@@ -326,6 +328,7 @@ func (e *ExportTask) Start(ctx context.Context) error {
 		})
 	}
 
+	allNBTs := make(map[bwodefine.ChunkPos][]map[string]any)
 	for _, area := range areas {
 		// 大区域按请求半径拆开处理，每个窗口独立移动、读取并保存到临时世界。
 		if err := e.waitForContext(); err != nil {
@@ -345,7 +348,8 @@ func (e *ExportTask) Start(ctx context.Context) error {
 		windows := subChunkWindows(area, 6)
 		NBTs := map[bwodefine.ChunkPos][]map[string]any{}
 		processResponse := func(resp *packet.SubChunk) []bwodefine.SubChunkPos {
-			// 子区块实体 NBT 会跟在子区块二进制后面，需要和子区块一起解码并按区块归档。
+			// 新版服务端不再把方块实体 NBT 附在子区块负载后面；实体数据通过
+			// StructureTemplateDataRequest 单独请求，子区块负载只负责方块本体。
 			subChunkStartPos := resp.Position
 			nextUnfetched := make([]bwodefine.SubChunkPos, 0)
 			for _, entry := range resp.SubChunkEntries {
@@ -360,7 +364,7 @@ func (e *ExportTask) Start(ctx context.Context) error {
 				}
 				switch entry.Result {
 				case protocol.SubChunkResultSuccess:
-					subChunk, nbts, err := decodeSubChunkPayload(entry.RawPayload, dimension.Range())
+					subChunk, err := decodeSubChunkBlocks(entry.RawPayload, dimension.Range())
 					if err != nil {
 						if e.everySubChunkDecodeNBTFailedCallback != nil {
 							e.everySubChunkDecodeNBTFailedCallback(subChunkPos, err)
@@ -379,7 +383,6 @@ func (e *ExportTask) Start(ctx context.Context) error {
 							e.everyChunkExportCallback(chunkPos)
 						}
 					}
-					NBTs[chunkPos] = append(NBTs[chunkPos], nbts...)
 				case protocol.SubChunkResultChunkNotFound:
 					nextUnfetched = append(nextUnfetched, subChunkPos)
 				}
@@ -427,16 +430,55 @@ func (e *ExportTask) Start(ctx context.Context) error {
 			unfetchedSubChunksPos = nextUnfetched
 		}
 
-		// 方块实体列表必须等同区块的全部子区块都保存后再落盘，避免覆盖同区块前面收集到的 NBT。
-		for chunkPos, nbt := range NBTs {
-			if len(nbt) == 0 {
-				continue
-			}
-			if err := bedrockWorld.SaveNBT(dimension, chunkPos, nbt); err != nil {
-				if e.everyChunkNBTSaveFailedCallback != nil {
-					e.everyChunkNBTSaveFailedCallback(chunkPos, err)
+		// 新版协议不再从子区块尾部读取 NBT。每个区块按当前导出高度发起一次
+		// StructureRequest，响应完成后再落盘，避免同一区块被多个子区块覆盖。
+		minChunkX, maxChunkX := orderedInt32Range(area.Start.X()>>4, area.End.X()>>4)
+		minChunkZ, maxChunkZ := orderedInt32Range(area.Start.Z()>>4, area.End.Z()>>4)
+		minY, maxY := orderedInt32Range(area.Start.Y(), area.End.Y())
+		for chunkX := minChunkX; chunkX <= maxChunkX; chunkX++ {
+			for chunkZ := minChunkZ; chunkZ <= maxChunkZ; chunkZ++ {
+				chunkPos := bwodefine.ChunkPos{chunkX, chunkZ}
+				if _, ok := NBTs[chunkPos]; !ok {
+					NBTs[chunkPos] = make([]map[string]any, 0)
 				}
-				continue
+				for yStart := minY; yStart <= maxY; {
+					yEnd := min(yStart+383, maxY)
+					blockEntities, err := e.requestStructureBlockEntities(
+						protocol.BlockPos{chunkX * 16, yStart, chunkZ * 16},
+						protocol.BlockPos{16, yEnd - yStart + 1, 16},
+					)
+					if err != nil {
+						if e.everySubChunkDecodeNBTFailedCallback != nil {
+							e.everySubChunkDecodeNBTFailedCallback(
+								bwodefine.SubChunkPos{chunkX, yStart >> 4, chunkZ},
+								err,
+							)
+						}
+					} else {
+						for _, blockEntity := range blockEntities {
+							if blockEntityWithinRange(blockEntity, e.StartPos, e.EndPos) {
+								NBTs[chunkPos] = append(NBTs[chunkPos], blockEntity)
+							}
+						}
+					}
+					yStart = yEnd + 1
+				}
+			}
+		}
+
+		for chunkPos, nbt := range NBTs {
+			if len(nbt) > 0 {
+				allNBTs[chunkPos] = append(allNBTs[chunkPos], nbt...)
+			}
+		}
+	}
+
+	// 分区边界可能切过同一个区块，所有结构响应汇总后再写入，避免后一个
+	// 分区覆盖前一个分区已经保存的方块实体。
+	for chunkPos, nbt := range allNBTs {
+		if err := bedrockWorld.SaveNBT(dimension, chunkPos, nbt); err != nil {
+			if e.everyChunkNBTSaveFailedCallback != nil {
+				e.everyChunkNBTSaveFailedCallback(chunkPos, err)
 			}
 		}
 	}
@@ -470,6 +512,159 @@ func (e *ExportTask) Start(ctx context.Context) error {
 		e.finishedCallback(outputPath)
 	}
 	return nil
+}
+
+const exportStructureRequestTimeout = 5 * time.Second
+
+// requestStructureBlockEntities obtains block entity NBT through the structure
+// request packet. The X/Z dimensions stay at one chunk and the Y dimension is
+// bounded by the Bedrock structure size limit.
+func (e *ExportTask) requestStructureBlockEntities(origin, size protocol.BlockPos) ([]map[string]any, error) {
+	if e.control.Resources == nil {
+		return nil, errors.New("resources control is not initialized")
+	}
+	if e.control.API == nil {
+		return nil, errors.New("game interface is not initialized")
+	}
+
+	request := &packet.StructureTemplateDataRequest{
+		StructureName: "nexfatal:export_" + uuid.NewString(),
+		Position:      origin,
+		Settings: protocol.StructureSettings{
+			PaletteName:               "default",
+			IgnoreEntities:            true,
+			IgnoreBlocks:              false,
+			AllowNonTickingChunks:     true,
+			Size:                      size,
+			Offset:                    protocol.BlockPos{0, 0, 0},
+			LastEditingPlayerUniqueID: e.control.API.GetBotInfo().EntityUniqueID,
+			Integrity:                 1,
+		},
+		RequestType: packet.StructureTemplateRequestExportFromSave,
+	}
+
+	responseCh := make(chan *packet.StructureTemplateDataResponse, 1)
+	e.control.Resources.StructureRequest().SetStructureRequestCallback(request, func(response *packet.StructureTemplateDataResponse) {
+		select {
+		case responseCh <- response:
+		default:
+		}
+	})
+
+	if err := e.control.Resources.WritePacket(request); err != nil {
+		e.control.Resources.StructureRequest().DeleteStructureRequestCallback(request.StructureName)
+		return nil, fmt.Errorf("write structure request: %w", err)
+	}
+
+	timer := time.NewTimer(exportStructureRequestTimeout)
+	defer timer.Stop()
+	select {
+	case <-e.taskContext().Done():
+		e.control.Resources.StructureRequest().DeleteStructureRequestCallback(request.StructureName)
+		return nil, e.taskContext().Err()
+	case <-timer.C:
+		e.control.Resources.StructureRequest().DeleteStructureRequestCallback(request.StructureName)
+		return nil, fmt.Errorf("structure request timed out at %v", origin)
+	case response := <-responseCh:
+		if response == nil {
+			return nil, errors.New("empty structure response")
+		}
+		if !response.Success {
+			return nil, fmt.Errorf("structure request failed at %v", origin)
+		}
+		return extractStructureBlockEntities(response.StructureTemplate, origin, request.Settings.Size)
+	}
+}
+
+func extractStructureBlockEntities(template map[string]any, origin, size protocol.BlockPos) ([]map[string]any, error) {
+	structure, ok := template["structure"].(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+	palette, ok := structure["palette"].(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+	defaultPalette, ok := palette["default"].(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+	positionData, ok := defaultPalette["block_position_data"].(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+
+	sizeX, sizeY, sizeZ := int64(size.X()), int64(size.Y()), int64(size.Z())
+	if sizeX <= 0 || sizeY <= 0 || sizeZ <= 0 {
+		return nil, fmt.Errorf("invalid structure size %v", size)
+	}
+	entities := make([]map[string]any, 0, len(positionData))
+	for indexText, rawData := range positionData {
+		positionEntry, ok := rawData.(map[string]any)
+		if !ok {
+			continue
+		}
+		entity, ok := positionEntry["block_entity_data"].(map[string]any)
+		if !ok {
+			continue
+		}
+
+		copyEntity := maps.Clone(entity)
+		x, xok := exportNBTInt32(copyEntity["x"])
+		y, yok := exportNBTInt32(copyEntity["y"])
+		z, zok := exportNBTInt32(copyEntity["z"])
+		if !xok || !yok || !zok {
+			index, err := strconv.ParseInt(indexText, 10, 64)
+			if err != nil || index < 0 || index >= sizeX*sizeY*sizeZ {
+				return nil, fmt.Errorf("invalid structure block position index %q", indexText)
+			}
+			x = origin.X() + int32(index/(sizeY*sizeZ))
+			remaining := index % (sizeY * sizeZ)
+			y = origin.Y() + int32(remaining/sizeZ)
+			z = origin.Z() + int32(remaining%sizeZ)
+		}
+		copyEntity["x"], copyEntity["y"], copyEntity["z"] = x, y, z
+		entities = append(entities, copyEntity)
+	}
+	return entities, nil
+}
+
+func exportNBTInt32(value any) (int32, bool) {
+	switch value := value.(type) {
+	case int32:
+		return value, true
+	case int16:
+		return int32(value), true
+	case int8:
+		return int32(value), true
+	case int:
+		return int32(value), true
+	case int64:
+		return int32(value), true
+	case uint8:
+		return int32(value), true
+	case uint16:
+		return int32(value), true
+	case uint32:
+		return int32(value), true
+	case uint64:
+		return int32(value), true
+	default:
+		return 0, false
+	}
+}
+
+func blockEntityWithinRange(entity map[string]any, start, end defines.BlockPos) bool {
+	x, xok := exportNBTInt32(entity["x"])
+	y, yok := exportNBTInt32(entity["y"])
+	z, zok := exportNBTInt32(entity["z"])
+	if !xok || !yok || !zok {
+		return false
+	}
+	minX, maxX := orderedInt32Range(start.X(), end.X())
+	minY, maxY := orderedInt32Range(start.Y(), end.Y())
+	minZ, maxZ := orderedInt32Range(start.Z(), end.Z())
+	return x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ
 }
 
 // Pause 暂不支持暂停导出任务。
@@ -777,7 +972,19 @@ func subChunkWindows(area exportArea, radius int32) []subChunkWindow {
 	return windows
 }
 
+// decodeSubChunkBlocks 解码网络子区块方块本体。新版协议的尾部不再是可直接
+// 解码的方块实体 NBT，因此导出流程通过 StructureTemplateDataRequest 获取实体。
+func decodeSubChunkBlocks(data []byte, r bwodefine.Range) (*bwochunk.SubChunk, error) {
+	buf := bytes.NewBuffer(data)
+	subChunk, _, err := bwochunk.DecodeSubChunk(buf, r, bwochunk.NetworkEncoding)
+	if err != nil {
+		return nil, err
+	}
+	return subChunk, nil
+}
+
 // decodeSubChunkPayload 解码网络子区块，并继续读取尾部附加的方块实体 NBT。
+// 保留该兼容路径供区域校验使用；导出任务本身使用 decodeSubChunkBlocks。
 func decodeSubChunkPayload(data []byte, r bwodefine.Range) (*bwochunk.SubChunk, []map[string]any, error) {
 	buf := bytes.NewBuffer(data)
 	subChunk, _, err := bwochunk.DecodeSubChunk(buf, r, bwochunk.NetworkEncoding)

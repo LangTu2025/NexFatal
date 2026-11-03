@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -25,16 +26,14 @@ const (
 	requestTimeout    = 15 * time.Second
 	defaultUserAgent  = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0 Mobile Safari/537.36"
 	oauthSDKVersion   = "3.18.0"
-	oauthGameKey      = "113814"
-	oauthGameVersion  = "3.9.5.297099"
-	oauthGameCode     = "840297099"
-	oauthCallbackPath = "/openapi/oauth-callback.html?gamekey=44770&game_key=113814"
+	oauthGameKey      = "115716"
+	oauthCallbackPath = "/openapi/oauth-callback.html?gamekey=44770&game_key=115716"
 )
 
 var captchaIDPattern = regexp.MustCompile(`(?i)name\s*=\s*["']captcha_id["']\s+value\s*=\s*["']([^"']+)["']`)
 var htmlTagPattern = regexp.MustCompile(`<[^>]+>`)
 
-// 封装 4399 手游渠道 OAuth 登录流程
+// Client 封装 4399 手游渠道 OAuth 登录流程。
 type Client struct {
 	httpClient *http.Client
 	apiBaseURL string
@@ -42,7 +41,7 @@ type Client struct {
 	userAgent  string
 }
 
-// 创建默认 4399 客户端
+// NewClient 创建默认 4399 客户端。
 func NewClient(httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: requestTimeout}
@@ -60,45 +59,41 @@ func NewClient(httpClient *http.Client) *Client {
 	}
 }
 
-// 允许自定义请求使用的 User-Agent
+// SetUserAgent 允许自定义请求使用的 User-Agent。
 func (c *Client) SetUserAgent(userAgent string) {
 	if strings.TrimSpace(userAgent) != "" {
 		c.userAgent = userAgent
 	}
 }
 
-// 注册 4399 OAuth 设备信息
+// RegisterDevice 注册 4399 OAuth 设备信息。
 func RegisterDevice(ctx context.Context) (*Device, error) {
 	return NewClient(nil).RegisterDevice(ctx)
 }
 
-// 使用默认客户端登录，并返回可生成 Cookie 的用户对象
+// LoginWithPassword 使用默认客户端登录，并返回可生成 Cookie 的用户对象。
 func LoginWithPassword(ctx context.Context, username, password string) (*User, error) {
 	return NewClient(nil).LoginWithPassword(ctx, username, password)
 }
 
-// 使用默认客户端登录，并直接返回 g79client 可消费的 Cookie 字符串
+// LoginCookieWithPassword 使用默认客户端登录，并直接返回 g79client 可消费的 Cookie 字符串。
 func LoginCookieWithPassword(ctx context.Context, username, password string) (string, error) {
 	user, err := LoginWithPassword(ctx, username, password)
 	if err != nil {
-		return "", fmt.Errorf("LoginCookieWithPassword: %v", err)
+		return "", err
 	}
-	cookie, err := user.CookieString()
-	if err != nil {
-		return "", fmt.Errorf("LoginCookieWithPassword: %v", err)
-	}
-	return cookie, nil
+	return user.CookieString()
 }
 
-// 注册临时 4399 OAuth 设备、完成密码登录，并返回 Cookie 字符串
+// RegisterCookieWithPassword 注册临时 4399 OAuth 设备、完成密码登录，并返回 Cookie 字符串。
 func RegisterCookieWithPassword(ctx context.Context, username, password string) (string, error) {
 	return NewClient(nil).RegisterCookieWithPassword(ctx, username, password)
 }
 
-// 注册 4399 OAuth 设备信息
+// RegisterDevice 注册 4399 OAuth 设备信息。
 func (c *Client) RegisterDevice(ctx context.Context) (*Device, error) {
 	if c == nil {
-		return nil, errors.New("RegisterDevice: Client is not initialized")
+		return nil, errors.New("com4399: client 未初始化")
 	}
 	device := &Device{
 		DeviceIdentifier:   generateIdentifier(),
@@ -108,36 +103,28 @@ func (c *Client) RegisterDevice(ctx context.Context) (*Device, error) {
 	}
 	state, err := device.oauth(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("RegisterDevice: %v", err)
+		return nil, err
 	}
 	device.State = state
 	return device, nil
 }
 
-// 注册临时设备并用密码登录 4399
+// LoginWithPassword 注册临时设备并用密码登录 4399。
 func (c *Client) LoginWithPassword(ctx context.Context, username, password string) (*User, error) {
 	device, err := c.RegisterDevice(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("LoginWithPassword: %v", err)
+		return nil, err
 	}
-	user, err := device.LoginWithPassword(ctx, username, password)
-	if err != nil {
-		return nil, fmt.Errorf("LoginWithPassword: %v", err)
-	}
-	return user, nil
+	return device.LoginWithPassword(ctx, username, password)
 }
 
-// 注册临时 4399 OAuth 设备、完成密码登录，并返回 Cookie 字符串
+// RegisterCookieWithPassword 注册临时 4399 OAuth 设备、完成密码登录，并返回 Cookie 字符串。
 func (c *Client) RegisterCookieWithPassword(ctx context.Context, username, password string) (string, error) {
 	user, err := c.LoginWithPassword(ctx, username, password)
 	if err != nil {
-		return "", fmt.Errorf("RegisterCookieWithPassword: %v", err)
+		return "", err
 	}
-	cookie, err := user.CookieString()
-	if err != nil {
-		return "", fmt.Errorf("RegisterCookieWithPassword: %v", err)
-	}
-	return cookie, nil
+	return user.CookieString()
 }
 
 func (c *Client) get(ctx context.Context, rawURL string) ([]byte, int, http.Header, error) {
@@ -150,11 +137,11 @@ func (c *Client) postForm(ctx context.Context, rawURL string, form url.Values) (
 
 func (c *Client) do(ctx context.Context, method, rawURL, body, contentType string) ([]byte, int, http.Header, error) {
 	if c == nil {
-		return nil, 0, nil, errors.New("do: Client is not initialized")
+		return nil, 0, nil, errors.New("com4399: client 未初始化")
 	}
 	req, err := http.NewRequestWithContext(ctx, method, rawURL, strings.NewReader(body))
 	if err != nil {
-		return nil, 0, nil, fmt.Errorf("do: %v", err)
+		return nil, 0, nil, err
 	}
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
@@ -165,18 +152,18 @@ func (c *Client) do(ctx context.Context, method, rawURL, body, contentType strin
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, 0, nil, fmt.Errorf("do: %v", err)
+		return nil, 0, nil, err
 	}
 	defer resp.Body.Close()
 
 	payload, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, resp.StatusCode, resp.Header, fmt.Errorf("do: %v", err)
+		return nil, resp.StatusCode, resp.Header, err
 	}
 	return payload, resp.StatusCode, resp.Header, nil
 }
 
-// 描述 4399 OAuth 设备凭据
+// Device 描述 4399 OAuth 设备凭据。
 type Device struct {
 	DeviceIdentifier   string `json:"device-id"`
 	DeviceIdentifierSM string `json:"device-id-sm"`
@@ -186,33 +173,33 @@ type Device struct {
 	client *Client
 }
 
-// 描述 4399 密码登录附加参数
+// LoginOptions 描述 4399 密码登录附加参数。
 type LoginOptions struct {
 	Captcha   string
 	CaptchaID string
 	Retry     int
 }
 
-// 使用设备凭据登录 4399
+// LoginWithPassword 使用设备凭据登录 4399。
 func (d *Device) LoginWithPassword(ctx context.Context, username, password string) (*User, error) {
 	return d.LoginWithPasswordOptions(ctx, username, password, LoginOptions{})
 }
 
-// 使用设备凭据登录 4399，支持携带验证码
+// LoginWithPasswordOptions 使用设备凭据登录 4399，支持携带验证码。
 func (d *Device) LoginWithPasswordOptions(ctx context.Context, username, password string, options LoginOptions) (*User, error) {
 	if err := d.ensureClient(); err != nil {
-		return nil, fmt.Errorf("LoginWithPasswordOptions: %v", err)
+		return nil, err
 	}
 	if strings.TrimSpace(username) == "" || password == "" {
-		return nil, errors.New("LoginWithPasswordOptions: 用户名和密码不能为空")
+		return nil, errors.New("com4399: username 与 password 不能为空")
 	}
 	if options.Retry > 2 {
-		return nil, errors.New("LoginWithPasswordOptions: 登录重试次数过多")
+		return nil, errors.New("com4399: 登录重试次数过多")
 	}
 
 	state, err := d.client.requestState(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("LoginWithPasswordOptions: %v", err)
+		return nil, err
 	}
 	form := buildLoginForm(strings.ToLower(username), password, state, d.DeviceIdentifier)
 	if options.Captcha != "" && options.CaptchaID != "" {
@@ -223,11 +210,24 @@ func (d *Device) LoginWithPasswordOptions(ctx context.Context, username, passwor
 	loginEndpoint := fmt.Sprintf("%s/oauth2/loginAndAuthorize.do?channel=&sdk=op&sdk_version=%s", d.client.loginURL, oauthSDKVersion)
 	body, _, headers, err := d.client.postForm(ctx, loginEndpoint, form)
 	if err != nil {
-		return nil, fmt.Errorf("LoginWithPasswordOptions: %v", err)
+		return nil, err
 	}
 	html := string(body)
 	if strings.Contains(html, "验证码") {
-		return nil, newNeedCaptchaError(html)
+		captchaErr := newNeedCaptchaError(html)
+		// 尝试自动 OCR 识别
+		if needCaptcha, ok := captchaErr.(*NeedCaptchaError); ok && needCaptcha.CaptchaURL != "" {
+			if ocrResult, ocrErr := RecognizeCaptcha(needCaptcha.CaptchaURL); ocrErr == nil {
+				log.Printf("[OCR] 登录验证码自动识别结果: %s", ocrResult)
+				options.Captcha = ocrResult
+				options.CaptchaID = needCaptcha.CaptchaID
+				options.Retry++
+				return d.LoginWithPasswordOptions(ctx, username, password, options)
+			} else {
+				log.Printf("[OCR] 登录验证码自动识别失败: %v", ocrErr)
+			}
+		}
+		return nil, captchaErr
 	}
 
 	location := headers.Get("Location")
@@ -239,11 +239,11 @@ func (d *Device) LoginWithPasswordOptions(ctx context.Context, username, passwor
 		if message == "" {
 			message = preview(html)
 		}
-		return nil, fmt.Errorf("LoginWithPasswordOptions: 登录响应缺少跳转地址: %s", message)
+		return nil, fmt.Errorf("com4399: 登录失败，响应缺少跳转地址: %s", message)
 	}
 	callbackURL, err := d.resolveLoginURL(location)
 	if err != nil {
-		return nil, fmt.Errorf("LoginWithPasswordOptions: %v", err)
+		return nil, err
 	}
 	if options.Captcha != "" && options.CaptchaID == "" {
 		values := callbackURL.Query()
@@ -253,16 +253,16 @@ func (d *Device) LoginWithPasswordOptions(ctx context.Context, username, passwor
 
 	body, status, _, err := d.client.get(ctx, callbackURL.String())
 	if err != nil {
-		return nil, fmt.Errorf("LoginWithPasswordOptions: %v", err)
+		return nil, err
 	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("LoginWithPasswordOptions: OAuth 回调失败 (status: %d)", status)
+		return nil, fmt.Errorf("com4399: OAuth 回调失败 status=%d body=%s", status, string(body))
 	}
 	content := string(body)
 	if strings.Contains(content, "登录状态已失效，请重新登录") {
 		state, err := d.oauth(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("LoginWithPasswordOptions: %v", err)
+			return nil, err
 		}
 		d.State = state
 		options.Retry++
@@ -274,10 +274,10 @@ func (d *Device) LoginWithPasswordOptions(ctx context.Context, username, passwor
 
 	var userInfo userInfoResponse
 	if err := json.Unmarshal(body, &userInfo); err != nil {
-		return nil, fmt.Errorf("LoginWithPasswordOptions: %v", err)
+		return nil, fmt.Errorf("com4399: 解析用户信息失败: %w", err)
 	}
 	if userInfo.Code != "100" || userInfo.Result == nil {
-		return nil, fmt.Errorf("LoginWithPasswordOptions: 登录失败 (code: %s): %s", userInfo.Code, strings.TrimSpace(userInfo.Message))
+		return nil, fmt.Errorf("com4399: 登录失败: %s", string(body))
 	}
 	return newUser(userInfo.Result), nil
 }
@@ -289,7 +289,7 @@ func (d *Device) oauth(ctx context.Context) (string, error) {
 		UDID:               d.UDID,
 	})
 	if err != nil {
-		return "", fmt.Errorf("oauth: %v", err)
+		return "", err
 	}
 	form := url.Values{}
 	form.Set("usernames", "")
@@ -299,39 +299,39 @@ func (d *Device) oauth(ctx context.Context) (string, error) {
 
 	body, status, _, err := d.client.postForm(ctx, d.client.apiBaseURL+"/openapiv2/oauth.html", form)
 	if err != nil {
-		return "", fmt.Errorf("oauth: %v", err)
+		return "", err
 	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		return "", fmt.Errorf("oauth: OAuth 设备注册失败 (status: %d)", status)
+		return "", fmt.Errorf("com4399: 注册 OAuth 设备失败 status=%d body=%s", status, string(body))
 	}
 
 	var resp oauthResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return "", fmt.Errorf("oauth: %v", err)
+		return "", err
 	}
 	if resp.Result == nil {
-		return "", fmt.Errorf("oauth: OAuth 设备响应缺少 result (code: %d): %s", resp.Code, strings.TrimSpace(resp.Message))
+		return "", fmt.Errorf("com4399: OAuth 设备响应缺少 result: %s", string(body))
 	}
 	var result oauthResult
 	if err := json.Unmarshal(resp.Result, &result); err != nil {
-		return "", fmt.Errorf("oauth: %v", err)
+		return "", fmt.Errorf("com4399: 解析 OAuth result 失败: %w", err)
 	}
 	state := queryValue(result.LoginURL, "state")
 	if state == "" {
-		return "", errors.New("oauth: OAuth 响应缺少 state")
+		return "", fmt.Errorf("com4399: OAuth 响应缺少 state: %s", string(body))
 	}
 	return state, nil
 }
 
 func (d *Device) ensureClient() error {
 	if d == nil {
-		return errors.New("ensureClient: Device is not initialized")
+		return errors.New("com4399: 设备未初始化")
 	}
 	if d.client == nil {
 		d.client = NewClient(nil)
 	}
 	if d.DeviceIdentifier == "" || d.DeviceIdentifierSM == "" || d.UDID == "" {
-		return errors.New("ensureClient: Device information is incomplete")
+		return errors.New("com4399: 设备信息不完整")
 	}
 	return nil
 }
@@ -339,14 +339,14 @@ func (d *Device) ensureClient() error {
 func (d *Device) resolveLoginURL(location string) (*url.URL, error) {
 	parsed, err := url.Parse(location)
 	if err != nil {
-		return nil, fmt.Errorf("resolveLoginURL: %v", err)
+		return nil, err
 	}
 	if parsed.IsAbs() {
 		return parsed, nil
 	}
 	base, err := url.Parse(d.client.loginURL)
 	if err != nil {
-		return nil, fmt.Errorf("resolveLoginURL: %v", err)
+		return nil, err
 	}
 	return base.ResolveReference(parsed), nil
 }
@@ -354,18 +354,18 @@ func (d *Device) resolveLoginURL(location string) (*url.URL, error) {
 func (c *Client) requestState(ctx context.Context) (string, error) {
 	body, status, _, err := c.get(ctx, c.apiBaseURL+oauthCallbackPath)
 	if err != nil {
-		return "", fmt.Errorf("requestState: %v", err)
+		return "", err
 	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		return "", fmt.Errorf("requestState: OAuth state 请求失败 (status: %d)", status)
+		return "", fmt.Errorf("com4399: 请求 OAuth state 失败 status=%d body=%s", status, string(body))
 	}
 	var callback oauthCallback
 	if err := json.Unmarshal(body, &callback); err != nil {
-		return "", fmt.Errorf("requestState: %v", err)
+		return "", err
 	}
 	state := queryValue(callback.Result, "state")
 	if state == "" {
-		return "", errors.New("requestState: OAuth 回调缺少 state")
+		return "", fmt.Errorf("com4399: OAuth callback 缺少 state: %s", string(body))
 	}
 	return state, nil
 }
@@ -385,7 +385,7 @@ func buildLoginForm(username, password, state, deviceIdentifier string) url.Valu
 	form.Set("username_history", "")
 	form.Set("uid", "")
 	form.Set("expand_ext_login_list", "")
-	form.Set("ref", `{"game":"113814","channel":""}`)
+	form.Set("ref", `{"game":"115716","channel":""}`)
 	form.Set("autoCreateAccount", "")
 	form.Set("scope", "basic")
 	form.Set("bizId", "2100001792")
@@ -398,7 +398,7 @@ func buildLoginForm(username, password, state, deviceIdentifier string) url.Valu
 	form.Set("access_token", "")
 	form.Set("show_forget_password", "")
 	form.Set("auth_action", "ORILOGIN")
-	form.Set("redirect_uri", "https://m.4399api.com/openapi/oauth-callback.html?gamekey=44770&game_key=113814")
+	form.Set("redirect_uri", "https://m.4399api.com/openapi/oauth-callback.html?gamekey=44770&game_key=115716")
 	form.Set("show_topbar", "false")
 	form.Set("aid", "")
 	form.Set("cid", "")
@@ -493,7 +493,6 @@ type oauthDevice struct {
 	SDKVersion         string `json:"SDK_VERSION"`
 	GameKey            string `json:"GAME_KEY"`
 	GameVersion        string `json:"GAME_VERSION"`
-	GameVersionCode    string `json:"GAME_VERSION_CODE"`
 	BID                string `json:"BID"`
 	Runtime            string `json:"RUNTIME"`
 	CanalIdentifier    string `json:"CANAL_IDENTIFIER"`
@@ -531,10 +530,7 @@ func (d oauthDevice) MarshalJSON() ([]byte, error) {
 		d.GameKey = oauthGameKey
 	}
 	if d.GameVersion == "" {
-		d.GameVersion = oauthGameVersion
-	}
-	if d.GameVersionCode == "" {
-		d.GameVersionCode = oauthGameCode
+		d.GameVersion = "3.1.5.260925"
 	}
 	if d.BID == "" {
 		d.BID = "com.netease.mc.m4399"
@@ -577,7 +573,7 @@ type userInfoResponse struct {
 	Result  *UserInfo `json:"result"`
 }
 
-// 描述 4399 OAuth 回调返回的账号信息
+// UserInfo 描述 4399 OAuth 回调返回的账号信息。
 type UserInfo struct {
 	UID         int64  `json:"uid"`
 	Username    string `json:"username"`

@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 )
 
-// 表示动态列表接口的响应体
+// UserMessagesResponse 表示动态列表接口的响应体。
 type UserMessagesResponse struct {
 	Status int `json:"status"`
 	Data   struct {
@@ -17,7 +18,7 @@ type UserMessagesResponse struct {
 	} `json:"data"`
 }
 
-// 描述单条动态内容
+// UserMoment 描述单条动态内容。
 type UserMoment struct {
 	Category       string           `json:"category"`
 	Liked          int              `json:"liked"`
@@ -44,7 +45,7 @@ type UserMoment struct {
 	CommentPrivacy int              `json:"comment_privacy"`
 }
 
-// 表示动态下的评论
+// MomentComment 表示动态下的评论。
 type MomentComment struct {
 	Comment           string         `json:"comment"`
 	Name              string         `json:"name"`
@@ -56,7 +57,7 @@ type MomentComment struct {
 	UID               string         `json:"uid"`
 }
 
-// 表示最近点赞用户
+// MomentLike 表示最近点赞用户。
 type MomentLike struct {
 	AvatarImage string `json:"avatar_image"`
 	UID         string `json:"uid"`
@@ -64,7 +65,7 @@ type MomentLike struct {
 	Avatar      string `json:"avatar"`
 }
 
-// 表示动态中的玩家信息
+// MomentUserInfo 表示动态中的玩家信息。
 type MomentUserInfo struct {
 	AvatarImage string         `json:"avatar_image"`
 	ServerID    Uncertain      `json:"server_id"`
@@ -77,11 +78,12 @@ type MomentUserInfo struct {
 	UID         string         `json:"uid"`
 }
 
-// 拉取指定玩家的动态列表
-// 页码从 1 开始，并可指定每页条数
+// GetUserMessages 拉取指定玩家的动态列表。
+// targetUID 为目标玩家 UID
+// page 从 1 开始，num 表示每页条数。
 func (c *Client) GetUserMessages(targetUID string, page, num int) (*UserMessagesResponse, error) {
 	if strings.TrimSpace(targetUID) == "" {
-		return nil, fmt.Errorf("GetUserMessages: TargetUID must not be empty")
+		return nil, fmt.Errorf("GetUserMessages: targetUID 不能为空")
 	}
 	if page <= 0 {
 		page = 1
@@ -91,13 +93,14 @@ func (c *Client) GetUserMessages(targetUID string, page, num int) (*UserMessages
 	}
 	after, err := c.GetPeUserLoginAfter()
 	if err != nil {
-		return nil, fmt.Errorf("GetUserMessages: %v", err)
+		return nil, err
 	}
 	uid := after.Entity.MomentID
 
-	endpoint, err := c.momentEndpoint("/message/apps/x19/client/user_messages")
-	if err != nil {
-		return nil, fmt.Errorf("GetUserMessages: %v", err)
+	endpoint := &url.URL{
+		Scheme: "https",
+		Host:   "x19-pyq.webcgi.163.com",
+		Path:   "/message/apps/x19/client/user_messages",
 	}
 
 	query := endpoint.Query()
@@ -109,7 +112,7 @@ func (c *Client) GetUserMessages(targetUID string, page, num int) (*UserMessages
 
 	req, err := http.NewRequest("GET", endpoint.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("GetUserMessages: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("User-Agent", "libhttpclient/1.0.0.0")
@@ -124,18 +127,18 @@ func (c *Client) GetUserMessages(targetUID string, page, num int) (*UserMessages
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GetUserMessages: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("GetUserMessages: %v", err)
+		return nil, err
 	}
 
 	var result UserMessagesResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("GetUserMessages: %v", err)
+		return nil, fmt.Errorf("解析动态列表响应失败: %v, 响应内容: %s", err, string(body))
 	}
 
 	return &result, nil

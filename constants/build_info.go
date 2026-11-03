@@ -8,7 +8,7 @@ import (
 
 var (
 	// Version 是当前构建版本号
-	Version = "1.3.5"
+	Version = "1.0.0"
 	// CommitHash 可由构建脚本注入完整提交哈希
 	CommitHash string
 

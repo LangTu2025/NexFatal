@@ -7,9 +7,9 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 )
 
@@ -33,17 +33,33 @@ var keys = []string{
 	"91F7C751FCF671F34943430772341799",
 }
 
-// 生成指定长度的加密安全随机字符串
+var x19Keys = []string{
+	"MK6mipwmOUedplb6",
+	"OtEylfId6dyhrfdn",
+	"VNbhn5mvUaQaeOo9",
+	"bIEoQGQYjKd02U0J",
+	"fuaJrPwaH2cfXXLP",
+	"LEkdyiroouKQ4XN1",
+	"jM1h27H4UROu427W",
+	"DhReQada7gZybTDk",
+	"ZGXfpSTYUvcdKqdY",
+	"AZwKf7MWZrJpGR5W",
+	"amuvbcHw38TcSyPU",
+	"SI4QotspbjhyFdT0",
+	"VP4dhjKnDGlSJtbB",
+	"UXDZx4KhZywQ2tcn",
+	"NIK73ZNvNqzva4kd",
+	"WeiW7qU766Q1YQZI",
+}
+
+// 生成随机字符串
 func randomString(length int) (string, error) {
-	if length < 0 {
-		return "", fmt.Errorf("randomString: Negative length %d", length)
-	}
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	result := make([]byte, length)
 	for i := range result {
 		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
 		if err != nil {
-			return "", fmt.Errorf("randomString: %v", err)
+			return "", err
 		}
 		result[i] = charset[num.Int64()]
 	}
@@ -51,17 +67,14 @@ func randomString(length int) (string, error) {
 }
 
 func randomBytes(length int) ([]byte, error) {
-	if length < 0 {
-		return nil, fmt.Errorf("randomBytes: Negative length %d", length)
-	}
 	b := make([]byte, length)
 	if _, err := rand.Read(b); err != nil {
-		return nil, fmt.Errorf("randomBytes: %v", err)
+		return nil, err
 	}
 	return b, nil
 }
 
-// 加密 G79 HTTP 请求数据
+// HTTP加密
 func G79HttpEncrypt(body []byte) ([]byte, error) {
 	// 对齐到16字节块并添加16个随机字节
 	blockSize := 16
@@ -72,21 +85,21 @@ func G79HttpEncrypt(body []byte) ([]byte, error) {
 	// 添加16个随机字节
 	tailRandom, err := randomString(16)
 	if err != nil {
-		return nil, fmt.Errorf("G79HttpEncrypt: %v", err)
+		return nil, err
 	}
 	copy(buffer[len(body):], []byte(tailRandom))
 
 	// 生成标志位
 	highNibble, err := rand.Int(rand.Reader, big.NewInt(15))
 	if err != nil {
-		return nil, fmt.Errorf("G79HttpEncrypt: %v", err)
+		return nil, err
 	}
 	flag := byte((highNibble.Int64() << 4) | 0x0C)
 
 	// 生成IV
 	iv, err := randomString(16)
 	if err != nil {
-		return nil, fmt.Errorf("G79HttpEncrypt: %v", err)
+		return nil, err
 	}
 	ivBytes := []byte(iv)
 
@@ -94,13 +107,13 @@ func G79HttpEncrypt(body []byte) ([]byte, error) {
 	keyIndex := (flag >> 4) & 0x0F
 	keyBytes, err := hex.DecodeString(keys[keyIndex])
 	if err != nil {
-		return nil, fmt.Errorf("G79HttpEncrypt: %v", err)
+		return nil, err
 	}
 
 	// AES加密
 	block, err := aes.NewCipher(keyBytes)
 	if err != nil {
-		return nil, fmt.Errorf("G79HttpEncrypt: %v", err)
+		return nil, err
 	}
 
 	mode := cipher.NewCBCEncrypter(block, ivBytes)
@@ -116,10 +129,10 @@ func G79HttpEncrypt(body []byte) ([]byte, error) {
 	return result, nil
 }
 
-// 解密 G79 HTTP 响应数据
+// HTTP解密
 func G79HttpDecrypt(payload []byte) ([]byte, error) {
 	if len(payload) < 18 {
-		return nil, fmt.Errorf("G79HttpDecrypt: Payload is too short")
+		return nil, fmt.Errorf("payload too short")
 	}
 
 	flag := payload[len(payload)-1]
@@ -127,20 +140,14 @@ func G79HttpDecrypt(payload []byte) ([]byte, error) {
 	cipherText := payload[16 : len(payload)-1]
 
 	keyIndex := (flag >> 4) & 0x0F
-	if int(keyIndex) >= len(keys) {
-		return nil, fmt.Errorf("G79HttpDecrypt: Invalid key index %d", keyIndex)
-	}
-	if len(cipherText) == 0 || len(cipherText)%aes.BlockSize != 0 {
-		return nil, fmt.Errorf("G79HttpDecrypt: Invalid ciphertext length %d", len(cipherText))
-	}
 	keyBytes, err := hex.DecodeString(keys[keyIndex])
 	if err != nil {
-		return nil, fmt.Errorf("G79HttpDecrypt: %v", err)
+		return nil, err
 	}
 
 	block, err := aes.NewCipher(keyBytes)
 	if err != nil {
-		return nil, fmt.Errorf("G79HttpDecrypt: %v", err)
+		return nil, err
 	}
 
 	mode := cipher.NewCBCDecrypter(block, iv)
@@ -203,12 +210,191 @@ func CalculateDynamicToken(path, content, token string) string {
 	return tokenShort
 }
 
-// 提取解密数据中的第一个完整 JSON 值
+// X19HttpEncrypt implements the PC launcher encryption used by the X19 endpoints.
+func X19HttpEncrypt(body []byte) ([]byte, error) {
+	content := make([]byte, len(body))
+	copy(content, body)
+
+	tail, err := randomBytes(16)
+	if err != nil {
+		return nil, err
+	}
+	content = append(content, tail...)
+
+	keyIndexBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(x19Keys))))
+	if err != nil {
+		return nil, err
+	}
+	keyIndex := int(keyIndexBig.Int64())
+
+	iv, err := randomBytes(16)
+	if err != nil {
+		return nil, err
+	}
+
+	block, err := aes.NewCipher([]byte(x19Keys[keyIndex]))
+	if err != nil {
+		return nil, err
+	}
+
+	padded := pkcs7Pad(content, aes.BlockSize)
+	encrypted := make([]byte, len(padded))
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(encrypted, padded)
+
+	result := make([]byte, 0, len(iv)+len(encrypted)+1)
+	result = append(result, iv...)
+	result = append(result, encrypted...)
+	result = append(result, byte(keyIndex<<4)|0x02)
+	return result, nil
+}
+
+// X19HttpDecrypt decrypts payloads produced by X19HttpEncrypt.
+func X19HttpDecrypt(payload []byte) ([]byte, error) {
+	if len(payload) < 18 {
+		return nil, fmt.Errorf("payload too short")
+	}
+
+	flag := payload[len(payload)-1]
+	keyIndex := int((flag >> 4) & 0x0F)
+	if keyIndex >= len(x19Keys) {
+		return nil, fmt.Errorf("invalid key index %d", keyIndex)
+	}
+
+	iv := payload[:16]
+	cipherText := payload[16 : len(payload)-1]
+
+	block, err := aes.NewCipher([]byte(x19Keys[keyIndex]))
+	if err != nil {
+		return nil, err
+	}
+
+	plain := make([]byte, len(cipherText))
+	cipher.NewCBCDecrypter(block, iv).CryptBlocks(plain, cipherText)
+	return plain, nil
+}
+
+// X19CalculateDynamicToken reproduces the PC launcher token logic.
+func X19CalculateDynamicToken(url, content, token string) (string, error) {
+	tokenMD5 := fmt.Sprintf("%x", md5.Sum([]byte(token)))
+	magicMD5 := fmt.Sprintf("%x", md5.Sum([]byte(tokenMD5+content+"0eGsBkhl"+url)))
+
+	binaryMagic := stringToBin(magicMD5)
+	shifted := stringLeftShift(binaryMagic, 6)
+	shiftedStr, err := binToString(shifted)
+	if err != nil {
+		return "", err
+	}
+
+	xorBytes, err := stringXOR(magicMD5, shiftedStr)
+	if err != nil {
+		return "", err
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(xorBytes)
+	replaced := strings.ReplaceAll(strings.ReplaceAll(encoded, "/", "o"), "+", "m")
+	if len(replaced) < 16 {
+		return "", fmt.Errorf("token too short")
+	}
+	return replaced[:16] + "1", nil
+}
+
+func pkcs7Pad(data []byte, blockSize int) []byte {
+	padLen := blockSize - len(data)%blockSize
+	if padLen == 0 {
+		padLen = blockSize
+	}
+	padding := bytesRepeat(byte(padLen), padLen)
+	return append(data, padding...)
+}
+
+func pkcs7Unpad(data []byte, blockSize int) ([]byte, error) {
+	if len(data) == 0 || len(data)%blockSize != 0 {
+		return nil, fmt.Errorf("invalid padding")
+	}
+	padLen := int(data[len(data)-1])
+	if padLen == 0 || padLen > blockSize || padLen > len(data) {
+		return nil, fmt.Errorf("invalid padding size")
+	}
+	for _, b := range data[len(data)-padLen:] {
+		if int(b) != padLen {
+			return nil, fmt.Errorf("invalid padding content")
+		}
+	}
+	return data[:len(data)-padLen], nil
+}
+
+func bytesRepeat(b byte, count int) []byte {
+	res := make([]byte, count)
+	for i := range res {
+		res[i] = b
+	}
+	return res
+}
+
+func stringToBin(s string) string {
+	var builder strings.Builder
+	for i := 0; i < len(s); i++ {
+		builder.WriteString(fmt.Sprintf("%08b", s[i]))
+	}
+	return builder.String()
+}
+
+func stringLeftShift(s string, n int) string {
+	if len(s) == 0 {
+		return s
+	}
+	n = n % len(s)
+	return s[n:] + s[:n]
+}
+
+func binToString(bin string) (string, error) {
+	if len(bin)%8 != 0 {
+		return "", fmt.Errorf("binary length must be multiple of 8")
+	}
+	result := make([]byte, len(bin)/8)
+	for i := 0; i < len(result); i++ {
+		chunk := bin[i*8 : (i+1)*8]
+		value, err := strconv.ParseUint(chunk, 2, 8)
+		if err != nil {
+			return "", err
+		}
+		result[i] = byte(value)
+	}
+	return string(result), nil
+}
+
+func stringXOR(a, b string) ([]byte, error) {
+	if len(a) != len(b) {
+		return nil, fmt.Errorf("length mismatch")
+	}
+	out := make([]byte, len(a))
+	for i := range a {
+		out[i] = a[i] ^ b[i]
+	}
+	return out, nil
+}
+
+// 获取有效JSON边界
 func GetValidJSON(decryptedBody []byte) []byte {
-	decoder := json.NewDecoder(strings.NewReader(string(decryptedBody)))
-	var value json.RawMessage
-	if err := decoder.Decode(&value); err == nil {
-		return value
+	blocksCount := 0
+	readableLength := 0
+
+	for i, b := range decryptedBody {
+		switch b {
+		case 0x7B: // '{'
+			blocksCount++
+		case 0x7D: // '}'
+			blocksCount--
+		}
+
+		if blocksCount == 0 && i != 0 {
+			readableLength = i + 1
+			break
+		}
+	}
+
+	if readableLength != 0 {
+		return decryptedBody[:readableLength]
 	}
 	return decryptedBody
 }

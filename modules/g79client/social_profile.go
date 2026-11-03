@@ -1,6 +1,6 @@
 package g79client
 
-// 描述社交相关接口返回的统一用户档案
+// SocialProfile 描述社交相关接口返回的统一用户档案。
 type SocialProfile struct {
 	ID                   Uncertain             `json:"id"`
 	Nickname             string                `json:"nickname"`
@@ -34,7 +34,7 @@ type SocialProfile struct {
 	StaticURL            string                `json:"static_url"`
 }
 
-// 表示成长信息
+// SocialProfileGrowth 表示成长信息。
 type SocialProfileGrowth struct {
 	Lv         Uncertain `json:"lv"`
 	Exp        Uncertain `json:"exp"`
@@ -45,41 +45,41 @@ type SocialProfileGrowth struct {
 	ChatBubble Uncertain `json:"chat_bubble_id"`
 }
 
-// 表示用户标签
+// SocialProfileTag 表示用户标签。
 type SocialProfileTag struct {
 	TagID   Uncertain `json:"tag_id"`
 	TagName string    `json:"tag_name"`
 	Likes   Uncertain `json:"likes"`
 }
 
-// 表示统计数据
+// SocialProfileStat 表示统计数据。
 type SocialProfileStat struct {
 	Type    Uncertain `json:"type"`
 	Value   Uncertain `json:"value"`
 	Visible Uncertain `json:"visible"`
 }
 
-// 表示地理位置
+// SocialProfileLBSInfo 表示地理位置。
 type SocialProfileLBSInfo struct {
 	Province string `json:"province"`
 	City     string `json:"city"`
 	Area     string `json:"area"`
 }
 
-// 描述微信绑定奖励
+// WechatBindReward 描述微信绑定奖励。
 type WechatBindReward struct {
 	URL string    `json:"url"`
 	NB  Uncertain `json:"nb"`
 	TP  Uncertain `json:"tp"`
 }
 
-// 描述与微信相关的配置
+// SocialWechatInfo 描述与微信相关的配置。
 type SocialWechatInfo struct {
 	BindReward  *WechatBindReward `json:"bind_reward"`
 	WechatH5URL string            `json:"wechat_h5_url"`
 }
 
-// 描述社交隐私设置
+// SocialSetting 描述社交隐私设置。
 type SocialSetting struct {
 	UnderageMode              bool      `json:"underage_mode"`
 	BlockStrangers            bool      `json:"block_strangers"`
@@ -88,7 +88,7 @@ type SocialSetting struct {
 	MessageVisibility         Uncertain `json:"message_visibility"`
 }
 
-// 汇总登录后接口与档案接口的公共字段
+// UserSocialState 汇总登录后接口与档案接口的公共字段。
 type UserSocialState struct {
 	HasMessage          bool              `json:"hasMessage"`
 	RestCurrencyTime    Uncertain         `json:"rest_currency_time"`

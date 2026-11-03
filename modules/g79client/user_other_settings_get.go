@@ -16,20 +16,20 @@ var defaultOtherUserSettingKeys = []string{
 	"screen_config",
 }
 
-// 表示他人设置查询请求
+// GetOtherUserSettingListRequest 表示他人设置查询请求。
 type GetOtherUserSettingListRequest struct {
 	WithPetInfo bool     `json:"with_pet_info"`
 	UserID      string   `json:"user_id"`
 	Settings    []string `json:"settings"`
 }
 
-// 表示他人设置查询响应
+// GetOtherUserSettingListResponse 表示他人设置查询响应。
 type GetOtherUserSettingListResponse struct {
 	Response
 	Entity OtherUserSettingListEntity `json:"entity"`
 }
 
-// 表示他人设置详情
+// OtherUserSettingListEntity 表示他人设置详情。
 type OtherUserSettingListEntity struct {
 	SkinType     OtherUserSkinType     `json:"skin_type"`
 	SkinData     OtherUserSkinData     `json:"skin_data"`
@@ -38,25 +38,25 @@ type OtherUserSettingListEntity struct {
 	PetInfo      *OtherUserPetInfo     `json:"pet_info,omitempty"`
 }
 
-// 表示皮肤类型设置
+// OtherUserSkinType 表示皮肤类型设置。
 type OtherUserSkinType struct {
 	Type string `json:"type"`
 }
 
-// 表示皮肤配置
+// OtherUserSkinData 表示皮肤配置。
 type OtherUserSkinData struct {
 	ItemID     string `json:"item_id"`
 	IsCharPack bool   `json:"is_char_pack"`
 	IsSlim     bool   `json:"is_slim"`
 }
 
-// 表示捏脸配置
+// OtherUserPersonaData 表示捏脸配置。
 type OtherUserPersonaData struct{}
 
-// 表示展示位配置列表
+// OtherUserScreenConfig 表示展示位配置列表。
 type OtherUserScreenConfig []OtherUserScreenConfigEntry
 
-// 表示单个展示位配置
+// OtherUserScreenConfigEntry 表示单个展示位配置。
 type OtherUserScreenConfigEntry struct {
 	Slot          int       `json:"slot"`
 	ItemID        string    `json:"item_id"`
@@ -75,7 +75,7 @@ func (c *OtherUserScreenConfig) UnmarshalJSON(b []byte) error {
 	type rawEntry OtherUserScreenConfigEntry
 	rawMap := map[string]rawEntry{}
 	if err := json.Unmarshal(b, &rawMap); err != nil {
-		return fmt.Errorf("UnmarshalJSON: %v", err)
+		return err
 	}
 
 	keys := make([]string, 0, len(rawMap))
@@ -115,7 +115,7 @@ func (c OtherUserScreenConfig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(rawMap)
 }
 
-// 表示宠物配置
+// OtherUserPetInfo 表示宠物配置。
 type OtherUserPetInfo struct {
 	PetNum    Uncertain            `json:"pet_num"`
 	PetName   string               `json:"pet_name"`
@@ -123,7 +123,7 @@ type OtherUserPetInfo struct {
 	ActionIDs []Uncertain          `json:"action_ids"`
 }
 
-// 表示宠物皮肤详情
+// OtherUserPetSkinInfo 表示宠物皮肤详情。
 type OtherUserPetSkinInfo struct {
 	IsActivity  Uncertain `json:"is_activity"`
 	Name        string    `json:"name"`
@@ -149,10 +149,10 @@ type OtherUserPetSkinInfo struct {
 	Effect      string    `json:"effect"`
 }
 
-// 获取指定玩家的设置列表
+// GetOtherUserSettingList 获取指定玩家的设置列表。
 func (c *Client) GetOtherUserSettingList(request GetOtherUserSettingListRequest) (*GetOtherUserSettingListResponse, error) {
 	if strings.TrimSpace(request.UserID) == "" {
-		return nil, fmt.Errorf("GetOtherUserSettingList: User_id must not be empty")
+		return nil, fmt.Errorf("GetOtherUserSettingList: user_id 不能为空")
 	}
 	if len(request.Settings) == 0 {
 		request.Settings = append([]string(nil), defaultOtherUserSettingKeys...)
@@ -162,12 +162,12 @@ func (c *Client) GetOtherUserSettingList(request GetOtherUserSettingListRequest)
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		return nil, fmt.Errorf("GetOtherUserSettingList: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return nil, fmt.Errorf("GetOtherUserSettingList: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -180,18 +180,18 @@ func (c *Client) GetOtherUserSettingList(request GetOtherUserSettingListRequest)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GetOtherUserSettingList: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("GetOtherUserSettingList: %v", err)
+		return nil, err
 	}
 
 	var result GetOtherUserSettingListResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("GetOtherUserSettingList: %v", err)
+		return nil, fmt.Errorf("解析他人设置列表失败: %v, 响应内容: %s", err, string(respBody))
 	}
 
 	return &result, nil

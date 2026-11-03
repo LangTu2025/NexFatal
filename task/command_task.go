@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
-	bwodefine "github.com/TriM-Organization/bedrock-world-operator/define"
-	"github.com/go-gl/mathgl/mgl32"
-	"github.com/schollz/progressbar/v3"
 	"github.com/LangTu2025/NexFatal/control"
 	"github.com/LangTu2025/NexFatal/utils"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	bwodefine "github.com/TriM-Organization/bedrock-world-operator/define"
+	"github.com/go-gl/mathgl/mgl32"
+	"github.com/schollz/progressbar/v3"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
 	nbt_parser_block "github.com/xingbaiawa/StarShuttler/nbt_parser/block"
@@ -35,6 +36,11 @@ type directNBTGroup struct {
 	tasks []nbtPlacementTask
 }
 
+type commandBlockChunkKey struct {
+	x int32
+	z int32
+}
+
 func (b *BuildTask) writeDirectNBTBestEffort(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, limiter ratelimit.Limiter) (int, error) {
 	return b.writeDirectNBTGroups(ctx, ctrl, tasks, nbtPlacementWarn, limiter, nil)
 }
@@ -53,6 +59,138 @@ func (b *BuildTask) writeDirectNBTGroups(ctx context.Context, ctrl *game_control
 	if ctrl == nil || ctrl.Resources == nil || ctrl.API == nil {
 		return 0, loc.Errf(loc.KeyControlAPINotInitialized)
 	}
+	if mode == nbtPlacementStrict && b.Config.VerifyCommandBlocks && containsCommandBlockTask(tasks) {
+		return b.writeDirectNBTGroupsWithCommandVerification(ctx, ctrl, tasks, limiter, progress)
+	}
+	return b.writeDirectNBTGroupsLegacy(ctx, ctrl, tasks, mode, limiter, progress)
+}
+
+func (b *BuildTask) writeDirectNBTGroupsWithCommandVerification(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, limiter ratelimit.Limiter, progress *buildProgressReporter) (int, error) {
+	commandTasks := make([]nbtPlacementTask, 0, len(tasks))
+	otherTasks := make([]nbtPlacementTask, 0, len(tasks))
+	for _, task := range tasks {
+		if isCommandBlock(task.blockName) {
+			commandTasks = append(commandTasks, task)
+		} else {
+			otherTasks = append(otherTasks, task)
+		}
+	}
+
+	bar := taskProgressBar(len(tasks), loc.Text(loc.KeyBuildHandleNBTBlocks))
+	placed := 0
+	if len(commandTasks) > 0 {
+		if err := b.prepareCommandBlockWrites(ctx, ctrl); err != nil {
+			return placed, err
+		}
+		commandPlaced, err := b.writeCommandBlocksByChunk(ctx, ctrl, commandTasks, limiter, progress, bar)
+		if err != nil {
+			return placed + commandPlaced, err
+		}
+		placed += commandPlaced
+	}
+	if len(otherTasks) > 0 {
+		otherPlaced, err := b.writeDirectNBTGroupsLegacy(ctx, ctrl, otherTasks, nbtPlacementStrict, limiter, progress, bar)
+		if err != nil {
+			return placed + otherPlaced, err
+		}
+		placed += otherPlaced
+	}
+	return placed, nil
+}
+
+func (b *BuildTask) writeCommandBlocksByChunk(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, limiter ratelimit.Limiter, progress *buildProgressReporter, bar *progressbar.ProgressBar) (int, error) {
+	dimensionID, err := utils.DimensionID(b.Config.DimensionName)
+	if err != nil {
+		return 0, err
+	}
+	groupsByChunk := make(map[commandBlockChunkKey][]nbtPlacementTask)
+	for _, task := range tasks {
+		key := commandBlockChunkKey{floorDiv(task.pos.X(), 16), floorDiv(task.pos.Z(), 16)}
+		groupsByChunk[key] = append(groupsByChunk[key], task)
+	}
+	keys := make([]commandBlockChunkKey, 0, len(groupsByChunk))
+	for key := range groupsByChunk {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].x != keys[j].x {
+			return keys[i].x < keys[j].x
+		}
+		return keys[i].z < keys[j].z
+	})
+
+	placed := 0
+	for _, key := range keys {
+		if err := context.Cause(ctx); err != nil {
+			return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
+		}
+		chunkTasks := groupsByChunk[key]
+		if len(chunkTasks) == 0 {
+			continue
+		}
+		chunkGroups := groupDirectNBTTasks(chunkTasks)
+		var lastVerification regionBuildVerification
+		for retry := 0; retry <= commandBlockMaxRetries; retry++ {
+			chunkPlaced := 0
+			for groupIndex, group := range chunkGroups {
+				if err := context.Cause(ctx); err != nil {
+					return placed + chunkPlaced, loc.Errf(loc.KeyBuildImportCancelled, err)
+				}
+				center := directNBTGroupCenter(group.key, dimensionID)
+				if err := ctrl.Teleport(b.Config.DimensionName, center); err != nil {
+					return placed + chunkPlaced, fmt.Errorf("teleport to command block group %d/%d in chunk (%d, %d): %w", groupIndex+1, len(chunkGroups), key.x, key.z, err)
+				}
+				groupPlaced, err := b.writeCommandBlockChunk(ctx, ctrl, group.tasks, limiter, progress, bar, retry == 0)
+				if err != nil {
+					return placed + chunkPlaced + groupPlaced, err
+				}
+				chunkPlaced += groupPlaced
+			}
+
+			verification, err := b.verifyCommandBlockTasks(ctx, ctrl, chunkTasks)
+			if err != nil {
+				return placed + chunkPlaced, err
+			}
+			lastVerification = verification
+			if verification.Skipped || !verification.needsRetry() {
+				placed += chunkPlaced
+				break
+			}
+			if retry == commandBlockMaxRetries {
+				placed += chunkPlaced
+				logCommandBlockChunkFailure(key, lastVerification)
+				break
+			}
+		}
+	}
+	return placed, nil
+}
+
+func (b *BuildTask) writeCommandBlockChunk(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, limiter ratelimit.Limiter, progress *buildProgressReporter, bar *progressbar.ProgressBar, countProgress bool) (int, error) {
+	placed := 0
+	for _, task := range tasks {
+		if err := context.Cause(ctx); err != nil {
+			return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
+		}
+		update, err := makeCommandBlockUpdate(task)
+		if err != nil {
+			return placed, loc.Errf(loc.KeyBuildPlaceBlockFailed, loc.Text(loc.KeyBuildCommandBlockKind), task.pos.X(), task.pos.Y(), task.pos.Z(), err)
+		}
+		if limiter != nil {
+			limiter.Take()
+		}
+		if err := ctrl.Resources.WritePacket(update); err != nil {
+			return placed, fmt.Errorf("write command block packet at %v: %w", task.pos, err)
+		}
+		placed++
+		if countProgress {
+			advanceDirectNBTProgress(progress, bar)
+		}
+	}
+	return placed, nil
+}
+
+func (b *BuildTask) writeDirectNBTGroupsLegacy(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, mode nbtPlacementFailureMode, limiter ratelimit.Limiter, progress *buildProgressReporter, sharedBar ...*progressbar.ProgressBar) (int, error) {
 	if containsCommandBlockTask(tasks) {
 		if err := b.prepareCommandBlockWrites(ctx, ctrl); err != nil {
 			return 0, err
@@ -65,7 +203,12 @@ func (b *BuildTask) writeDirectNBTGroups(ctx context.Context, ctrl *game_control
 	}
 	groups := groupDirectNBTTasks(tasks)
 	botUniqueID := ctrl.API.GetBotInfo().EntityUniqueID
-	bar := taskProgressBar(len(tasks), loc.Text(loc.KeyBuildHandleNBTBlocks))
+	var bar *progressbar.ProgressBar
+	if len(sharedBar) > 0 {
+		bar = sharedBar[0]
+	} else {
+		bar = taskProgressBar(len(tasks), loc.Text(loc.KeyBuildHandleNBTBlocks))
+	}
 	placed := 0
 	sent := false
 	for groupIndex, group := range groups {

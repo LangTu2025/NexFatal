@@ -52,6 +52,7 @@ type BuildTaskConfig struct {
 	RegionSize          int               `json:"region_size"`
 	StartChunk          int               `json:"start_chunk"`
 	VerifyRegion        bool              `json:"verify_region"`
+	VerifyCommandBlocks bool              `json:"verify_command_blocks"`
 	AutoPlaceLight      bool              `json:"light"`
 	LightSpacing        int               `json:"light_spacing"`
 	PremergeRegionPlans bool              `json:"-"`
@@ -72,6 +73,7 @@ type buildTaskConfigJSON struct {
 	RegionSize          int               `json:"region_size"`
 	StartChunk          int               `json:"start_chunk"`
 	VerifyRegion        *bool             `json:"verify_region,omitempty"`
+	VerifyCommandBlocks *bool             `json:"verify_command_blocks,omitempty"`
 	AutoPlaceLight      bool              `json:"light"`
 	LightSpacing        int               `json:"light_spacing"`
 	LegacyWriteProgress *bool             `json:"write_progress,omitempty"`
@@ -80,19 +82,20 @@ type buildTaskConfigJSON struct {
 // NewBuildTaskConfig 创建带默认值的构建任务配置。
 func NewBuildTaskConfig() *BuildTaskConfig {
 	cfg := &BuildTaskConfig{
-		DimensionName:      "overworld",
-		ImportNBT:          false,
-		AutoCleanBlock:     false,
-		CleanMode:          DefaultBuildCleanMode,
-		ClearDroppedItems:  true,
-		AutoPlaceDenyBlock: false,
-		AutoPlaceBorder:    false,
-		Speed:              DefaultBuildSpeed,
-		RegionSize:         5,
-		StartChunk:         0,
-		VerifyRegion:       true,
-		AutoPlaceLight:     false,
-		LightSpacing:       DefaultLightSpacing,
+		DimensionName:       "overworld",
+		ImportNBT:           false,
+		AutoCleanBlock:      false,
+		CleanMode:           DefaultBuildCleanMode,
+		ClearDroppedItems:   true,
+		AutoPlaceDenyBlock:  false,
+		AutoPlaceBorder:     false,
+		Speed:               DefaultBuildSpeed,
+		RegionSize:          5,
+		StartChunk:          0,
+		VerifyRegion:        true,
+		VerifyCommandBlocks: true,
+		AutoPlaceLight:      false,
+		LightSpacing:        DefaultLightSpacing,
 	}
 	cfg.Normalize()
 	return cfg
@@ -175,21 +178,22 @@ func boundedLightSpacing(spacing int) int {
 
 func (c BuildTaskConfig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(buildTaskConfigJSON{
-		FilePath:           c.FilePath,
-		StartPos:           c.StartPos,
-		DimensionName:      c.DimensionName,
-		ImportNBT:          c.ImportNBT,
-		AutoCleanBlock:     c.AutoCleanBlock,
-		CleanMode:          normalizeBuildMode(c.CleanMode),
-		ClearDroppedItems:  &c.ClearDroppedItems,
-		AutoPlaceDenyBlock: c.AutoPlaceDenyBlock,
-		AutoPlaceBorder:    c.AutoPlaceBorder,
-		Speed:              boundedBuildSpeed(c.Speed),
-		RegionSize:         c.RegionSize,
-		StartChunk:         c.StartChunk,
-		VerifyRegion:       &c.VerifyRegion,
-		AutoPlaceLight:     c.AutoPlaceLight,
-		LightSpacing:       boundedLightSpacing(c.LightSpacing),
+		FilePath:            c.FilePath,
+		StartPos:            c.StartPos,
+		DimensionName:       c.DimensionName,
+		ImportNBT:           c.ImportNBT,
+		AutoCleanBlock:      c.AutoCleanBlock,
+		CleanMode:           normalizeBuildMode(c.CleanMode),
+		ClearDroppedItems:   &c.ClearDroppedItems,
+		AutoPlaceDenyBlock:  c.AutoPlaceDenyBlock,
+		AutoPlaceBorder:     c.AutoPlaceBorder,
+		Speed:               boundedBuildSpeed(c.Speed),
+		RegionSize:          c.RegionSize,
+		StartChunk:          c.StartChunk,
+		VerifyRegion:        &c.VerifyRegion,
+		VerifyCommandBlocks: &c.VerifyCommandBlocks,
+		AutoPlaceLight:      c.AutoPlaceLight,
+		LightSpacing:        boundedLightSpacing(c.LightSpacing),
 	})
 }
 
@@ -219,6 +223,10 @@ func (c *BuildTaskConfig) UnmarshalJSON(data []byte) error {
 	c.VerifyRegion = true
 	if payload.VerifyRegion != nil {
 		c.VerifyRegion = *payload.VerifyRegion
+	}
+	c.VerifyCommandBlocks = true
+	if payload.VerifyCommandBlocks != nil {
+		c.VerifyCommandBlocks = *payload.VerifyCommandBlocks
 	}
 	c.AutoPlaceLight = payload.AutoPlaceLight
 	c.LightSpacing = payload.LightSpacing

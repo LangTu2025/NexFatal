@@ -12,14 +12,14 @@ import (
 	g79client "github.com/xingbaiawa/g79client"
 )
 
-// 描述一次具体连接所需的主机与端口
+// ServerEndpoint 描述一次具体连接所需的主机与端口。
 type ServerEndpoint struct {
 	Host  string
 	Port  int
 	Entry g79client.G79ChatServerEntry
 }
 
-// 负责全局聊天服务器列表的获取与连接管理
+// ChatConnectionService 负责全局聊天服务器列表的获取与连接管理。
 type ChatConnectionService struct {
 	client *g79client.Client
 
@@ -30,7 +30,7 @@ type ChatConnectionService struct {
 	rnd    *rand.Rand
 }
 
-// 不同 ISP 对应的域名字段
+// ispHostFallback 不同 ISP 对应的域名字段。
 var ispHostFallback = map[int]func(g79client.G79ChatServerEntry) string{
 	10000: func(entry g79client.G79ChatServerEntry) string { return entry.CTCCHost },
 	10010: func(entry g79client.G79ChatServerEntry) string { return entry.CUCCHost },
@@ -38,10 +38,10 @@ var ispHostFallback = map[int]func(g79client.G79ChatServerEntry) string{
 	0:     func(entry g79client.G79ChatServerEntry) string { return entry.IP },
 }
 
-// 根据 G79 客户端实例构建聊天连接服务
+// NewChatConnectionService 根据 G79 客户端实例构建聊天连接服务。
 func NewChatConnectionService(client *g79client.Client) (*ChatConnectionService, error) {
 	if client == nil {
-		return nil, errors.New("NewChatConnectionService: Client must not be empty")
+		return nil, errors.New("chat_connection.NewChatConnectionService: client 不能为空")
 	}
 
 	svc := &ChatConnectionService{
@@ -68,12 +68,12 @@ func (s *ChatConnectionService) primeServers() error {
 	return nil
 }
 
-// 返回底层 G79 客户端
+// Client 返回底层 G79 客户端。
 func (s *ChatConnectionService) Client() *g79client.Client {
 	return s.client
 }
 
-// 返回当前缓存的聊天服务器列表
+// Servers 返回当前缓存的聊天服务器列表。
 func (s *ChatConnectionService) Servers() ([]g79client.G79ChatServerEntry, error) {
 	s.mu.RLock()
 	if s.servers != nil {
@@ -85,7 +85,7 @@ func (s *ChatConnectionService) Servers() ([]g79client.G79ChatServerEntry, error
 	return s.RefreshServers()
 }
 
-// 强制刷新聊天服务器列表
+// RefreshServers 强制刷新聊天服务器列表。
 func (s *ChatConnectionService) RefreshServers() ([]g79client.G79ChatServerEntry, error) {
 	list, err := g79client.RefreshG79ChatServers()
 	if err != nil {
@@ -97,20 +97,20 @@ func (s *ChatConnectionService) RefreshServers() ([]g79client.G79ChatServerEntry
 	return cloneChatServers(list), nil
 }
 
-// 根据 ISP ID 随机选择一个聊天服务器
+// SelectServer 根据 ISP ID 随机选择一个聊天服务器。
 func (s *ChatConnectionService) SelectServer(ispID int) (*ServerEndpoint, error) {
 	servers, err := s.Servers()
 	if err != nil {
 		return nil, err
 	}
 	if len(servers) == 0 {
-		return nil, errors.New("SelectServer: No chat server is available")
+		return nil, errors.New("chat_connection.SelectServer: 当前没有可用的聊天服务器")
 	}
 
 	entry := s.pickRandom(servers)
 	host := resolveHostByISP(entry, ispID)
 	if host == "" {
-		return nil, errors.New("SelectServer: No valid host is available")
+		return nil, errors.New("chat_connection.SelectServer: 找不到有效域名")
 	}
 
 	return &ServerEndpoint{
@@ -120,7 +120,7 @@ func (s *ChatConnectionService) SelectServer(ispID int) (*ServerEndpoint, error)
 	}, nil
 }
 
-// 选择合适的聊天服务器并建立连接
+// Dial 选择合适的聊天服务器并建立连接。
 func (s *ChatConnectionService) Dial(ctx context.Context, ispID int) (*ChatConnection, error) {
 	endpoint, err := s.SelectServer(ispID)
 	if err != nil {
@@ -129,10 +129,10 @@ func (s *ChatConnectionService) Dial(ctx context.Context, ispID int) (*ChatConne
 	return s.DialWithEndpoint(ctx, endpoint)
 }
 
-// 使用指定端点建立聊天连接
+// DialWithEndpoint 使用指定端点建立聊天连接。
 func (s *ChatConnectionService) DialWithEndpoint(ctx context.Context, endpoint *ServerEndpoint) (*ChatConnection, error) {
 	if endpoint == nil {
-		return nil, errors.New("DialWithEndpoint: Endpoint must not be empty")
+		return nil, errors.New("chat_connection.DialWithEndpoint: endpoint 不能为空")
 	}
 
 	d := &net.Dialer{}

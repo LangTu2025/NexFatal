@@ -13,13 +13,18 @@ type AuthenticationReconnectResponse struct {
 	Entity struct {
 		Token string `json:"token"`
 		Sead  string `json:"sead"`
+		Seed  string `json:"seed"`
 	} `json:"entity"`
 }
 
-// 使用登录时返回的 Sead 恢复 3.9 会话
+// 使用登录时返回的 Sead 恢复当前版本会话。
 // 成功后会更新 Client.UserToken 和 Client.Sead
 func (c *Client) AuthenticationReconnect() (*AuthenticationReconnectResponse, error) {
-	if c.Sead == "" {
+	sead := c.Sead
+	if sead == "" {
+		sead = c.Seed
+	}
+	if sead == "" {
 		return nil, fmt.Errorf("AuthenticationReconnect: 登录 Sead 缺失")
 	}
 
@@ -37,7 +42,7 @@ func (c *Client) AuthenticationReconnect() (*AuthenticationReconnectResponse, er
 	req.Header.Set("User-Agent", "libhttpclient/1.0.0.0")
 	req.Header.Set("Accept-Encoding", "gzip")
 	req.Header.Set("user-id", c.UserID)
-	req.Header.Set("user-sead", c.Sead)
+	req.Header.Set("user-sead", sead)
 
 	resp, err := c.do(req)
 	if err != nil {
@@ -65,8 +70,13 @@ func (c *Client) AuthenticationReconnect() (*AuthenticationReconnectResponse, er
 	if result.Entity.Token != "" {
 		c.UserToken = result.Entity.Token
 	}
-	if result.Entity.Sead != "" {
-		c.Sead = result.Entity.Sead
+	seed := result.Entity.Sead
+	if seed == "" {
+		seed = result.Entity.Seed
+	}
+	if seed != "" {
+		c.Sead = seed
+		c.Seed = seed
 	}
 	return &result, nil
 }

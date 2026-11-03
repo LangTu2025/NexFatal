@@ -1,8 +1,13 @@
 package g79client
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+)
 
-// 当前账号外观设置
+// 用户设置列表结构体
 type UserSettingListEntity struct {
 	SkinData struct {
 		ItemID string `json:"item_id"`
@@ -19,9 +24,14 @@ type GetUserSettingListResponse struct {
 	Entity UserSettingListEntity `json:"entity"`
 }
 
-// 获取当前账号外观设置
+// 获取用户设置列表
 func (c *Client) GetUserSettingList() (*GetUserSettingListResponse, error) {
-	requestData := map[string]any{
+	api := "/pe-get-user-setting-list"
+	if c.IsX19 {
+		api = "/get-user-setting-list"
+	}
+
+	requestData := map[string]interface{}{
 		"settings": []string{
 			"skin_type",
 			"skin_data",
@@ -35,16 +45,37 @@ func (c *Client) GetUserSettingList() (*GetUserSettingListResponse, error) {
 		},
 	}
 
-	var result GetUserSettingListResponse
-	err := c.postJSON(
-		c.ReleaseJSON.ApiGatewayUrl,
-		"/pe-get-user-setting-list",
-		androidUserAgent,
-		requestData,
-		&result,
-	)
+	jsonData, err := json.Marshal(requestData)
 	if err != nil {
-		return nil, fmt.Errorf("GetUserSettingList: %v", err)
+		return nil, err
 	}
-	return &result, nil
+
+	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(jsonData)))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("User-Agent", "WPFLauncher/0.0.0.0")
+	req.Header.Set("user-id", c.UserID)
+
+	token := CalculateDynamicToken(api, string(jsonData), c.UserToken)
+	req.Header.Set("user-token", token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := readResponseBody(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var getResp GetUserSettingListResponse
+	if err := json.Unmarshal(respBody, &getResp); err != nil {
+		return nil, fmt.Errorf("解析获取用户设置列表失败: %v", err)
+	}
+	return &getResp, nil
 }

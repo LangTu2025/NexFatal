@@ -1018,12 +1018,6 @@ func (conn *Conn) handleResourcePackClientResponse(pk *packet.ResourcePackClient
 		pk := &packet.ResourcePackStack{BaseGameVersion: protocol.CurrentVersion, Experiments: []protocol.ExperimentData{{Name: "cameras", Enabled: true}}}
 		for _, pack := range conn.resourcePacks {
 			resourcePack := protocol.StackResourcePack{UUID: pack.UUID(), Version: pack.Version()}
-			// If it has behaviours, add it to the behaviour pack list. If not, we add it to the texture packs
-			// list.
-			if pack.HasBehaviours() {
-				pk.BehaviourPacks = append(pk.BehaviourPacks, resourcePack)
-				continue
-			}
 			pk.TexturePacks = append(pk.TexturePacks, resourcePack)
 		}
 		for _, exempted := range exemptedPacks {

@@ -43,7 +43,6 @@ func init() {
 		indexBlockState.Marshal(r)
 		registerBlockState(indexBlockState)
 	}
-	registerNeteaseCustomAppearanceAliases()
 
 	blockStates = nil
 
@@ -161,45 +160,5 @@ func registerBlockState(s block_general.IndexBlockState) {
 	blockStateMapping[hash] = blockEntry{
 		block: s,
 		rid:   rid,
-	}
-}
-
-// registerNeteaseCustomAppearanceAliases registers compatibility aliases for
-// NetEase clients. Some NetEase network block IDs are the normal block-state
-// hash with an extra custom_appearance byte state. The exported world should
-// still use the standard block state, so these aliases point back to the
-// original state without preserving the NetEase-only property.
-func registerNeteaseCustomAppearanceAliases() {
-	entries := make([]blockEntry, 0, len(blockStateMapping))
-	for _, entry := range blockStateMapping {
-		entries = append(entries, entry)
-	}
-
-	for _, entry := range entries {
-		realBlock := decodeToNormalBlockState(entry.block)
-		if _, ok := realBlock.Properties["custom_appearance"]; ok {
-			continue
-		}
-		for _, customAppearance := range []byte{0, 1} {
-			props := make(map[string]any, len(realBlock.Properties)+1)
-			for k, v := range realBlock.Properties {
-				props[k] = v
-			}
-			props["custom_appearance"] = customAppearance
-
-			hash := ComputeBlockHash(realBlock.Name, props)
-			if _, ok := blockStateMapping[hash]; ok {
-				continue
-			}
-
-			rid := entry.rid
-			if block_general.UseNetworkBlockRuntimeID {
-				rid = hash
-			}
-			blockStateMapping[hash] = blockEntry{
-				block: entry.block,
-				rid:   rid,
-			}
-		}
 	}
 }

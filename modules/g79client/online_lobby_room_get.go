@@ -62,12 +62,12 @@ func (c *Client) GetOnlineLobbyRoom(roomID string) (*OnlineLobbyRoomGetResponse,
 
 	jsonData, err := json.Marshal(requestData)
 	if err != nil {
-		return nil, fmt.Errorf("GetOnlineLobbyRoom: %v", err)
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.ReleaseJSON.ApiGatewayUrl+api, strings.NewReader(string(jsonData)))
 	if err != nil {
-		return nil, fmt.Errorf("GetOnlineLobbyRoom: %v", err)
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -79,18 +79,18 @@ func (c *Client) GetOnlineLobbyRoom(roomID string) (*OnlineLobbyRoomGetResponse,
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("GetOnlineLobbyRoom: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := readResponseBody(resp)
 	if err != nil {
-		return nil, fmt.Errorf("GetOnlineLobbyRoom: %v", err)
+		return nil, err
 	}
 
 	var getResp OnlineLobbyRoomGetResponse
 	if err := json.Unmarshal(respBody, &getResp); err != nil {
-		return nil, fmt.Errorf("GetOnlineLobbyRoom: %v", err)
+		return nil, fmt.Errorf("解析在线大厅详情响应失败: %v, 响应内容: %s", err, string(respBody))
 	}
 	return &getResp, nil
 }

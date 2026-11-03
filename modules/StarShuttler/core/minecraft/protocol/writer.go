@@ -482,6 +482,11 @@ func (w *Writer) EventOrdinal(x *Event) {
 	w.Varuint32(&ordinal)
 }
 
+// StringConst writes a string constant to the writer.
+func (w *Writer) StringConst(value string) {
+	w.String(&value)
+}
+
 // TransactionDataType writes an InventoryTransactionData type to the writer.
 func (w *Writer) TransactionDataType(x *InventoryTransactionData) {
 	var id uint32

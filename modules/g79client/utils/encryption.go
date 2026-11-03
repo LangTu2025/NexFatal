@@ -19,14 +19,14 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
-// 对登录令牌做 MD5 哈希并返回字节切片
+// GetEncryptedToken 对登录令牌做 MD5 哈希并返回字节切片
 func GetEncryptedToken(loginToken string) []byte {
 	h := md5.New()
 	h.Write([]byte(loginToken))
 	return h.Sum(nil)
 }
 
-// 生成 G79 动态 HTTP 令牌
+// G79GetDynamicHttpToken 生成 G79 动态 HTTP 令牌
 func G79GetDynamicHttpToken(loginToken, path, body string) (string, error) {
 	// 字符串转二进制字符串（每个字符8位补零）
 	stringToBin := func(s string) string {
@@ -51,7 +51,7 @@ func G79GetDynamicHttpToken(loginToken, path, body string) (string, error) {
 	binToBytes := func(binary string) ([]byte, error) {
 		lenBin := len(binary)
 		if lenBin%8 != 0 {
-			return nil, fmt.Errorf("G79GetDynamicHttpToken: Binary length %d not multiple of 8", lenBin)
+			return nil, fmt.Errorf("binary length %d not multiple of 8", lenBin)
 		}
 
 		var bytes []byte
@@ -59,7 +59,7 @@ func G79GetDynamicHttpToken(loginToken, path, body string) (string, error) {
 			chunk := binary[i : i+8]
 			b, err := strconv.ParseUint(chunk, 2, 8)
 			if err != nil {
-				return nil, fmt.Errorf("G79GetDynamicHttpToken: Parse binary chunk %q: %v", chunk, err)
+				return nil, fmt.Errorf("parse binary chunk %q: %w", chunk, err)
 			}
 			bytes = append(bytes, uint8(b))
 		}
@@ -69,7 +69,7 @@ func G79GetDynamicHttpToken(loginToken, path, body string) (string, error) {
 	// 字节切片按位异或
 	bytesXor := func(s, key []byte) ([]byte, error) {
 		if len(s) != len(key) {
-			return nil, fmt.Errorf("G79GetDynamicHttpToken: Length mismatch: s=%d, key=%d", len(s), len(key))
+			return nil, fmt.Errorf("length mismatch: s=%d, key=%d", len(s), len(key))
 		}
 
 		xor := make([]byte, len(s))
@@ -92,7 +92,7 @@ func G79GetDynamicHttpToken(loginToken, path, body string) (string, error) {
 	// 步骤1：MD5 哈希计算
 	h := md5.New()
 	if _, err := h.Write([]byte(loginToken)); err != nil {
-		return "", fmt.Errorf("G79GetDynamicHttpToken: Write login token: %v", err)
+		return "", fmt.Errorf("write login token: %w", err)
 	}
 	loginTokenHash := h.Sum(nil)
 	h.Reset()
@@ -100,14 +100,14 @@ func G79GetDynamicHttpToken(loginToken, path, body string) (string, error) {
 	// 步骤2：更新哈希内容
 	hexLoginHash := hex.EncodeToString(loginTokenHash)
 	if _, err := h.Write([]byte(hexLoginHash)); err != nil {
-		return "", fmt.Errorf("G79GetDynamicHttpToken: Write hex login hash: %v", err)
+		return "", fmt.Errorf("write hex login hash: %w", err)
 	}
 	if _, err := h.Write([]byte(body)); err != nil {
-		return "", fmt.Errorf("G79GetDynamicHttpToken: Write body: %v", err)
+		return "", fmt.Errorf("write body: %w", err)
 	}
 	pathStr := fmt.Sprintf("0eGsBkhl%s", path)
 	if _, err := h.Write([]byte(pathStr)); err != nil {
-		return "", fmt.Errorf("G79GetDynamicHttpToken: Write path string: %v", err)
+		return "", fmt.Errorf("write path string: %w", err)
 	}
 
 	// 步骤3：二进制转换与移位
@@ -118,18 +118,18 @@ func G79GetDynamicHttpToken(loginToken, path, body string) (string, error) {
 	// 步骤4：异或与 Base64 编码
 	string5Bytes, err := binToBytes(string4)
 	if err != nil {
-		return "", fmt.Errorf("G79GetDynamicHttpToken: Bin to bytes: %v", err)
+		return "", fmt.Errorf("bin to bytes: %w", err)
 	}
 	string6Bytes, err := bytesXor([]byte(string2), string5Bytes)
 	if err != nil {
-		return "", fmt.Errorf("G79GetDynamicHttpToken: Bytes xor: %v", err)
+		return "", fmt.Errorf("bytes xor: %w", err)
 	}
 	string7 := base64.StdEncoding.EncodeToString(string6Bytes)
 
 	return encryptToken(string7), nil
 }
 
-// 根据索引选择并处理密钥（十六进制解码 + 异或 0x7C）
+// G79PickKey 根据索引选择并处理密钥（十六进制解码 + 异或 0x7C）
 func G79PickKey(index uint8) ([]byte, error) {
 	keys := []string{
 		"1C8D9CAD811F2F1E3F7B3B5D208DBE83",
@@ -152,13 +152,13 @@ func G79PickKey(index uint8) ([]byte, error) {
 
 	// 检查索引有效性
 	if index >= uint8(len(keys)) {
-		return nil, fmt.Errorf("G79PickKey: Index %d out of range (0-%d)", index, len(keys)-1)
+		return nil, fmt.Errorf("index %d out of range (0-%d)", index, len(keys)-1)
 	}
 
 	// 十六进制解码
 	hexKey, err := hex.DecodeString(keys[index])
 	if err != nil {
-		return nil, fmt.Errorf("G79PickKey: Decode key hex: %v", err)
+		return nil, fmt.Errorf("decode key hex: %w", err)
 	}
 
 	// 每个字节异或 0x7C
@@ -179,7 +179,7 @@ func randAlphanumeric(n int) string {
 	return string(b)
 }
 
-// G79 HTTP 数据加密（AES-CBC 无填充）
+// G79HttpEncrypt G79 HTTP 数据加密（AES-CBC 无填充）
 func G79HttpEncrypt(data string) (string, error) {
 	dataBytes := []byte(data)
 
@@ -198,19 +198,19 @@ func G79HttpEncrypt(data string) (string, error) {
 	// 步骤4：生成16位随机IV
 	iv := make([]byte, 16)
 	if _, err := rand.Read(iv); err != nil {
-		return "", fmt.Errorf("G79HttpEncrypt: Generate iv: %v", err)
+		return "", fmt.Errorf("generate iv: %w", err)
 	}
 
 	// 步骤5：获取加密密钥
 	key, err := G79PickKey(index)
 	if err != nil {
-		return "", fmt.Errorf("G79HttpEncrypt: Pick key: %v", err)
+		return "", fmt.Errorf("pick key: %w", err)
 	}
 
 	// 步骤6：AES-CBC 加密
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return "", fmt.Errorf("G79HttpEncrypt: Create aes cipher: %v", err)
+		return "", fmt.Errorf("create aes cipher: %w", err)
 	}
 	mode := cipher.NewCBCEncrypter(block, iv)
 	encrypted := make([]byte, len(padded))
@@ -225,22 +225,22 @@ func G79HttpEncrypt(data string) (string, error) {
 	return hex.EncodeToString(result), nil
 }
 
-// G79 HTTP 数据解密（AES-CBC 无填充）
+// G79HttpDecrypt G79 HTTP 数据解密（AES-CBC 无填充）
 func G79HttpDecrypt(data string) (string, error) {
 	// 步骤1：十六进制解码
 	bytes, err := hex.DecodeString(data)
 	if err != nil {
-		return "", fmt.Errorf("G79HttpDecrypt: Decode hex data: %v", err)
+		return "", fmt.Errorf("decode hex data: %w", err)
 	}
 	if len(bytes) < 17 { // 至少需要IV(16) + 1字节信息
-		return "", fmt.Errorf("G79HttpDecrypt: Data too short: len=%d", len(bytes))
+		return "", fmt.Errorf("data too short: len=%d", len(bytes))
 	}
 
 	// 步骤2：解析版本和密钥索引
 	info := bytes[len(bytes)-1]
 	version := info & 0x0F
 	if version != 0x4 {
-		return "", fmt.Errorf("G79HttpDecrypt: Invalid version: %d", version)
+		return "", fmt.Errorf("invalid version: %d", version)
 	}
 	index := info >> 4
 
@@ -251,13 +251,13 @@ func G79HttpDecrypt(data string) (string, error) {
 	// 步骤4：获取解密密钥
 	key, err := G79PickKey(index)
 	if err != nil {
-		return "", fmt.Errorf("G79HttpDecrypt: Pick key: %v", err)
+		return "", fmt.Errorf("pick key: %w", err)
 	}
 
 	// 步骤5：AES-CBC 解密
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return "", fmt.Errorf("G79HttpDecrypt: Create aes cipher: %v", err)
+		return "", fmt.Errorf("create aes cipher: %w", err)
 	}
 	mode := cipher.NewCBCDecrypter(block, iv)
 	decrypted := make([]byte, len(encrypted))
@@ -269,7 +269,7 @@ func G79HttpDecrypt(data string) (string, error) {
 		dropPos--
 	}
 	if dropPos < 15 { // 至少需要保留16位尾缀前的有效数据
-		return "", fmt.Errorf("G79HttpDecrypt: Invalid decrypted data (no valid content)")
+		return "", fmt.Errorf("invalid decrypted data (no valid content)")
 	}
 	dropPos -= 16
 
@@ -290,16 +290,16 @@ func PeAuthSign(v string, sp, tr int) (string, error) {
 	}
 
 	if sp < 0 || tr <= 0 {
-		return "", fmt.Errorf("PeAuthSign: Invalid sp/tr parameters")
+		return "", fmt.Errorf("invalid sp/tr parameters")
 	}
 	if 16*sp+16 > len(b) {
-		return "", fmt.Errorf("PeAuthSign: Sp=%d out of range for constant table", sp)
+		return "", fmt.Errorf("sp=%d out of range for constant table", sp)
 	}
 	if 4*sp+4 > len(qTable) {
-		return "", fmt.Errorf("PeAuthSign: Sp=%d out of range for shift table", sp)
+		return "", fmt.Errorf("sp=%d out of range for shift table", sp)
 	}
 
-	// 将字符串填充到 4 字节边界
+	// pad string to 4-byte boundary
 	if rem := len(v) % 4; rem != 0 {
 		v += strings.Repeat("0", 4-rem)
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	tanauth "github.com/xingbaiawa/StarShuttler/client/local_lobby/tan_solver/bunker"
 	I18n "github.com/xingbaiawa/StarShuttler/core/bunker/i18n"
@@ -16,6 +17,7 @@ type AccessWrapper struct {
 	ServerPassword string
 	Token          string
 	Client         *Client
+	RemoteClient   *RemoteClient
 	Username       string
 	Password       string
 }
@@ -33,9 +35,19 @@ func NewAccessWrapper(Client *Client, ServerCode, ServerPassword, Token, usernam
 
 func (aw *AccessWrapper) GetAccess(ctx context.Context, publicKey []byte) (authResponse AuthResponse, err error) {
 	pubKeyData := base64.StdEncoding.EncodeToString(publicKey)
-	authResponse, err = aw.Client.Auth(ctx, aw.ServerCode, aw.ServerPassword, pubKeyData, aw.Token, aw.Username, aw.Password)
+	if aw.RemoteClient != nil {
+		authResponse, err = aw.RemoteClient.Auth(ctx, aw.ServerCode, aw.ServerPassword, pubKeyData, aw.Token, aw.Username, aw.Password)
+	} else {
+		authResponse, err = aw.Client.Auth(ctx, aw.ServerCode, aw.ServerPassword, pubKeyData, aw.Token, aw.Username, aw.Password)
+	}
 	if err != nil {
 		return AuthResponse{}, err
+	}
+	if aw.RemoteClient != nil && aw.Client != nil {
+		aw.Client.GrowthLevel = authResponse.BotLevel
+		if strings.TrimSpace(authResponse.MasterName) != "" && aw.Client.RespondTo == "" {
+			aw.Client.RespondTo = authResponse.MasterName
+		}
 	}
 	if len(authResponse.FBToken) != 0 {
 		homedir, err := os.UserHomeDir()

@@ -3,7 +3,6 @@ package mpay
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 )
 
@@ -79,11 +78,11 @@ func newUser(deviceID, sdkuid, sessionID, udid, mac string, isGuest bool, ram, r
 
 func (u *User) CookieString() (string, error) {
 	if u == nil {
-		return "", errors.New("CookieString: 用户不能为空")
+		return "", errors.New("mpay: user 不能为空")
 	}
 	sauthJSON, err := json.Marshal(u.Sauth)
 	if err != nil {
-		return "", fmt.Errorf("CookieString: %v", err)
+		return "", err
 	}
 	payload := map[string]any{
 		"sauth_json": string(sauthJSON),
@@ -95,7 +94,7 @@ func (u *User) CookieString() (string, error) {
 	}
 	cookie, err := json.Marshal(payload)
 	if err != nil {
-		return "", fmt.Errorf("CookieString: %v", err)
+		return "", err
 	}
 	return string(cookie), nil
 }
