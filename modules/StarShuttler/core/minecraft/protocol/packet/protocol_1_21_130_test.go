@@ -129,13 +129,13 @@ func TestCommandRequestRoundTrip(t *testing.T) {
 			RequestID:      "request",
 			PlayerUniqueID: 42,
 		},
-		Internal:  true,
-		UnLimited: true,
+		IsInternal: true,
+		UnLimit:    true,
 	}
 	encoded := bytes.NewBuffer(nil)
 	original.Marshal(protocol.NewWriter(encoded, 0))
-	if original.Version != "latest" {
-		t.Fatalf("empty command version defaulted to %q, want latest", original.Version)
+	if original.Version != "Latest" {
+		t.Fatalf("empty command version defaulted to %q, want Latest", original.Version)
 	}
 
 	readBuffer := bytes.NewBuffer(encoded.Bytes())
@@ -152,7 +152,7 @@ func TestCommandRequestRoundTrip(t *testing.T) {
 	if readBuffer.Len() != 0 {
 		t.Fatalf("command request left %d unread bytes", readBuffer.Len())
 	}
-	if commandLine != original.CommandLine || !reflect.DeepEqual(origin, original.CommandOrigin) || internal != original.Internal || unlimited != original.UnLimited || version != original.Version {
+	if commandLine != original.CommandLine || !reflect.DeepEqual(origin, original.CommandOrigin) || internal != original.IsInternal || unlimited != original.UnLimit || version != original.Version {
 		t.Fatalf("command request decoded as %q, %#v, %t, %t, %q", commandLine, origin, internal, unlimited, version)
 	}
 }

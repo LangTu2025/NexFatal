@@ -14,13 +14,13 @@ type CommandRequest struct {
 	// CommandOrigin is the data specifying the origin of the command. In other words, the source that the
 	// command was from, such as the player itself or a websocket server.
 	CommandOrigin protocol.CommandOrigin
-	// Internal specifies if the command request internal. Setting it to false seems to work and the usage of
+	// IsInternal specifies if the command request is internal. Setting it to false seems to work and the usage of
 	// this field is not known.
-	Internal bool
-	// Version is the version string sent by current Bedrock clients. Empty uses the latest command version.
+	IsInternal bool
+	// UnLimit is a Netease extension controlling whether the command is unlimited.
+	UnLimit bool
+	// Version is the version of the command that is being executed. This field currently has no purpose or functionality.
 	Version string
-	// Netease
-	UnLimited bool
 }
 
 // ID ...
@@ -31,11 +31,10 @@ func (*CommandRequest) ID() uint32 {
 func (pk *CommandRequest) Marshal(io protocol.IO) {
 	io.String(&pk.CommandLine)
 	protocol.CommandOriginDataString(io, &pk.CommandOrigin)
-	io.Bool(&pk.Internal)
-	// NetEase inserts UnLimited before the 3.10 command version string.
-	io.Bool(&pk.UnLimited)
+	io.Bool(&pk.IsInternal)
+	io.Bool(&pk.UnLimit)
 	if pk.Version == "" {
-		pk.Version = "latest"
+		pk.Version = "Latest"
 	}
 	io.String(&pk.Version)
 }

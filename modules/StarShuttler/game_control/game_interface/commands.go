@@ -99,9 +99,9 @@ func packCommandRequest(command string, origin uint32, requestID uuid.UUID) *pac
 			UUID:      requestID,
 			RequestID: "96045347-a6a3-4114-94c0-1bc4cc561694",
 		},
-		Internal:  false,
-		UnLimited: false,
-		Version:   "latest",
+		IsInternal: false,
+		UnLimit:    false,
+		Version:    "Latest",
 	}
 }
 

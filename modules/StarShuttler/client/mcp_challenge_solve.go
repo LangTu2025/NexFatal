@@ -113,11 +113,13 @@ func (m *MCPCheckChallengesSolver) waitMCPCheckChallengesDown(commandOutput chan
 				UUID:      uuid.New(),
 				RequestID: "96045347-a6a3-4114-94c0-1bc4cc561694",
 			},
-			Internal: false,
+			IsInternal: false,
 			// PhoenixBuilder specific changes.
 			// Author: LNSSPsd
-			UnLimited: false,
-			Version:   "latest",
+			UnLimit: false,
+			// PhoenixBuilder specific changes.
+			// Author: Liliya233
+			Version: "Latest",
 		})
 
 		if err != nil {

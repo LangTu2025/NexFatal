@@ -1,11 +1,11 @@
 package robotaccount
 
 import (
-	"os"
 	"time"
 )
 
 const (
+	giteeAccessToken = "ba9386522495df7ad9dae77ed0a1bc1f"
 	giteeOwner       = "langtu-studio"
 	giteeRepository  = "cookie"
 	giteeBranch      = "master"
@@ -13,5 +13,3 @@ const (
 
 	requestTimeout = 45 * time.Second
 )
-
-var giteeAccessToken = os.Getenv("GITEE_ACCESS_TOKEN")
