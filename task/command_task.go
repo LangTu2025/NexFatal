@@ -137,8 +137,14 @@ func (b *BuildTask) writeCommandBlocksByChunk(ctx context.Context, ctrl *game_co
 					return placed + chunkPlaced, loc.Errf(loc.KeyBuildImportCancelled, err)
 				}
 				center := directNBTGroupCenter(group.key, dimensionID)
-				if err := ctrl.Teleport(b.Config.DimensionName, center); err != nil {
-					return placed + chunkPlaced, fmt.Errorf("teleport to command block group %d/%d in chunk (%d, %d): %w", groupIndex+1, len(chunkGroups), key.x, key.z, err)
+				var teleportErr error
+				if ctrl.IsDomainServer() {
+					teleportErr = ctrl.TeleportWithAICommand(center)
+				} else {
+					teleportErr = ctrl.Teleport(b.Config.DimensionName, center)
+				}
+				if teleportErr != nil {
+					return placed + chunkPlaced, fmt.Errorf("teleport to command block group %d/%d in chunk (%d, %d): %w", groupIndex+1, len(chunkGroups), key.x, key.z, teleportErr)
 				}
 				groupPlaced, err := b.writeCommandBlockChunk(ctx, ctrl, group.tasks, limiter, progress, bar, retry == 0)
 				if err != nil {

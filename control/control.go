@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
 	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
 	"github.com/LangTu2025/NexFatal/constants"
 	"github.com/LangTu2025/NexFatal/defines"
@@ -18,6 +17,7 @@ import (
 	"github.com/LangTu2025/NexFatal/utils/command_upgrader"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
 	safehttp "github.com/LangTu2025/NexFatal/utils/safe_http"
+	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
 	"github.com/xingbaiawa/StarShuttler/client"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
@@ -170,6 +170,10 @@ func (c *Control) isDomainServer() bool {
 	}
 	return c.Config.ServerKind == defines.ServerKindDomain ||
 		defines.DetectServerKind(c.Config.RentalServerCode) == defines.ServerKindDomain
+}
+
+func (c *Control) IsDomainServer() bool {
+	return c.isDomainServer()
 }
 
 func scrubConnectError(err error) error {
@@ -621,6 +625,25 @@ func (c *Control) Teleport(dimensionName string, pos protocol.BlockPos) error {
 		return loc.Errf(loc.KeyControlTeleportBotFailed, err)
 	}
 	return c.AwaitChanges()
+}
+
+// TeleportWithAICommand teleports the bot through the PyRpc AI command channel.
+func (c *Control) TeleportWithAICommand(pos protocol.BlockPos) error {
+	if c.API == nil {
+		return loc.Err(loc.KeyControlAPINotInitialized)
+	}
+	command := fmt.Sprintf("tp @s %d %d %d", pos[0], pos[1], pos[2])
+	resp, isTimeout, err := c.API.Commands().SendAICommandWithTimeoutDirect(command, true, 5*time.Second)
+	if isTimeout {
+		return loc.Errf(loc.KeyControlTeleportBotFailed, fmt.Errorf("等待传送命令回包超时"))
+	}
+	if err != nil {
+		return loc.Errf(loc.KeyControlTeleportBotFailed, err)
+	}
+	if resp == nil || resp.SuccessCount <= 0 {
+		return loc.Errf(loc.KeyControlTeleportBotFailed, commandOutputFailureText(resp))
+	}
+	return nil
 }
 
 func commandOutputFailureText(resp *packet.CommandOutput) string {

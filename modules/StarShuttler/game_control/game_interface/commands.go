@@ -176,6 +176,24 @@ func (c *Commands) SendAICommandWithTimeout(command string, dimensional bool, ti
 		}
 		return
 	}
+	return c.sendAICommandWithTimeout(command, dimensional, timeout)
+}
+
+// SendAICommandWithTimeoutDirect always uses the PyRpc AI command channel,
+// including when the domain compatibility mode redirects regular commands to WS.
+func (c *Commands) SendAICommandWithTimeoutDirect(command string, dimensional bool, timeout time.Duration) (
+	resp *packet.CommandOutput,
+	isTimeOut bool,
+	err error,
+) {
+	return c.sendAICommandWithTimeout(command, dimensional, timeout)
+}
+
+func (c *Commands) sendAICommandWithTimeout(command string, dimensional bool, timeout time.Duration) (
+	resp *packet.CommandOutput,
+	isTimeOut bool,
+	err error,
+) {
 	if timeout <= 0 {
 		timeout = DefaultTimeoutCommandRequest
 	}
