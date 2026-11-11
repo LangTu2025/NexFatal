@@ -75,19 +75,6 @@ func (x *ItemEntry) Marshal(r IO) {
 	r.NBT(&x.Data, nbt.NetworkLittleEndian)
 }
 
-// ItemComponentEntry is kept for legacy Netease packet compatibility.
-// It is equivalent to the pre-1.21.60 item component table entry.
-type ItemComponentEntry struct {
-	Name string
-	Data map[string]any
-}
-
-// Marshal encodes/decodes an ItemComponentEntry.
-func (x *ItemComponentEntry) Marshal(r IO) {
-	r.String(&x.Name)
-	r.NBT(&x.Data, nbt.NetworkLittleEndian)
-}
-
 // MaterialReducerOutput is an output from a material reducer.
 type MaterialReducerOutput struct {
 	// NetworkID is the network ID of the output.

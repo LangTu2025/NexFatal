@@ -1,7 +1,7 @@
 package localauth
 
 import (
-	"github.com/xingbaiawa/g79client/utils"
+	"github.com/Yeah114/g79client/utils"
 )
 
 // TransferStartType 解密 contentHex，拼接 uid 到明文前缀，再加密返回。

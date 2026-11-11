@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xingbaiawa/g79client/example/login"
-	linkconnection "github.com/xingbaiawa/g79client/service/link_connection"
+	"github.com/Yeah114/g79client/example/login"
+	linkconnection "github.com/Yeah114/g79client/service/link_connection"
 )
 
 func main() {

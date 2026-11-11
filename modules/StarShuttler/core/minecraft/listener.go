@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"math"
 	"net"
@@ -15,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/xingbaiawa/StarShuttler/core/minecraft/internal"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/login"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
@@ -116,7 +116,7 @@ type Listener struct {
 // available unicast and anycast IP addresses of the local system.
 func (cfg ListenConfig) Listen(network string, address string) (*Listener, error) {
 	if cfg.ErrorLog == nil {
-		cfg.ErrorLog = slog.New(slog.NewTextHandler(io.Discard, nil))
+		cfg.ErrorLog = slog.New(internal.DiscardHandler{})
 	}
 	cfg.ErrorLog = cfg.ErrorLog.With("src", "listener")
 	if cfg.StatusProvider == nil {
@@ -208,7 +208,7 @@ func (listener *Listener) AddResourcePack(pack *resource.Pack) {
 func (listener *Listener) RemoveResourcePack(uuid string) {
 	listener.packsMu.Lock()
 	listener.packs = slices.DeleteFunc(listener.packs, func(pack *resource.Pack) bool {
-		return pack.UUID() == uuid
+		return pack.UUID().String() == uuid
 	})
 	listener.packsMu.Unlock()
 }

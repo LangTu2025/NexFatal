@@ -75,7 +75,7 @@ func newUser(info *UserInfo) *User {
 			LoginChannel:     "4399com",
 			Platform:         "ad",
 			RealName:         `{"realname_type":"0"}`,
-			SDKVersion:       "3.18.0",
+			SDKVersion:       "1.0.0",
 			SDKUID:           strconv.FormatInt(info.UID, 10),
 			SessionID:        info.State,
 			SourceAppChannel: "4399com",

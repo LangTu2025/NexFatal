@@ -95,7 +95,7 @@ func (x *Skin) Marshal(r IO) {
 	r.String(&x.SkinColour)
 	SliceUint32Length(r, &x.PersonaPieces)
 	SliceUint32Length(r, &x.PieceTintColours)
-	if err := x.validateForIO(r); err != nil {
+	if err := x.validate(); err != nil {
 		r.InvalidValue(fmt.Sprintf("Skin %v", x.SkinID), "serialised skin", err.Error())
 	}
 	r.Bool(&x.PremiumSkin)
@@ -108,46 +108,16 @@ func (x *Skin) Marshal(r IO) {
 // validate checks the skin and makes sure every one of its values are correct. It checks the image dimensions
 // and makes sure they match the image size of the skin, cape and the skin's animations.
 func (x Skin) validate() error {
-	if err := validateImageData("skin", x.SkinImageWidth, x.SkinImageHeight, len(x.SkinData), false); err != nil {
-		return err
+	if x.SkinImageHeight*x.SkinImageWidth*4 != uint32(len(x.SkinData)) {
+		return fmt.Errorf("expected size of skin is %vx%v (%v bytes total), but got %v bytes", x.SkinImageWidth, x.SkinImageHeight, x.SkinImageHeight*x.SkinImageWidth*4, len(x.SkinData))
 	}
-	if err := validateImageData("cape", x.CapeImageWidth, x.CapeImageHeight, len(x.CapeData), false); err != nil {
-		return err
-	}
-	for i, animation := range x.Animations {
-		if err := validateImageData(fmt.Sprintf("animation %v", i), animation.ImageWidth, animation.ImageHeight, len(animation.ImageData), false); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (x Skin) validateForIO(r IO) error {
-	_, isReader := r.(*Reader)
-	if !isReader {
-		return x.validate()
-	}
-	if err := validateImageData("skin", x.SkinImageWidth, x.SkinImageHeight, len(x.SkinData), true); err != nil {
-		return err
-	}
-	if err := validateImageData("cape", x.CapeImageWidth, x.CapeImageHeight, len(x.CapeData), true); err != nil {
-		return err
+	if x.CapeImageHeight*x.CapeImageWidth*4 != uint32(len(x.CapeData)) {
+		return fmt.Errorf("expected size of cape is %vx%v (%v bytes total), but got %v bytes", x.CapeImageWidth, x.CapeImageHeight, x.CapeImageHeight*x.CapeImageWidth*4, len(x.CapeData))
 	}
 	for i, animation := range x.Animations {
-		if err := validateImageData(fmt.Sprintf("animation %v", i), animation.ImageWidth, animation.ImageHeight, len(animation.ImageData), true); err != nil {
-			return err
+		if animation.ImageHeight*animation.ImageWidth*4 != uint32(len(animation.ImageData)) {
+			return fmt.Errorf("expected size of animation %v is %vx%v (%v bytes total), but got %v bytes", i, animation.ImageWidth, animation.ImageHeight, animation.ImageHeight*animation.ImageWidth*4, len(animation.ImageData))
 		}
-	}
-	return nil
-}
-
-func validateImageData(name string, width, height uint32, actual int, allowEmpty bool) error {
-	expected := width * height * 4
-	if expected != uint32(actual) {
-		if allowEmpty && actual == 0 {
-			return nil
-		}
-		return fmt.Errorf("expected size of %s is %vx%v (%v bytes total), but got %v bytes", name, width, height, expected, actual)
 	}
 	return nil
 }
@@ -191,7 +161,7 @@ func (x *SkinAnimation) Marshal(r IO) {
 	r.ByteSlice(&x.ImageData)
 	r.Uint32(&x.AnimationType)
 	r.Float32(&x.FrameCount)
-	r.Uint32(&x.ExpressionType) // sometimes will be removed?
+	r.Uint32(&x.ExpressionType)
 }
 
 // PersonaPiece represents a piece of a persona skin. All pieces are sent separately.

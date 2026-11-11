@@ -2,7 +2,7 @@ package defines
 
 import "encoding/json"
 
-// ExportTaskConfig 保存一次导出任务的配置
+// ExportTaskConfig 保存一次导出任务的配置。
 type ExportTaskConfig struct {
 	FilePath      string   `json:"file_path"`
 	FileType      string   `json:"file_type"`
@@ -19,7 +19,7 @@ type exportTaskConfigJSON struct {
 	EndPos        BlockPos `json:"end_pos"`
 }
 
-// NewExportTaskConfig 创建带默认值的导出任务配置
+// NewExportTaskConfig 创建带默认值的导出任务配置。
 func NewExportTaskConfig() *ExportTaskConfig {
 	return &ExportTaskConfig{
 		FileType:      "mcworld",
@@ -56,12 +56,12 @@ func (c *ExportTaskConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// FromJSON 从 JSON 字符串恢复导出任务配置
+// FromJSON 从 JSON 字符串恢复导出任务配置。
 func (c *ExportTaskConfig) FromJSON(str string) error {
 	return json.Unmarshal([]byte(str), c)
 }
 
-// ToJSON 将导出任务配置序列化为 JSON 字符串
+// ToJSON 将导出任务配置序列化为 JSON 字符串。
 func (c *ExportTaskConfig) ToJSON() (string, error) {
 	bs, err := json.Marshal(c)
 	if err != nil {

@@ -5,14 +5,15 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
-	"github.com/df-mc/jsonc"
-	"github.com/google/uuid"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
+	"github.com/muhammadmuzzammil1998/jsonc"
 )
 
 // Pack is a container of a resource pack parsed from a directory or a .zip archive (or .mcpack). It holds
@@ -44,11 +45,6 @@ type Pack struct {
 // will fail and return an error.
 func ReadPath(path string) (*Pack, error) {
 	return compile(path)
-}
-
-// Compile is kept for local compatibility.
-func Compile(path string) (*Pack, error) {
-	return ReadPath(path)
 }
 
 // ReadURL downloads a resource pack found at the URL passed and compiles it. The resource pack must be a valid
@@ -85,11 +81,6 @@ func MustReadPath(path string) *Pack {
 	return pack
 }
 
-// MustCompile is kept for local compatibility.
-func MustCompile(path string) *Pack {
-	return MustReadPath(path)
-}
-
 // MustReadURL downloads a resource pack found at the URL passed and compiles it. The resource pack must be a valid
 // zip archive where the manifest.json file is inside a subdirectory rather than the root itself. If the resource
 // pack is not a valid zip or there is no manifest.json file, an error is returned.
@@ -121,23 +112,13 @@ func Read(r io.Reader) (*Pack, error) {
 	return pack, parseErr
 }
 
-// FromBytes is kept for local compatibility.
-func FromBytes(data []byte) (*Pack, error) {
-	return Read(bytes.NewReader(data))
-}
-
 // Name returns the name of the resource pack.
 func (pack *Pack) Name() string {
 	return pack.manifest.Header.Name
 }
 
 // UUID returns the UUID of the resource pack.
-func (pack *Pack) UUID() string {
-	return pack.manifest.Header.UUID.String()
-}
-
-// UUIDValue returns the UUID of the resource pack in structured form.
-func (pack *Pack) UUIDValue() uuid.UUID {
+func (pack *Pack) UUID() uuid.UUID {
 	return pack.manifest.Header.UUID
 }
 
@@ -250,30 +231,6 @@ func (pack *Pack) ReadAt(b []byte, off int64) (n int, err error) {
 	return pack.content.ReadAt(b, off)
 }
 
-// ReadFile reads a specific file from the Pack's content and returns its content as a byte slice.
-func (pack *Pack) ReadFile(filePath string) ([]byte, error) {
-	zipReader, err := zip.NewReader(pack.content, int64(pack.content.Size()))
-	if err != nil {
-		return nil, fmt.Errorf("create zip reader: %w", err)
-	}
-	for _, file := range zipReader.File {
-		if !strings.EqualFold(file.Name, filePath) {
-			continue
-		}
-		rc, err := file.Open()
-		if err != nil {
-			return nil, fmt.Errorf("open file %s: %w", filePath, err)
-		}
-		defer rc.Close()
-		content, err := io.ReadAll(rc)
-		if err != nil {
-			return nil, fmt.Errorf("read file %s: %w", filePath, err)
-		}
-		return content, nil
-	}
-	return nil, fmt.Errorf("file %s not found in the resource pack", filePath)
-}
-
 // WithContentKey creates a copy of the pack and sets the encryption key to the key provided, after which the
 // new Pack is returned.
 func (pack Pack) WithContentKey(key string) *Pack {
@@ -340,7 +297,6 @@ func createTempArchive(path string) (*os.File, error) {
 		return nil, err
 	}
 	writer := zip.NewWriter(temp)
-	defer writer.Close()
 	if err := filepath.Walk(path, func(filePath string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -372,16 +328,17 @@ func createTempArchive(path string) (*os.File, error) {
 		if err != nil {
 			return fmt.Errorf("open resource pack file %v: %w", filePath, err)
 		}
-		defer file.Close()
 		data, _ := io.ReadAll(file)
 		// Write the original content into the 'zip file' so that we write compressed data to the file.
 		if _, err := f.Write(data); err != nil {
 			return fmt.Errorf("write file data to zip: %w", err)
 		}
+		_ = file.Close()
 		return nil
 	}); err != nil {
 		return nil, fmt.Errorf("build zip archive: %w", err)
 	}
+	_ = writer.Close()
 	return temp, nil
 }
 
@@ -441,9 +398,16 @@ func readManifest(path string) (*Manifest, error) {
 	// Try to find the manifest file in the zip.
 	manifestFile, err := reader.find("manifest.json")
 	if err != nil {
-		manifestFile, err = reader.find("pack_manifest.json")
-		if err != nil {
-			return nil, fmt.Errorf("load manifest: %w", err)
+		// PhoenixBuilder specific changes.
+		// Author: Liliya233
+		//
+		// Netease
+		{
+			manifestFile, err = reader.find("pack_manifest.json")
+			if err != nil {
+				return nil, fmt.Errorf("load manifest: %w", err)
+			}
+			// return nil, fmt.Errorf("load manifest: %w", err)
 		}
 	}
 	defer func() {
@@ -456,7 +420,7 @@ func readManifest(path string) (*Manifest, error) {
 		return nil, fmt.Errorf("read manifest file: %w", err)
 	}
 	manifest := &Manifest{}
-	if err := jsonc.UnmarshalLenient(allData, manifest); err != nil {
+	if err := jsonc.Unmarshal(allData, manifest); err != nil {
 		return nil, fmt.Errorf("decode manifest JSON: %w (data: %v)", err, string(allData))
 	}
 

@@ -8,7 +8,6 @@ import (
 	nbt_assigner_interface "github.com/xingbaiawa/StarShuttler/nbt_assigner/interface"
 	"github.com/xingbaiawa/StarShuttler/nbt_assigner/nbt_cache"
 	"github.com/xingbaiawa/StarShuttler/nbt_assigner/nbt_console"
-	nbt_hash "github.com/xingbaiawa/StarShuttler/nbt_parser/hash"
 	nbt_parser_interface "github.com/xingbaiawa/StarShuttler/nbt_parser/interface"
 
 	"github.com/google/uuid"
@@ -38,45 +37,6 @@ func NewNBTAssigner(
 		console: console,
 		cache:   cache,
 	}
-}
-
-// LookupCachedNBTBlock 只查询已经制作完成的 NBT 结构，不重置或使用操作台。
-// 修补模式可在操作台区域恢复后继续通过任务内缓存加载这些结构。
-func (n *NBTAssigner) LookupCachedNBTBlock(
-	blockName string,
-	blockStates map[string]any,
-	blockNBT map[string]any,
-) (
-	canFast bool,
-	uniqueID uuid.UUID,
-	offset protocol.BlockPos,
-	found bool,
-	err error,
-) {
-	if n == nil || n.console == nil || n.cache == nil {
-		return false, uuid.UUID{}, protocol.BlockPos{}, false, nil
-	}
-	nbtBlock, err := nbt_parser_interface.ParseBlock(
-		n.console.API().Resources().ConstantPacket().ItemCanGetByCommand,
-		blockName,
-		blockStates,
-		blockNBT,
-	)
-	if err != nil {
-		return false, uuid.UUID{}, protocol.BlockPos{}, false, fmt.Errorf("LookupCachedNBTBlock: %v", err)
-	}
-	if !nbtBlock.NeedSpecialHandle() {
-		return true, uuid.UUID{}, protocol.BlockPos{}, true, nil
-	}
-
-	structure, hit, partHit := n.cache.NBTBlockCache().CheckCache(nbt_hash.CompletelyHashNumber{
-		HashNumber:    nbt_hash.NBTBlockFullHash(nbtBlock),
-		SetHashNumber: nbt_hash.ContainerSetHash(nbtBlock),
-	})
-	if !hit || partHit {
-		return false, uuid.UUID{}, protocol.BlockPos{}, false, nil
-	}
-	return false, structure.UniqueID, structure.Offset, true, nil
 }
 
 // PlaceNBTBlock 试图制作一个新的 NBT 方块，
@@ -112,19 +72,6 @@ func (n *NBTAssigner) PlaceNBTBlock(blockName string, blockStates map[string]any
 
 	n.mu.Lock()
 	defer n.mu.Unlock()
-
-	// 完整缓存命中时，结构已经保存在服务器中，不需要触碰操作台、背包
-	// 或辅助方块。部分缓存命中仍必须进入原制作流程，以便迁移差异数据。
-	if !nbtBlock.NeedSpecialHandle() {
-		return true, uuid.UUID{}, protocol.BlockPos{}, nil
-	}
-	hashNumber := nbt_hash.CompletelyHashNumber{
-		HashNumber:    nbt_hash.NBTBlockFullHash(nbtBlock),
-		SetHashNumber: nbt_hash.ContainerSetHash(nbtBlock),
-	}
-	if structure, hit, partHit := n.cache.NBTBlockCache().CheckCache(hashNumber); hit && !partHit {
-		return false, structure.UniqueID, structure.Offset, nil
-	}
 
 	if err := n.console.ResetRuntimeState(); err != nil {
 		return false, uuid.UUID{}, protocol.BlockPos{}, fmt.Errorf("PlaceNBTBlock: %v", err)

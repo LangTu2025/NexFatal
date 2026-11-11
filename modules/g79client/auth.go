@@ -11,9 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Yeah114/g79client/utils"
 	"github.com/google/uuid"
-	x19sdk "github.com/xingbaiawa/g79client/account/x19/sdk"
-	"github.com/xingbaiawa/g79client/utils"
 )
 
 // 认证相关结构体
@@ -21,7 +20,6 @@ type LoginEntity struct {
 	EntityID string `json:"entity_id"`
 	Token    string `json:"token"`
 	Seed     string `json:"seed"`
-	Sead     string `json:"sead"`
 }
 
 type LoginResponse struct {
@@ -36,10 +34,7 @@ type G79ReleaseJSON struct {
 	WebServerUrl             string `json:"WebServerUrl"`
 	ApiGatewayUrl            string `json:"ApiGatewayUrl"`
 	TransferServerUrl        string `json:"TransferServerUrl"`
-	TransferServerHttpUrl    string `json:"TransferServerHttpUrl"`
 	TransferServerNewHttpUrl string `json:"TransferServerNewHttpUrl"`
-	MomentURL                string `json:"MomentUrl"`
-	DCWebURL                 string `json:"DCWebUrl"`
 	ChatServerURL            string `json:"ChatServerUrl"`
 	LinkServerURL            string `json:"LinkServerUrl"`
 }
@@ -116,13 +111,11 @@ type SauthData struct {
 	SDKVersion     string `json:"sdk_version"`
 	UDID           string `json:"udid"`
 	DeviceID       string `json:"deviceid"`
-	TDID           string `json:"tdid"`
 	AimInfo        string `json:"aim_info"`
 	ClientLoginSN  string `json:"client_login_sn"`
 	GasToken       string `json:"gas_token"`
 	SourcePlatform string `json:"source_platform"`
 	IP             string `json:"ip"`
-	AccessToken    string `json:"access_token"`
 }
 
 type PeAuthData struct {
@@ -170,143 +163,6 @@ func (c *Client) G79AuthenticateWithCookie(cookieStr string) error {
 	return nil
 }
 
-func (c *Client) G79AuthenticateWithCookieTest(cookieStr string, sp, tr int) error {
-	c.Cookie = cookieStr
-	var cookieData CookieData
-	err := json.Unmarshal([]byte(cookieStr), &cookieData)
-	if err != nil {
-		return fmt.Errorf("解析Cookie失败: %v", err)
-	}
-
-	var sauthData SauthData
-	err = json.Unmarshal([]byte(cookieData.SauthJSON), &sauthData)
-	if err != nil {
-		return fmt.Errorf("解析SauthJSON失败: %v", err)
-	}
-
-	err = c.g79PerformPEAuthWithCookieTest(&sauthData, &cookieData, sp, tr)
-	if err != nil {
-		return err
-	}
-
-	userDetail, err := c.GetUserDetail()
-	if err != nil {
-		return fmt.Errorf("获取用户信息失败: %v", err)
-	}
-
-	c.UserDetail = &userDetail.Entity
-
-	return nil
-}
-
-// 使用Cookie执行PE认证（指定sp/tr参数，用于穷举测试）
-func (c *Client) g79PerformPEAuthWithCookieTest(sauthData *SauthData, cookieData *CookieData, sp, tr int) error {
-	if sauthData == nil {
-		return fmt.Errorf("缺少 sauth 数据")
-	}
-	if c.G79LatestVersion == "" || c.patchResourcesHash == "" {
-		return fmt.Errorf("缺少补丁信息，请重新初始化客户端")
-	}
-
-	required := map[string]string{
-		"sdkuid":    sauthData.SDKUID,
-		"sessionid": sauthData.SessionID,
-		"udid":      sauthData.UDID,
-		"deviceid":  sauthData.DeviceID,
-	}
-	for field, val := range required {
-		if strings.TrimSpace(val) == "" {
-			return fmt.Errorf("sauth_json 缺少字段 %s", field)
-		}
-	}
-
-	seed := uuid.New().String()
-	c.setSeed(seed)
-
-	clientLoginSN, err := generateClientLoginSN()
-	if err != nil {
-		return fmt.Errorf("生成 client_login_sn 失败: %w", err)
-	}
-	sauthPayload, err := buildAndroidSauthPayload(sauthData, cookieData.SauthJSON, clientLoginSN)
-	if err != nil {
-		return fmt.Errorf("构造 sauth_json 失败: %w", err)
-	}
-
-	saDataPayload := buildAndroidSaDataPayload(c, sauthData, cookieData)
-	saDataJSON, err := json.Marshal(saDataPayload)
-	if err != nil {
-		return fmt.Errorf("序列化 sa_data 失败: %w", err)
-	}
-
-	versionMessage := fmt.Sprintf("%s%s%s%s%s%s", c.EngineVersion, g79LibraryHash, c.G79LatestVersion, c.patchResourcesHash, g79SignatureHash, seed)
-	sign, err := utils.PeAuthSign(versionMessage, sp, tr)
-	if err != nil {
-		return fmt.Errorf("计算签名失败: %w", err)
-	}
-
-	peauth := PeAuthData{
-		EngineVersion: c.EngineVersion,
-		ExtraParam:    "extra",
-		Message:       versionMessage,
-		PatchVersion:  c.G79LatestVersion,
-		PayChannel:    currentAndroidChannel(sauthData),
-		SaData:        string(saDataJSON),
-		SauthJSON:     sauthPayload,
-		Seed:          seed,
-		Sign:          sign,
-	}
-
-	payload, err := json.Marshal(peauth)
-	if err != nil {
-		return fmt.Errorf("序列化认证数据失败: %w", err)
-	}
-
-	encryptedPayload, err := G79HttpEncrypt(payload)
-	if err != nil {
-		return fmt.Errorf("加密认证数据失败: %w", err)
-	}
-	req, err := http.NewRequest("POST", c.ReleaseJSON.CoreServerURL+"/pe-authentication", strings.NewReader(hex.EncodeToString(encryptedPayload)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", "libhttpclient/1.0.0.0")
-	req.Header.Set("Accept-Encoding", "gzip")
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := readResponseBody(resp)
-	if err != nil {
-		return err
-	}
-	validJSON, err := decodeG79PEAuthResponse(respBody)
-	if err != nil {
-		return err
-	}
-
-	var loginResp LoginResponse
-	if err := json.Unmarshal(validJSON, &loginResp); err != nil {
-		return fmt.Errorf("解析登录响应失败: %w", err)
-	}
-
-	if loginResp.Code != 0 {
-		return fmt.Errorf("登录失败 (code: %d): %s", loginResp.Code, loginResp.Message)
-	}
-
-	c.SetCredentials(loginResp.Entity.EntityID, loginResp.Entity.Token)
-	seed = loginResp.Entity.Seed
-	if seed == "" {
-		seed = loginResp.Entity.Sead
-	}
-	c.setSeed(seed)
-
-	return nil
-}
-
 // 使用Cookie执行PE认证
 func (c *Client) g79PerformPEAuthWithCookie(sauthData *SauthData, cookieData *CookieData) error {
 	if sauthData == nil {
@@ -329,31 +185,36 @@ func (c *Client) g79PerformPEAuthWithCookie(sauthData *SauthData, cookieData *Co
 	}
 
 	seed := uuid.New().String()
-	c.setSeed(seed)
+	c.Seed = seed
 
 	clientLoginSN, err := generateClientLoginSN()
 	if err != nil {
 		return fmt.Errorf("生成 client_login_sn 失败: %w", err)
 	}
-	sauthPayload := buildLegacyAndroidSauthPayload(sauthData, clientLoginSN)
-	saDataPayload := buildLegacyAndroidSaDataPayload(c, sauthData, cookieData)
+
+	sauthPayload := buildAndroidSauthPayload(sauthData, clientLoginSN)
+	//	_=sauthPayload
+
+	saDataPayload := buildAndroidSaDataPayload(c, sauthData, cookieData)
 	saDataJSON, err := json.Marshal(saDataPayload)
 	if err != nil {
 		return fmt.Errorf("序列化 sa_data 失败: %w", err)
 	}
 
 	versionMessage := fmt.Sprintf("%s%s%s%s%s%s", c.EngineVersion, g79LibraryHash, c.G79LatestVersion, c.patchResourcesHash, g79SignatureHash, seed)
-	sign, err := utils.PeAuthSign(versionMessage, g79PESignGroupIndex, g79PESignRounds)
+	sign, err := utils.PeAuthSign(versionMessage, 4, 7)
 	if err != nil {
 		return fmt.Errorf("计算签名失败: %w", err)
 	}
 
+	//	var sauth map[string]any
+	//	_ = json.Unmarshal([]byte(cookieData.SauthJSON), &sauth)
 	peauth := PeAuthData{
 		EngineVersion: c.EngineVersion,
 		ExtraParam:    "extra",
 		Message:       versionMessage,
 		PatchVersion:  c.G79LatestVersion,
-		PayChannel:    currentAndroidChannel(sauthData),
+		PayChannel:    g79AndroidMessageTag,
 		SaData:        string(saDataJSON),
 		SauthJSON:     sauthPayload, //sauth,
 		Seed:          seed,
@@ -364,11 +225,13 @@ func (c *Client) g79PerformPEAuthWithCookie(sauthData *SauthData, cookieData *Co
 	if err != nil {
 		return fmt.Errorf("序列化认证数据失败: %w", err)
 	}
+	//	fmt.Println(string(payload))
 
 	encryptedPayload, err := G79HttpEncrypt(payload)
 	if err != nil {
 		return fmt.Errorf("加密认证数据失败: %w", err)
 	}
+
 	req, err := http.NewRequest("POST", c.ReleaseJSON.CoreServerURL+"/pe-authentication", strings.NewReader(hex.EncodeToString(encryptedPayload)))
 	if err != nil {
 		return err
@@ -387,19 +250,23 @@ func (c *Client) g79PerformPEAuthWithCookie(sauthData *SauthData, cookieData *Co
 	if err != nil {
 		return err
 	}
+
 	encryptedResp, err := hex.DecodeString(string(respBody))
 	if err != nil {
-		return fmt.Errorf("解析加密登录响应失败: %w", err)
+		return err
 	}
+
 	decryptedResp, err := G79HttpDecrypt(encryptedResp)
 	if err != nil {
-		return fmt.Errorf("解密登录响应失败: %w", err)
+		return err
 	}
+
 	validJSON := GetValidJSON(decryptedResp)
+	//	fmt.Println(validJSON)
 
 	var loginResp LoginResponse
 	if err := json.Unmarshal(validJSON, &loginResp); err != nil {
-		return fmt.Errorf("解析登录响应失败: %w", err)
+		return fmt.Errorf("解析登录响应失败: %v, 响应内容: %s", err, string(validJSON))
 	}
 
 	if loginResp.Code != 0 {
@@ -407,33 +274,9 @@ func (c *Client) g79PerformPEAuthWithCookie(sauthData *SauthData, cookieData *Co
 	}
 
 	c.SetCredentials(loginResp.Entity.EntityID, loginResp.Entity.Token)
-	seed = loginResp.Entity.Seed
-	if seed == "" {
-		seed = loginResp.Entity.Sead
-	}
-	c.setSeed(seed)
+	c.Seed = loginResp.Entity.Seed
 
 	return nil
-}
-
-// decodeG79PEAuthResponse 兼容 PE 认证接口的加密 hex 响应和网关直接返回的 JSON 错误。
-func decodeG79PEAuthResponse(respBody []byte) ([]byte, error) {
-	trimmed := bytes.TrimSpace(respBody)
-	if len(trimmed) == 0 {
-		return nil, fmt.Errorf("PE认证响应为空")
-	}
-	if trimmed[0] == '{' || trimmed[0] == '[' {
-		return trimmed, nil
-	}
-	encryptedResp, err := hex.DecodeString(string(trimmed))
-	if err != nil {
-		return nil, fmt.Errorf("解析 PE 认证响应 hex 失败: %w", err)
-	}
-	decryptedResp, err := G79HttpDecrypt(encryptedResp)
-	if err != nil {
-		return nil, fmt.Errorf("解密 PE 认证响应失败: %w", err)
-	}
-	return GetValidJSON(decryptedResp), nil
 }
 
 func generateClientLoginSN() (string, error) {
@@ -444,7 +287,7 @@ func generateClientLoginSN() (string, error) {
 	return strings.ToUpper(hex.EncodeToString(buf)), nil
 }
 
-func buildLegacyAndroidSauthPayload(sauthData *SauthData, clientLoginSN string) map[string]any {
+func buildAndroidSauthPayload(sauthData *SauthData, clientLoginSN string) map[string]any {
 	aimInfo := strings.TrimSpace(sauthData.AimInfo)
 	if aimInfo == "" {
 		aimInfo = `{"aim":"127.0.0.1","country":"CN","tz":"+0800","tzid":"","celluar_ip":"","operator":"","is_vpn_enabled":"false"}`
@@ -496,7 +339,11 @@ func buildLegacyAndroidSauthPayload(sauthData *SauthData, clientLoginSN string) 
 	}
 }
 
-func buildLegacyAndroidSaDataPayload(c *Client, sauthData *SauthData, cookieData *CookieData) map[string]any {
+func buildAndroidSaDataPayload(c *Client, sauthData *SauthData, cookieData *CookieData) map[string]any {
+	sdkVersion := strings.TrimSpace(sauthData.SDKVersion)
+	if sdkVersion == "" {
+		sdkVersion = "5.9.0"
+	}
 	udid := sauthData.UDID
 	if strings.TrimSpace(udid) == "" {
 		udid = "0000000000000000"
@@ -505,105 +352,10 @@ func buildLegacyAndroidSaDataPayload(c *Client, sauthData *SauthData, cookieData
 	if appChannel == "" {
 		appChannel = "netease"
 	}
+
 	return map[string]any{
 		"app_channel":   appChannel,
-		"app_ver":       c.G79LatestVersion,
-		"core_num":      "u0004",
-		"cpu_digit":     "64",
-		"cpu_hz":        "2465600",
-		"cpu_name":      "placeholder",
-		"device_height": "900",
-		"device_model":  "SAMSUNG#SM-G977N",
-		"device_width":  "1600",
-		"disk":          "",
-		"emulator":      cookieData.emulatorFlag(),
-		"first_udid":    udid,
-		"is_guest":      cookieData.isGuestFlag(),
-		"launcher_type": "PE_C++",
-		"mac_addr":      cookieData.macAddress(),
-		"network":       "CHANNEL_UNKNOW",
-		"os_name":       "android",
-		"os_ver":        "5.1.1",
-		"ram":           cookieData.ramValue(),
-		"rom":           cookieData.romValue(),
-		"root":          false,
-		"sdk_ver":       "5.2.0",
-		"start_type":    "default",
-		"udid":          udid,
-	}
-}
-
-func buildAndroidSauthPayload(sauthData *SauthData, rawSauthJSON, clientLoginSN string) (map[string]any, error) {
-	payload := make(map[string]any)
-	// 原生客户端会在保留 sauth_json 其余字段的基础上覆盖运行时字段。
-	// 只从结构体重建会丢失 realname、access_token、tdid 等字段。
-	if strings.TrimSpace(rawSauthJSON) != "" {
-		if err := json.Unmarshal([]byte(rawSauthJSON), &payload); err != nil {
-			return nil, err
-		}
-	}
-	aimInfo := strings.TrimSpace(sauthData.AimInfo)
-	if aimInfo == "" {
-		aimInfo = `{"aim":"127.0.0.1","country":"CN","tz":"+0800","tzid":"","celluar_ip":"","operator":"","is_vpn_enabled":"false"}`
-	}
-	sdkVersion := currentAndroidSDKVersion(sauthData)
-	ip := strings.TrimSpace(sauthData.IP)
-	if ip == "" {
-		ip = "127.0.0.1"
-	}
-	gameID := strings.TrimSpace(sauthData.GameID)
-	if gameID == "" {
-		gameID = "x19"
-	}
-	appChannel := currentAndroidChannel(sauthData)
-	loginChannel := strings.TrimSpace(sauthData.LoginChannel)
-	if loginChannel == "" {
-		loginChannel = appChannel
-	}
-	sourcePlatform := strings.TrimSpace(sauthData.SourcePlatform)
-	if sourcePlatform == "" {
-		sourcePlatform = "ad"
-	}
-	payload["aim_info"] = aimInfo
-	payload["app_channel"] = appChannel
-	payload["client_login_sn"] = clientLoginSN
-	payload["deviceid"] = sauthData.DeviceID
-	payload["gameid"] = gameID
-	payload["gas_token"] = sauthData.GasToken
-	payload["get_access_token"] = "1"
-	payload["ip"] = ip
-	payload["is_unisdk_guest"] = 0
-	payload["login_channel"] = loginChannel
-	payload["platform"] = "ad"
-	payload["sdk_version"] = sdkVersion
-	payload["sdkuid"] = sauthData.SDKUID
-	payload["sessionid"] = sauthData.SessionID
-	payload["source_app_channel"] = appChannel
-	payload["source_platform"] = sourcePlatform
-	payload["step"] = g79AndroidStep
-	payload["step2"] = g79AndroidStep2
-	payload["udid"] = sauthData.UDID
-	if value := strings.TrimSpace(sauthData.AccessToken); value != "" {
-		payload["access_token"] = value
-	}
-	if value := strings.TrimSpace(sauthData.TDID); value != "" {
-		payload["tdid"] = value
-	}
-	return payload, nil
-}
-
-func buildAndroidSaDataPayload(c *Client, sauthData *SauthData, cookieData *CookieData) map[string]any {
-	sdkVersion := currentAndroidSDKVersion(sauthData)
-	udid := sauthData.UDID
-	if strings.TrimSpace(udid) == "" {
-		udid = "0000000000000000"
-	}
-	appChannel := currentAndroidChannel(sauthData)
-
-	return map[string]any{
-		"app_channel": appChannel,
-		// sa_data.app_ver 使用当前补丁版本；外层 engine_version 仍使用 APK 版本。
-		"app_ver":       c.G79LatestVersion,
+		"app_ver":       "3.3.15.268037", //c.G79LatestVersion,
 		"core_num":      "u0004",
 		"cpu_digit":     "64",
 		"cpu_hz":        "2465600",
@@ -623,88 +375,10 @@ func buildAndroidSaDataPayload(c *Client, sauthData *SauthData, cookieData *Cook
 		"ram":           cookieData.ramValue(),
 		"rom":           cookieData.romValue(),
 		"root":          false,
-		"sdk_ver":       sdkVersion,
+		"sdk_ver":       "5.2.0", //sdkVersion,
 		"start_type":    "default",
 		"udid":          udid,
 	}
-}
-
-// currentAndroidChannel 返回 PE 认证中应使用的 Android 渠道。
-// Cookie 可能来自 4399 或网易渠道，不能再使用固定的云游戏 pay_channel。
-func currentAndroidChannel(sauthData *SauthData) string {
-	if sauthData != nil {
-		channel := strings.ToLower(strings.TrimSpace(sauthData.AppChannel))
-		switch channel {
-		case g79Android4399Channel:
-			return g79Android4399Channel
-		case g79AndroidMpayChannel:
-			return g79AndroidMpayChannel
-		}
-		if channel != "" {
-			return channel
-		}
-	}
-	return g79AndroidMpayChannel
-}
-
-// currentAndroidSDKVersion 返回对应渠道的 UniSDK 版本。
-func currentAndroidSDKVersion(sauthData *SauthData) string {
-	if currentAndroidChannel(sauthData) == g79Android4399Channel {
-		return g79Android4399SDKVersion
-	}
-	return g79AndroidMpaySDKVersion
-}
-
-// refreshAndroidUniSauth 对齐 3.10 Android 客户端的 UniSDK 会话刷新步骤。
-// PE 认证需要刷新后的 access_token、gas_token、sdkuid 和 client_login_sn。
-func (c *Client) refreshAndroidUniSauth(cookieString string, sauthData *SauthData, clientLoginSN string) error {
-	if sauthData == nil {
-		return fmt.Errorf("sauth 数据为空")
-	}
-	sdkVersion := currentAndroidSDKVersion(sauthData)
-	request, err := x19sdk.BuildUniSauthRequestFromCookieString(cookieString, &x19sdk.UniSauthBuildOptions{
-		SDKVersion: sdkVersion,
-	})
-	if err != nil {
-		return err
-	}
-	request.HostID = 0
-	request.ClientLoginSN = clientLoginSN
-
-	response, err := x19sdk.NewClient(c.httpClient).UniSauth(request)
-	if err != nil {
-		return err
-	}
-	if response.Code != http.StatusOK || response.Subcode != 0 {
-		message := strings.TrimSpace(response.Msg)
-		if message == "" {
-			message = strings.TrimSpace(response.Status)
-		}
-		return fmt.Errorf("登录失败 (code: %d/%d): %s", response.Code, response.Subcode, message)
-	}
-
-	loginPayload, err := response.DecodeUniSDKLoginJSON()
-	if err != nil {
-		return err
-	}
-	accessToken := strings.TrimSpace(loginPayload.OAuth2.AccessToken)
-	if accessToken == "" {
-		accessToken = strings.TrimSpace(loginPayload.AccessToken)
-	}
-	if accessToken == "" {
-		return fmt.Errorf("UniSDK 响应缺少 access_token")
-	}
-
-	sauthData.AccessToken = accessToken
-	sauthData.ClientLoginSN = clientLoginSN
-	sauthData.SDKVersion = sdkVersion
-	if value := strings.TrimSpace(loginPayload.SDKUID); value != "" {
-		sauthData.SDKUID = value
-	}
-	// APK setBackSauthLoginJson 使用 optString("gas_token", sdk_token)。
-	// 解码器已按字段是否存在处理默认值；刷新后不再保留旧 Cookie 的 gas_token。
-	sauthData.GasToken = loginPayload.GasToken
-	return nil
 }
 
 func (c *Client) G79AuthenticateWithPeAuth(peAuthHexStr string) error {
@@ -814,7 +488,7 @@ func (c *Client) X19AuthenticateWithCookie(cookieStr string) error {
 		return fmt.Errorf("登录响应缺少 otp_token")
 	}
 
-	x19AuthOTPVersion := "1.14.6.45947"
+	const x19AuthOTPVersion = "1.14.6.45947"
 
 	saData := map[string]any{
 		"os_name":       "windows",
@@ -941,11 +615,7 @@ func (c *Client) X19AuthenticateWithCookie(cookieStr string) error {
 
 	// 设置用户凭证
 	c.SetCredentials(loginRespData.Entity.EntityID, loginRespData.Entity.Token)
-	seed := loginRespData.Entity.Seed
-	if seed == "" {
-		seed = loginRespData.Entity.Sead
-	}
-	c.setSeed(seed)
+	c.Seed = loginRespData.Entity.Seed
 
 	// 获取用户详情
 	userDetail, err := c.GetUserDetail()
@@ -1130,13 +800,8 @@ func (c *Client) SendAuthV2Request(authv2Data []byte) ([]byte, error) {
 
 	decryptedResp, err := G79HttpDecrypt(encryptedResp)
 	if err != nil {
-		return nil, fmt.Errorf("解密 authentication-v2 响应失败: %w", err)
+		return nil, err
 	}
 
 	return GetValidJSON(decryptedResp), nil
-}
-
-func (c *Client) setSeed(seed string) {
-	c.Seed = seed
-	c.Sead = seed
 }

@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"math"
 	mathRand "math/rand"
@@ -23,10 +22,10 @@ import (
 	"time"
 
 	"github.com/xingbaiawa/StarShuttler/core/bunker/auth"
+	"github.com/xingbaiawa/StarShuttler/core/minecraft/internal"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/login"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
-	"github.com/xingbaiawa/StarShuttler/core/termlog"
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
@@ -37,42 +36,6 @@ import (
 // Author: LNSSPsd, Liliya233, Happy2018new
 type Authenticator interface {
 	GetAccess(ctx context.Context, publicKey []byte) (auth.AuthResponse, error)
-}
-
-// NeteaseLoginMode identifies the target-specific NetEase login envelope.
-type NeteaseLoginMode uint8
-
-const (
-	NeteaseLoginRentalServer NeteaseLoginMode = iota
-	NeteaseLoginNetworkGame
-	NeteaseLoginDomainGame
-	NeteaseLoginLobbyGame
-)
-
-type neteaseLoginRoute struct {
-	name   string
-	mode   NeteaseLoginMode
-	encode func(string, login.ClientData, *ecdsa.PrivateKey) []byte
-}
-
-func rentalServerLoginRoute() neteaseLoginRoute {
-	return neteaseLoginRoute{name: "rental-server", mode: NeteaseLoginRentalServer, encode: login.EncodeNeteaseRentalServer}
-}
-
-func networkGameLoginRoute() neteaseLoginRoute {
-	return neteaseLoginRoute{name: "network-game", mode: NeteaseLoginNetworkGame, encode: login.Encode}
-}
-
-func domainGameLoginRoute() neteaseLoginRoute {
-	return neteaseLoginRoute{
-		name:   "domain-game",
-		mode:   NeteaseLoginDomainGame,
-		encode: login.EncodeNeteaseDomain,
-	}
-}
-
-func lobbyGameLoginRoute() neteaseLoginRoute {
-	return neteaseLoginRoute{name: "lobby-game", mode: NeteaseLoginLobbyGame, encode: login.EncodeNeteaseLobby}
 }
 
 // Dialer allows specifying specific settings for connection to a Minecraft server.
@@ -96,9 +59,6 @@ type Dialer struct {
 	//
 	// Authenticator towards netease's server
 	Authenticator
-
-	// DisablePharosSpeedUp disables rewriting the auth server address through Netease Pharos.
-	DisablePharosSpeedUp bool
 
 	// PacketFunc is called whenever a packet is read from or written to the connection returned when using
 	// Dialer.Dial(). It includes packets that are otherwise covered in the connection sequence, such as the
@@ -151,17 +111,6 @@ type Dialer struct {
 	// (pre-1.21.90) when connecting to the server. This should only be used for outdated
 	// servers, as enabling it will cause compatibility issues with updated servers.
 	EnableLegacyAuth bool
-
-	// NeteaseLoginMode selects the login envelope for the target family. The
-	// target-specific value keeps domain, network, lobby and rental login paths
-	// from being selected through overlapping boolean flags.
-	NeteaseLoginMode NeteaseLoginMode
-	// LobbyGameLogin is retained for the existing LobbyGame client package.
-	LobbyGameLogin bool
-
-	// EnableLocalOnlineAuth selects the PE local-multiplayer login envelope for DialNetConnContext.
-	// It does not affect rental-server or lobby login paths.
-	EnableLocalOnlineAuth bool
 }
 
 /*
@@ -206,23 +155,6 @@ func DialContext(ctx context.Context, network string) (*Conn, auth.AuthResponse,
 	return d.DialContext(ctx, network)
 }
 
-// DialRentalServerContext keeps the rental-server login path independent from
-// the NetEase game login paths.
-func (d Dialer) DialRentalServerContext(ctx context.Context, network string) (*Conn, auth.AuthResponse, error) {
-	return d.dialContextWithRoute(ctx, network, rentalServerLoginRoute())
-}
-
-// DialNetworkGameContext keeps the network-game login path independent from
-// the rental-server and external-game login paths.
-func (d Dialer) DialNetworkGameContext(ctx context.Context, network string) (*Conn, auth.AuthResponse, error) {
-	return d.dialContextWithRoute(ctx, network, networkGameLoginRoute())
-}
-
-// DialDomainGameContext is the standalone mountain-target login path.
-func (d Dialer) DialDomainGameContext(ctx context.Context, network string) (*Conn, auth.AuthResponse, error) {
-	return d.dialContextWithRoute(ctx, network, domainGameLoginRoute())
-}
-
 // PhoenixBuilder specific changes.
 // Author: Happy2018new
 //
@@ -255,25 +187,6 @@ func (d Dialer) DialTimeout(network string, timeout time.Duration) (*Conn, auth.
 // typically "raknet". A Conn is returned which may be used to receive packets from and send packets to.
 // If a connection is not established before the context passed is cancelled, DialContext returns an error.
 func (d Dialer) DialContext(ctx context.Context, network string) (conn *Conn, authResponse auth.AuthResponse, err error) {
-	var route neteaseLoginRoute
-	if d.LobbyGameLogin {
-		return d.dialContextWithRoute(ctx, network, lobbyGameLoginRoute())
-	}
-	switch d.NeteaseLoginMode {
-	case NeteaseLoginNetworkGame:
-		route = networkGameLoginRoute()
-	case NeteaseLoginDomainGame:
-		route = domainGameLoginRoute()
-	default:
-		route = rentalServerLoginRoute()
-	}
-	return d.dialContextWithRoute(ctx, network, route)
-}
-
-func (d Dialer) dialContextWithRoute(ctx context.Context, network string, route neteaseLoginRoute) (conn *Conn, authResponse auth.AuthResponse, err error) {
-	termlog.LoginInfo("开始执行登陆序列")
-	termlog.LoginInfo("正在检查并更新本地网络中的属性信息")
-	termlog.LoginInfo("正在生成客户端密钥对")
 	key, err := ecdsa.GenerateKey(elliptic.P384(), cryptoRand.Reader)
 	if err != nil {
 		return nil, auth.AuthResponse{}, &net.OpError{Op: "dial", Net: "minecraft", Err: fmt.Errorf("generating ECDSA key: %w", err)}
@@ -283,13 +196,12 @@ func (d Dialer) dialContextWithRoute(ctx context.Context, network string, route 
 		return nil, auth.AuthResponse{}, &net.OpError{Op: "dial", Net: "minecraft", Err: fmt.Errorf("marshalling PKIX public key: %w", err)}
 	}
 
-	termlog.LoginInfo("正在从验证服务器取得机器人数据")
 	authResponse, err = d.Authenticator.GetAccess(ctx, armoured_key)
 	if err != nil {
 		return nil, auth.AuthResponse{}, err
 	}
 	if d.ErrorLog == nil {
-		d.ErrorLog = slog.New(slog.NewTextHandler(io.Discard, nil))
+		d.ErrorLog = slog.New(internal.DiscardHandler{})
 	}
 	d.ErrorLog = d.ErrorLog.With("src", "dialer")
 	if d.Protocol == nil {
@@ -321,24 +233,15 @@ func (d Dialer) dialContextWithRoute(ctx context.Context, network string, route 
 	//
 	// Netease: pharos speed up
 	var netConn net.Conn
-	if !d.DisablePharosSpeedUp {
-		if addr, err := getPharosSpeedUpIP(authResponse.RentalServerIP); err == nil {
-			authResponse.RentalServerIP = addr
-		}
+	if addr, err := getPharosSpeedUpIP(authResponse.RentalServerIP); err == nil {
+		authResponse.RentalServerIP = addr
 	}
-	termlog.LoginInfo("正在建立 raknet 连接")
 	netConn, err = n.DialContext(ctx, authResponse.RentalServerIP)
 	if err != nil {
 		return nil, auth.AuthResponse{}, err
 	}
 
-	termlog.LoginInfo("正在封装数据帧连接层")
 	conn = newConn(netConn, key, d.ErrorLog, d.Protocol, d.FlushRate, false)
-	// Apply the target compression envelope to the standalone mountain
-	// login path. Keep this target-scoped so other login paths retain their
-	// existing wire format.
-	conn.targetCompressionEnvelope = route.mode == NeteaseLoginDomainGame
-	termlog.LoginInfo("正在封装数据包连接层")
 	conn.pool = conn.proto.Packets(false)
 	conn.identityData = d.IdentityData
 	conn.clientData = d.ClientData
@@ -350,15 +253,14 @@ func (d Dialer) dialContextWithRoute(ctx context.Context, network string, route 
 	conn.maxDecompressedLen = math.MaxInt
 
 	defaultIdentityData(&conn.identityData)
-	defaultClientDataForLoginMode(&conn.clientData, authResponse, route.mode)
+	defaultClientData(&conn.clientData, authResponse)
 
 	var request []byte
 	// We login as an Android device and this will show up in the 'titleId' field in the JWT chain, which
 	// we can't edit. We just enforce Android data for logging in.
 	setAndroidData(&conn.clientData)
 
-	termlog.LoginInfo("正在生成关键登陆数据")
-	request = route.encode(authResponse.ChainInfo, conn.clientData, key)
+	request = login.Encode(authResponse.ChainInfo, conn.clientData, key, d.EnableLegacyAuth)
 	identityData, _, _, err := login.Parse(request)
 	if err != nil {
 		fmt.Printf("WARNING: Identity data parsing error: %v\n", err)
@@ -372,7 +274,6 @@ func (d Dialer) dialContextWithRoute(ctx context.Context, network string, route 
 	go listenConn(conn, readyForLogin, connected, cancel)
 
 	conn.expect(packet.IDNetworkSettings, packet.IDPlayStatus)
-	termlog.LoginInfo("正在向 Minecraft 服务器请求网络参数")
 	if err := conn.WritePacket(&packet.RequestNetworkSettings{ClientProtocol: d.Protocol.ID()}); err != nil {
 		return nil, auth.AuthResponse{}, conn.wrap(fmt.Errorf("send request network settings: %w", err), "dial")
 	}
@@ -386,7 +287,6 @@ func (d Dialer) dialContextWithRoute(ctx context.Context, network string, route 
 	case <-readyForLogin:
 		// We've received our network settings, so we can now send our login request.
 		conn.expect(packet.IDServerToClientHandshake, packet.IDPlayStatus)
-		termlog.LoginInfo("正在向 Minecraft 服务器请求游戏登录")
 		if err := conn.WritePacket(&packet.Login{ConnectionRequest: request, ClientProtocol: d.Protocol.ID()}); err != nil {
 			return nil, auth.AuthResponse{}, conn.wrap(fmt.Errorf("send login: %w", err), "dial")
 		}
@@ -399,8 +299,7 @@ func (d Dialer) dialContextWithRoute(ctx context.Context, network string, route 
 			return nil, auth.AuthResponse{}, conn.closeErr("dial")
 		case <-connected:
 			// We've connected successfully. We return the connection and no error.
-			termlog.LoginDone("登录序列完成")
-			return conn, authResponse, nil
+			return conn, auth.AuthResponse{}, nil
 		}
 	}
 }
@@ -478,9 +377,6 @@ func listenConn(conn *Conn, readyForLogin, connected chan struct{}, cancel conte
 //go:embed skin_resource_patch.json
 var skinResourcePatch []byte
 
-//go:embed skin_resource_patch_slim.json
-var skinResourcePatchSlim []byte
-
 //go:embed skin_geometry.json
 var skinGeometry []byte
 
@@ -494,14 +390,6 @@ func defaultClientData(
 	d *login.ClientData,
 	authResponse auth.AuthResponse,
 	// address, username string, d *login.ClientData,
-) {
-	defaultClientDataForLoginMode(d, authResponse, NeteaseLoginRentalServer)
-}
-
-func defaultClientDataForLoginMode(
-	d *login.ClientData,
-	authResponse auth.AuthResponse,
-	loginMode NeteaseLoginMode,
 ) {
 	d.ServerAddress = authResponse.RentalServerIP
 	d.DeviceOS = protocol.DeviceAndroid
@@ -519,33 +407,8 @@ func defaultClientDataForLoginMode(
 	d.SkinData = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0, 0, 0, 255}, 32*64))
 	d.SkinGeometry = base64.StdEncoding.EncodeToString(skinGeometry)
 	d.SkinResourcePatch = base64.StdEncoding.EncodeToString(skinResourcePatch)
-	d.SkinGeometryVersion = base64.StdEncoding.EncodeToString([]byte("0.0.0"))
 	d.SkinImageHeight = 32
 	d.SkinImageWidth = 64
-	applyAuthResponseClientDataForLoginMode(d, authResponse, loginMode)
-	switch loginMode {
-	case NeteaseLoginDomainGame:
-		// Mountain login uses standalone target-compatible client data.
-		d.CurrentInputMode = 0
-		d.DefaultInputMode = 0
-		d.ArmSize = ""
-		d.GrowthLevel = -1
-		if !d.PremiumSkin {
-			d.SkinItemID = ""
-			d.SkinGeometryVersion = ""
-		}
-	case NeteaseLoginLobbyGame:
-		// The target leaves the old input, arm and item fields at their zero
-		// values. Its fallback client has no geometry engine version.
-		d.CurrentInputMode = 0
-		d.DefaultInputMode = 0
-		d.ArmSize = ""
-		d.GrowthLevel = -1
-		if !d.PremiumSkin {
-			d.SkinItemID = ""
-			d.SkinGeometryVersion = ""
-		}
-	}
 
 	{
 		id := make([]byte, 8)

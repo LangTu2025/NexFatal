@@ -344,8 +344,8 @@ func (d *Decoder) unmarshalTag(val reflect.Value, t tagType, tagName string) err
 				if err := d.unmarshalTag(v.Index(i), listType, ""); err != nil {
 					// An error occurred during the decoding of one of the elements of the TAG_List, meaning it
 					// either had an invalid type or the NBT was invalid.
-					if _, ok := err.(InvalidTypeError); ok {
-						return InvalidTypeError{Off: d.r.off, FieldType: sliceType.Elem(), Field: fmt.Sprintf("%v[%v]", tagName, i), TagType: listType}
+					if e, ok := err.(InvalidTypeError); ok {
+						return InvalidTypeError{Off: d.r.off, FieldType: sliceType.Elem(), Field: fmt.Sprintf("%v[%v].%v", tagName, i, e.Field), TagType: listType}
 					}
 					return err
 				}
@@ -458,14 +458,29 @@ func (d *Decoder) populateFields(val reflect.Value, m map[string]reflect.Value) 
 
 // tag reads a tag from the decoder, and its name if the tag type is not a TAG_End.
 func (d *Decoder) tag() (t tagType, tagName string, err error) {
-	// if d.r.off >= maximumNetworkOffset && d.Encoding == NetworkLittleEndian {
-	// 	return 0, "", MaximumBytesReadError{}
-	// }
+	if d.depth >= maximumNestingDepth {
+		return 0, "", MaximumDepthReachedError{}
+	}
+
+	/*
+		PhoenixBuilder specific changes.
+		Author: Happy2018new
+
+		if d.r.off >= maximumNetworkOffset && d.Encoding == NetworkLittleEndian {
+			return 0, "", MaximumBytesReadError{}
+		}
+	*/
+
 	tagTypeByte, err := d.r.ReadByte()
 	if err != nil {
 		return 0, "", BufferOverrunError{Op: "ReadTag"}
 	}
-	if t = tagType(tagTypeByte); t != tagEnd {
+	t = tagType(tagTypeByte)
+	if _, ok := d.Encoding.(networkBigEndian); ok && t == tagStruct && d.depth == 0 {
+		// As of Minecraft Java 1.20.2, the name of the root compound tag is not written over the network.
+		return t, "", err
+	}
+	if t != tagEnd {
 		// Only read a tag name if the tag's type is not TAG_End.
 		tagName, err = d.Encoding.String(d.r)
 	}

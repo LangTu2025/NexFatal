@@ -7,17 +7,6 @@ import (
 )
 
 const (
-	PlayerMovementModeClient = iota
-	PlayerMovementModeServer
-	PlayerMovementModeServerWithRewind
-)
-
-const (
-	// Netease/PhoenixBuilder compatibility placeholder kept for legacy packet handling.
-	PlayerActionClientAckServerData = 36
-)
-
-const (
 	PlayerActionStartBreak = iota
 	PlayerActionAbortBreak
 	PlayerActionStopBreak
@@ -57,36 +46,6 @@ const (
 	_
 	PlayerActionStartUsingItem
 )
-
-// NetEaseUnknownPlayerListEntry ...
-type NeteaseUnknownPlayerListEntry struct {
-	// Netease: whether the entry has a value or not.
-	HasValue bool
-	// Netease
-	Unknown1 bool
-	// Netease
-	Unknown2 string
-	// Netease
-	Unknown3 string
-	// Netease
-	Unknown4 string
-	// Netease
-	Unknown5 string
-	// Netease
-	Unknown6 string
-}
-
-// Marshal encodes/decodes a NeteaseUnknownPlayerListEntry.
-func (x *NeteaseUnknownPlayerListEntry) Marshal(r IO) {
-	if r.Bool(&x.HasValue); x.HasValue {
-		r.Bool(&x.Unknown1)
-		r.String(&x.Unknown2)
-		r.String(&x.Unknown3)
-		r.String(&x.Unknown4)
-		r.String(&x.Unknown5)
-		r.String(&x.Unknown6)
-	}
-}
 
 // PlayerListEntry is an entry found in the PlayerList packet. It represents a single player using the UUID
 // found in the entry, and contains several properties such as the skin.
@@ -147,8 +106,6 @@ func PlayerListRemoveEntry(r IO, x *PlayerListEntry) {
 // PlayerMovementSettings represents the different server authoritative movement settings. These control how
 // the client will provide input to the server.
 type PlayerMovementSettings struct {
-	// MovementType is kept in-memory for legacy compatibility, but is no longer encoded in 1.21.90.
-	MovementType int32
 	// RewindHistorySize is the amount of history to keep at maximum.
 	RewindHistorySize int32
 	// ServerAuthoritativeBlockBreaking specifies if block breaking should be sent through
@@ -180,35 +137,4 @@ func (x *PlayerBlockAction) Marshal(r IO) {
 		r.BlockPos(&x.BlockPos)
 		r.Varint32(&x.Face)
 	}
-}
-
-// NeteasePlayerData ...
-type NeteasePlayerData struct {
-	// Netease
-	Unknown1 bool
-	// Netease
-	UUID uuid.UUID
-	// Netease
-	Unknown2 string
-}
-
-// Marshal ...
-func (x *NeteasePlayerData) Marshal(r IO) {
-	r.Bool(&x.Unknown1)
-	r.UUID(&x.UUID)
-	r.String(&x.Unknown2)
-}
-
-// PlayerArmourDamageEntry represents an entry for a single piece of armour that should be damaged.
-type PlayerArmourDamageEntry struct {
-	// ArmourSlot is the index of the armour slot to damage.
-	ArmourSlot int32
-	// Damage is the amount of damage to apply to the armour in the specified slot.
-	Damage int16
-}
-
-// Marshal encodes/decodes a PlayerArmourDamageEntry.
-func (x *PlayerArmourDamageEntry) Marshal(r IO) {
-	r.Varint32(&x.ArmourSlot)
-	r.Int16(&x.Damage)
 }

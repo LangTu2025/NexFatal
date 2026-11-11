@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	tanauth "github.com/xingbaiawa/StarShuttler/client/local_lobby/tan_solver/bunker"
+	tanauth "github.com/Happy2018new/nemc-tan-lobby-solver/bunker"
+	g79 "github.com/Yeah114/g79client"
 	localauth "github.com/xingbaiawa/StarShuttler/core/bunker/localauth"
-	g79 "github.com/xingbaiawa/g79client"
 )
 
-const defaultAuthServer = "https://user.aurelrune.com"
+const defaultAuthServer = "https://user.novabuilder.pro"
 
 type ClientOptions struct {
 	AuthServer          string
@@ -144,16 +144,12 @@ func (client *Client) Auth(
 	_ = username
 	_ = password
 
-	if strings.HasPrefix(serverCode, "PCLobbyGame:") || strings.HasPrefix(serverCode, "PCDomainGame:") {
-		return AuthResponse{}, fmt.Errorf("当前 Lycoris g79client 不支持 PC 登录类型: %s", serverCode)
-	}
-
 	cookie, err := client.resolveLoginCookie(ctx, fbtoken)
 	if err != nil {
 		return AuthResponse{}, err
 	}
 
-	loginClient, err := newAuthenticatedG79Client(cookie)
+	loginClient, err := newAuthenticatedG79Client(serverCode, cookie)
 	if err != nil {
 		return AuthResponse{}, err
 	}
@@ -198,10 +194,16 @@ func (client *Client) resolveLoginCookie(ctx context.Context, fbtoken string) (s
 	return cookie, nil
 }
 
-func newAuthenticatedG79Client(cookie string) (*g79.Client, error) {
+func newAuthenticatedG79Client(serverCode, cookie string) (*g79.Client, error) {
 	loginClient, err := g79.NewClient()
 	if err != nil {
 		return nil, fmt.Errorf("NewClient: %w", err)
+	}
+	if strings.HasPrefix(serverCode, "PC") {
+		if err := loginClient.X19AuthenticateWithCookie(cookie); err != nil {
+			return nil, fmt.Errorf("X19AuthenticateWithCookie: %w", err)
+		}
+		return loginClient, nil
 	}
 	if err := loginClient.G79AuthenticateWithCookie(cookie); err != nil {
 		return nil, fmt.Errorf("G79AuthenticateWithCookie: %w", err)
@@ -281,7 +283,7 @@ func (client *Client) TanLobbyAuth(roomID string, fbtoken string) (tanauth.TanLo
 		return tanauth.TanLobbyLoginResponse{}, err
 	}
 
-	loginClient, err := newAuthenticatedG79Client(cookie)
+	loginClient, err := newAuthenticatedG79Client("TanLobby:"+roomID, cookie)
 	if err != nil {
 		return tanauth.TanLobbyLoginResponse{}, err
 	}
@@ -331,7 +333,7 @@ func (client *Client) TanLobbyCreate(fbtoken string) (tanauth.TanLobbyCreateResp
 		return tanauth.TanLobbyCreateResponse{}, err
 	}
 
-	loginClient, err := newAuthenticatedG79Client(cookie)
+	loginClient, err := newAuthenticatedG79Client("TanLobby:", cookie)
 	if err != nil {
 		return tanauth.TanLobbyCreateResponse{}, err
 	}

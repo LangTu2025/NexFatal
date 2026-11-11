@@ -1,8 +1,6 @@
 package packet
 
-import (
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
-)
+import "github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 
 const (
 	PlayerUpdateEntityOverridesTypeClearAll = iota
@@ -13,10 +11,9 @@ const (
 
 // PlayerUpdateEntityOverrides is sent by the server to modify an entity's properties individually.
 type PlayerUpdateEntityOverrides struct {
-	// EntityUniqueID is the unique ID of the entity. The unique ID is a value that remains consistent across
-	// different sessions of the same world, but most servers simply fill the runtime ID of the entity out for
-	// this field.
-	EntityUniqueID int64
+	// EntityRuntimeID is the runtime ID of the entity. The runtime ID is unique for each world session, and
+	// entities are generally identified in packets using this runtime ID.
+	EntityRuntimeID uint64
 	// PropertyIndex is the index of the property to modify. The index is unique for each property of an entity.
 	PropertyIndex uint32
 	// Type is the type of action to perform with the property. It is one of the constants above.
@@ -35,7 +32,7 @@ func (*PlayerUpdateEntityOverrides) ID() uint32 {
 }
 
 func (pk *PlayerUpdateEntityOverrides) Marshal(io protocol.IO) {
-	io.Varint64(&pk.EntityUniqueID)
+	io.Varuint64(&pk.EntityRuntimeID)
 	io.Varuint32(&pk.PropertyIndex)
 	io.Uint8(&pk.Type)
 	if pk.Type == PlayerUpdateEntityOverridesTypeInt {

@@ -20,6 +20,8 @@ const (
 	UseItemRetrieved
 	UseItemDyed
 	UseItemTraded
+	UseItemBrushingCompleted
+	UseItemOpenedVault
 )
 
 // CompletedUsingItem is sent by the server to tell the client that it should be done using the item it is
@@ -31,8 +33,8 @@ type CompletedUsingItem struct {
 	// UseMethod is the method of the using of the item that was completed. It is one of the constants that
 	// may be found above.
 	UseMethod int32
-	// Netease
-	UnknownItem protocol.ItemInstance
+	// Item is the protocol-extension payload as an ItemInstance when UseMethod = -1.
+	Item protocol.ItemInstance
 }
 
 // ID ...
@@ -43,8 +45,7 @@ func (*CompletedUsingItem) ID() uint32 {
 func (pk *CompletedUsingItem) Marshal(io protocol.IO) {
 	io.Int16(&pk.UsedItemID)
 	io.Int32(&pk.UseMethod)
-	// Netease
-	// if something {
-	// 	io.ItemInstance(&pk.UnknownItem)
-	// }
+	if pk.UseMethod == -1 {
+		io.ItemInstance(&pk.Item)
+	}
 }

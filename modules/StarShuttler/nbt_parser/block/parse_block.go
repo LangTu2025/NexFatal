@@ -109,12 +109,6 @@ func ParseBlock(
 		block = &Door{DefaultBlock: defaultBlock}
 	case mapping.SupportNBTBlockTypeBed:
 		block = &Bed{DefaultBlock: defaultBlock}
-	case mapping.SupportNBTBlockTypeShelf:
-		block = &Shelf{DefaultBlock: defaultBlock}
-	case mapping.SupportNBTBlockTypeCopperGolemStatue:
-		block = &CopperGolemStatue{DefaultBlock: defaultBlock}
-	case mapping.SupportNBTBlockTypeFenceGate:
-		block = &FenceGate{DefaultBlock: defaultBlock}
 	default:
 		panic("ParseNBTBlock: Should nerver happened")
 	}

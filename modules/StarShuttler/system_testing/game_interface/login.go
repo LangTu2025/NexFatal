@@ -16,7 +16,7 @@ func SystemTestingLogin() {
 	tA := time.Now()
 
 	cfg := client.Config{
-		AuthServerAddress:    "https://nv1.aetheredge.top",
+		AuthServerAddress:    "https://nv1.nethard.pro",
 		AuthServerToken:      "nv1/Ja310BrYACXpFoDvb+m9rh09+SPbEzZg/xYC63XPU24rpZoodKEBsKtIZd/CiwEBw+pSJ6lEMdClH22RW2htodpfJx/5NQZATz2TYzjWK+ILMUddzD51uWMXmyfQuzyOusK2PqP9KZcpzUMVl94ubA==",
 		RentalServerCode:     "服务器：2368747",
 		RentalServerPasscode: "117259",

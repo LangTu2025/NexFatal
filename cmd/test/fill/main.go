@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/TriM-Organization/bedrock-world-operator/chunk"
-	wsDefine "github.com/xingbaiawa/LycorisFlow/define"
-	"github.com/xingbaiawa/LycorisFlow/structure"
+	wsDefine "github.com/Yeah114/WaterStructure/define"
+	"github.com/Yeah114/WaterStructure/structure"
 	"github.com/LangTu2025/NexFatal/utils/chunk_fill"
 )
 

@@ -4,77 +4,66 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"strings"
-
-	"github.com/xingbaiawa/unmcpk/mcpk"
+	"github.com/Yeah114/unmcpk/mcpk"
 )
 
-// 下载最新引擎包并解包其中的 vanilla.mcp
-func ExtractEngineMCPK(outputPath string) error {
-	version, err := FetchEngineVersion()
+func ExtractEngineMCPK(path string) error {
+	v, err := FetchEngineVersion()
 	if err != nil {
-		return fmt.Errorf("ExtractEngineMCPK: %v", err)
+		return err
 	}
 
-	reader, err := NewPartialHTTPReader(version.URL, httpClient)
+	pr, err := NewPartialHttpReader(v.URL, httpClient)
 	if err != nil {
-		return fmt.Errorf("ExtractEngineMCPK: %v", err)
+		return err
 	}
-	archive, err := zip.NewReader(reader, reader.ContentSize)
+	defer pr.Close()
+	zr, err := zip.NewReader(pr, int64(pr.ContentSize))
 	if err != nil {
-		return fmt.Errorf("ExtractEngineMCPK: %v", err)
+		return err
 	}
 
-	for _, file := range archive.File {
-		if strings.HasPrefix(file.Name, "assets") && strings.HasSuffix(file.Name, "vanilla.mcp") {
-			bodyReader, err := file.Open()
+	for _, f := range zr.File {
+		if strings.HasPrefix(f.Name, "assets") && strings.HasSuffix(f.Name, "vanilla.mcp") {
+			o, err := f.Open()
 			if err != nil {
-				return fmt.Errorf("ExtractEngineMCPK: %v", err)
+				return err
 			}
 
-			body, err := io.ReadAll(bodyReader)
+			body, err := io.ReadAll(o)
 			if err != nil {
-				_ = bodyReader.Close()
-				return fmt.Errorf("ExtractEngineMCPK: %v", err)
-			}
-			if err = bodyReader.Close(); err != nil {
-				return fmt.Errorf("ExtractEngineMCPK: %v", err)
+				return err
 			}
 
-			if err := mcpk.Unpack(body, outputPath); err != nil {
-				return fmt.Errorf("ExtractEngineMCPK: %v", err)
-			}
-			return nil
+			mcpk.Unpack(body, path)
 		}
 	}
 
-	return errors.New("ExtractEngineMCPK: 未找到 vanilla.mcp")
+	return nil
 }
 
-// 引擎包版本信息
 type EngineVersion struct {
 	URL     string `json:"url"`
 	Version string `json:"version"`
 }
 
-// 获取最新引擎包版本信息
 func FetchEngineVersion() (*EngineVersion, error) {
 	body, err := fetch("https://g79.update.netease.com/pack_list/production/g79_packlist_2")
 	if err != nil {
-		return nil, fmt.Errorf("FetchEngineVersion: %v", err)
+		return nil, err
 	}
 
 	data := make(map[string]EngineVersion)
 	err = json.Unmarshal(body, &data)
 	if err != nil {
-		return nil, fmt.Errorf("FetchEngineVersion: %v", err)
+		return nil, err
 	}
 
-	if version, ok := data["netease"]; ok {
-		return &version, nil
+	if v, ok := data["netease"]; ok {
+		return &v, nil
 	}
 
-	return nil, errors.New("FetchEngineVersion: 未找到引擎包")
+	return nil, errors.New("no package found")
 }

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
+	wsdefine "github.com/Yeah114/WaterStructure/define"
 	"github.com/LangTu2025/NexFatal/control"
 	"github.com/LangTu2025/NexFatal/defines"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"

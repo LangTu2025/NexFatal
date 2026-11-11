@@ -34,7 +34,7 @@ type CommandOutput struct {
 	// shown or not, depends on the type of the messages.
 	OutputMessages []protocol.CommandOutputMessage
 	// DataSet ... TODO: Find out what this is for.
-	DataSet protocol.Optional[string]
+	DataSet string
 }
 
 // ID ...
@@ -44,44 +44,10 @@ func (*CommandOutput) ID() uint32 {
 
 func (pk *CommandOutput) Marshal(io protocol.IO) {
 	protocol.CommandOriginData(io, &pk.CommandOrigin)
-	outputType := commandOutputTypeToString(pk.OutputType)
-	io.String(&outputType)
-	commandOutputTypeFromString(io, &pk.OutputType, outputType)
-	io.Uint32(&pk.SuccessCount)
+	io.Uint8(&pk.OutputType)
+	io.Varuint32(&pk.SuccessCount)
 	protocol.Slice(io, &pk.OutputMessages)
-	protocol.OptionalFunc(io, &pk.DataSet, io.String)
-}
-
-func commandOutputTypeToString(outputType byte) string {
-	switch outputType {
-	case CommandOutputTypeNone:
-		return "none"
-	case CommandOutputTypeLastOutput:
-		return "lastoutput"
-	case CommandOutputTypeSilent:
-		return "silent"
-	case CommandOutputTypeAllOutput:
-		return "alloutput"
-	case CommandOutputTypeDataSet:
-		return "dataset"
-	default:
-		return "unknown"
-	}
-}
-
-func commandOutputTypeFromString(io protocol.IO, outputType *byte, value string) {
-	switch value {
-	case "none":
-		*outputType = CommandOutputTypeNone
-	case "lastoutput":
-		*outputType = CommandOutputTypeLastOutput
-	case "silent":
-		*outputType = CommandOutputTypeSilent
-	case "alloutput":
-		*outputType = CommandOutputTypeAllOutput
-	case "dataset":
-		*outputType = CommandOutputTypeDataSet
-	default:
-		io.InvalidValue(value, "outputType", "unknown type")
+	if pk.OutputType == CommandOutputTypeDataSet {
+		io.String(&pk.DataSet)
 	}
 }

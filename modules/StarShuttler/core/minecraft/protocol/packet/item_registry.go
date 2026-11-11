@@ -1,8 +1,6 @@
 package packet
 
-import (
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
-)
+import "github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 
 // ItemRegistry is sent by the server to send the client a list of available items and attach client-side
 // components to a custom item. This packet was formerly known as the ItemComponent packet before 1.21.60,

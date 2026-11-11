@@ -1,39 +1,41 @@
 package mcpk
 
 import (
-	"bytes"
-	"fmt"
+	"errors"
 	"strings"
 )
 
-// 返回指定 MCPK 文件加密压缩后的原始数据
-func (m *MCPKFileSystem) Open(name string) ([]byte, error) {
-	name = strings.ReplaceAll(name, "\\", "/")
-	separatorIndex := strings.LastIndexByte(name, '/')
-	directoryID := uint32(0)
-	if separatorIndex != -1 {
-		directoryID = StringID(name[:separatorIndex])
+func (fs *MCPKFileSystem) Open(name string) ([]byte, error) {
+	index := strings.LastIndexByte(name, '/')
+	var directoryId uint32 = 0
+	if index != -1 {
+		dirName := name[:index]
+		directoryId = StringID(dirName)
 	}
 
-	directoryIndex, ok := m.directoryByID[directoryID]
+	// load file entries inside directory entry
+	fileEntries, ok := fs.FileEntries[directoryId]
 	if !ok {
-		return nil, fmt.Errorf("Open: No directory found for %08x", directoryID)
+		if !fs.prepareFileEntries(directoryId) {
+			return nil, errors.New("no directory found")
+		}
+		fileEntries = fs.FileEntries[directoryId]
 	}
-	directory := m.directories[directoryIndex]
 
-	fileID := StringID(name[separatorIndex+1:])
-	var matchedFile *fileEntry
-	for _, entry := range directory.Files {
-		if entry.ID == fileID {
-			matched := entry
-			matchedFile = &matched
-			break
+	fileId := StringID(name[index+1:])
+	var file *FileEntry
+	for _, e := range fileEntries {
+		if e.Id == fileId {
+			ele := e
+			file = &ele
 		}
 	}
 
-	if matchedFile == nil {
-		return nil, fmt.Errorf("Open: No file found for %s", name)
+	if file == nil {
+		return nil, errors.New("no file found")
 	}
 
-	return bytes.Clone(m.fileData(*matchedFile)), nil
+	data := fs.data[fs.offsetFileEntryEnd+file.Offset : fs.offsetFileEntryEnd+file.Offset+file.Size]
+
+	return data, nil
 }

@@ -2,57 +2,48 @@ package hotpatch
 
 import (
 	"errors"
-	"fmt"
-
-	"github.com/xingbaiawa/unmcpk/mcpk"
+	"github.com/Yeah114/unmcpk/mcpk"
 )
 
-// 解包清单中的基础 MCPK 和补丁 MCPK
-func (m *Manifest) ExtractAllMCPK(requireAll bool, outputPath string) error {
+func (m *Manifest) ExtractAllMCPK(strictResolve bool, path string) error {
 	list := []string{"vanilla.mcp", "vanilla_patch.mcp"}
 
-	for _, name := range list {
-		ok, err := m.ExtractMCPK(name, outputPath)
+	for _, e := range list {
+		bl, err := m.ExtractMCPK(e, path)
 		if err != nil {
-			return fmt.Errorf("ExtractAllMCPK: %v", err)
-		}
-		if !ok && requireAll {
-			return errors.New("ExtractAllMCPK: 未找到资源 " + name)
+			return err
+		} else if !bl && strictResolve {
+			return errors.New("no file found as " + e)
 		}
 	}
 
 	return nil
 }
 
-// 返回清单中 MCPK 资源的组合哈希
-func (m *Manifest) MCPKHash() string {
+func (m *Manifest) GetHashMCPK() string {
 	list := []string{"vanilla.mcp", "vanilla_patch.mcp"}
 	hash := ""
 
-	for _, name := range list {
-		if asset, ok := m.Assets[name]; ok {
-			hash += asset.MD5
+	for _, e := range list {
+		if a, ok := m.Assets[e]; ok {
+			hash += a.MD5
 		}
 	}
 
 	return hash
 }
 
-// 下载并解包清单中的指定 MCPK
-func (m *Manifest) ExtractMCPK(assetName, outputPath string) (bool, error) {
-	asset, ok := m.Assets[assetName]
-	if !ok {
+func (m *Manifest) ExtractMCPK(filename string, path string) (bool, error) {
+	if _, ok := m.Assets[filename]; ok {
+		body, err := fetch(m.BaseUrl + filename)
+		if err != nil {
+			return false, err
+		}
+
+		mcpk.Unpack(body, path)
+
+		return true, nil
+	} else {
 		return false, nil
 	}
-
-	body, err := fetch(m.BaseURL + asset.PathURL)
-	if err != nil {
-		return false, fmt.Errorf("ExtractMCPK: %v", err)
-	}
-
-	if err := mcpk.Unpack(body, outputPath); err != nil {
-		return false, fmt.Errorf("ExtractMCPK: %v", err)
-	}
-
-	return true, nil
 }

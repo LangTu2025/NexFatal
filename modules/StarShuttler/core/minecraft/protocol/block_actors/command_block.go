@@ -36,7 +36,6 @@ type CommandBlock struct {
 
 // ID ...
 func (*CommandBlock) ID() string {
-
 	return IDCommandBlock
 }
 

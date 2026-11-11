@@ -30,10 +30,6 @@ type ResourcePackStack struct {
 	// IncludeEditorPacks specifies if vanilla editor packs should be included in the resource pack stack when
 	// connecting to an editor world.
 	IncludeEditorPacks bool
-	// NeteaseTexturePacks is an additional stack list appended by current NetEase lobby servers.
-	NeteaseTexturePacks []protocol.StackResourcePack
-	// NeteaseUnknown1 is a trailing toggle appended after the extra NetEase stack list.
-	NeteaseUnknown1 bool
 }
 
 // ID ...
@@ -43,17 +39,10 @@ func (*ResourcePackStack) ID() uint32 {
 
 func (pk *ResourcePackStack) Marshal(io protocol.IO) {
 	io.Bool(&pk.TexturePackRequired)
+	protocol.Slice(io, &pk.BehaviourPacks)
 	protocol.Slice(io, &pk.TexturePacks)
 	io.String(&pk.BaseGameVersion)
 	protocol.SliceUint32Length(io, &pk.Experiments)
 	io.Bool(&pk.ExperimentsPreviouslyToggled)
 	io.Bool(&pk.IncludeEditorPacks)
-	if reader, ok := io.(*protocol.Reader); ok && len(reader.PeekBytes(1)) == 0 {
-		return
-	}
-	protocol.Slice(io, &pk.NeteaseTexturePacks)
-	if reader, ok := io.(*protocol.Reader); ok && len(reader.PeekBytes(1)) == 0 {
-		return
-	}
-	io.Bool(&pk.NeteaseUnknown1)
 }

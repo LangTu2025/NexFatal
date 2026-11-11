@@ -1,19 +1,19 @@
 package pymarshal
 
-var netEaseOpcodes = make(map[uint32]map[byte]string)
-var pythonOpcodes = make(map[string]byte)
+var neteaseOpcodes = make(map[uint32]map[byte]string)
+var opcodes = make(map[string]byte)
 
 func init() {
-	initNetEaseOpcodes()
-	initPythonOpcodes()
+	initNetEaseOpcode()
+	initPythonOpcode()
 }
 
-func initNetEaseOpcodes() {
+func initNetEaseOpcode() {
 	var opcodeMap map[byte]string
 
 	opcodeMap = make(map[byte]string)
 
-	// Python 2.7 之前使用的操作码映射
+	// before 2.7
 	// opcodeMap[17] = "INPLACE_FLOOR_DIVIDE"
 	// opcodeMap[85] = "SLICE_0"
 	// opcodeMap[28] = "STORE_SLICE_0"
@@ -133,7 +133,7 @@ func initNetEaseOpcodes() {
 	// opcodeMap[76] = "PRINT_ITEM_TO"
 	// opcodeMap[153] = "CALL_FUNCTION_VAR_KW"
 
-	// Python 2.7 之后使用的操作码映射
+	// after 2.7
 	opcodeMap[0x6e] = "DUP_TOPX"
 	opcodeMap[0x5c] = "BINARY_AND"
 	opcodeMap[0x47] = "INPLACE_TRUE_DIVIDE"
@@ -252,7 +252,7 @@ func initNetEaseOpcodes() {
 	opcodeMap[0x57] = "BINARY_FLOOR_DIVIDE"
 	opcodeMap[0x49] = "BINARY_ADD"
 	opcodeMap[0xe4] = "COMPARE_OP"
-	netEaseOpcodes[0xca49b20f] = opcodeMap
+	neteaseOpcodes[0xca49b20f] = opcodeMap
 
 	opcodeMap = make(map[byte]string)
 	opcodeMap[1] = "UNARY_INVERT"
@@ -373,7 +373,7 @@ func initNetEaseOpcodes() {
 	opcodeMap[232] = "LOAD_NAME"
 	opcodeMap[63] = "BINARY_ADD"
 	opcodeMap[2] = "INPLACE_FLOOR_DIVIDE"
-	netEaseOpcodes[0] = opcodeMap
+	neteaseOpcodes[0] = opcodeMap
 
 	opcodeMap = make(map[byte]string)
 	opcodeMap[148] = "JUMP_FORWARD"
@@ -494,5 +494,5 @@ func initNetEaseOpcodes() {
 	opcodeMap[172] = "MAKE_CLOSURE"
 	opcodeMap[139] = "BUILD_SLICE"
 	opcodeMap[56] = "YIELD_VALUE"
-	netEaseOpcodes[0xbc58dbd5] = opcodeMap
+	neteaseOpcodes[0xbc58dbd5] = opcodeMap
 }

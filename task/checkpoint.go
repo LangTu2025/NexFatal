@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	wsstructure "github.com/xingbaiawa/LycorisFlow/structure"
+	wsstructure "github.com/Yeah114/WaterStructure/structure"
 	"github.com/LangTu2025/NexFatal/defines"
 	"github.com/LangTu2025/NexFatal/utils"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"

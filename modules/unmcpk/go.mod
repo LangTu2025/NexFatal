@@ -1,3 +1,3 @@
-module github.com/xingbaiawa/unmcpk
+module github.com/Yeah114/unmcpk
 
-go 1.26.0
+go 1.25.0

@@ -1,6 +1,8 @@
 package protocol
 
 import (
+	"math"
+
 	"github.com/go-gl/mathgl/mgl32"
 )
 
@@ -16,6 +18,10 @@ const (
 	WindowIDOffHand   = 119
 	WindowIDArmour    = 120
 	WindowIDUI        = 124
+	WindowIDDynamic   = 125
+	// PhoenixBuilder specific constant.
+	// Author: Happy2018new
+	WindowIDCrafting = math.MaxInt32
 )
 
 // InventoryAction represents a single action that took place during an inventory transaction. On itself, this
@@ -118,7 +124,6 @@ const (
 	UseItemActionClickBlock = iota
 	UseItemActionClickAir
 	UseItemActionBreakBlock
-	UseItemActionUseAsAttack
 )
 
 const (
@@ -154,7 +159,10 @@ type UseItemTransactionData struct {
 	// ActionType is the type of the UseItem inventory transaction. It is one of the action types found above,
 	// and specifies the way the player interacted with the block.
 	ActionType uint32
-	// TriggerType is the type of the trigger that caused the inventory transaction.
+	// TriggerType is the type of the trigger that caused the inventory transaction. It is one of the trigger
+	// types found in the constants above. If TriggerType is TriggerTypePlayerInput, the transaction is from
+	// the initial input of the player. If it is TriggerTypeSimulationTick, the transaction is from a simulation
+	// tick when the player is holding down the input.
 	TriggerType uint32
 	// BlockPosition is the position of the block that was interacted with. This is only really a correct
 	// block position if ActionType is not UseItemActionClickAir.
@@ -177,7 +185,8 @@ type UseItemTransactionData struct {
 	// BlockRuntimeID is the runtime ID of the block that was clicked. It may be used by the server to verify
 	// that the player's world client-side is synchronised with the server's.
 	BlockRuntimeID uint32
-	// ClientPrediction is the client's prediction on the output of the transaction.
+	// ClientPrediction is the client's prediction on the output of the transaction. It is one of the client
+	// prediction found in the constants above.
 	ClientPrediction uint32
 }
 

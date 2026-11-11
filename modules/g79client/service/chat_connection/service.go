@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	g79client "github.com/xingbaiawa/g79client"
+	g79client "github.com/Yeah114/g79client"
 )
 
 // ServerEndpoint 描述一次具体连接所需的主机与端口。

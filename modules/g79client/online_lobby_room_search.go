@@ -63,11 +63,11 @@ func (c *Client) SearchOnlineLobbyRoomByKeyword(keyword string, length, offset i
 	}
 
 	requestData := map[string]interface{}{
-		"length":    length,
-		"version":   GameVersion,
-		"res_id":    "",
+		"length":  length,
+		"version": GameVersion,
+		"res_id":  "",
 		"room_name": keyword,
-		"offset":    offset,
+		"offset":  offset,
 	}
 
 	jsonData, err := json.Marshal(requestData)

@@ -14,7 +14,6 @@ const (
 	wsaeNetUnreach  = syscall.Errno(10051) // ENETUNREACH
 	wsaeConnReset   = syscall.Errno(10054) // ECONNRESET
 	wsaeConnAborted = syscall.Errno(10053) // ECONNABORTED
-	wsaeMsgSize     = syscall.Errno(10040) // EMSGSIZE
 )
 
 // isTransientUDPReadError returns true for read errors on connected UDP sockets
@@ -32,14 +31,4 @@ func isTransientUDPReadError(err error) bool {
 		}
 	}
 	return false
-}
-
-// isOversizedUDPReadError reports whether recvmsg/WSARecv returned EMSGSIZE
-// because the datagram did not fit the caller-provided buffer.
-func isOversizedUDPReadError(err error) bool {
-	if err == nil {
-		return false
-	}
-	var errno syscall.Errno
-	return errors.As(err, &errno) && errno == wsaeMsgSize
 }

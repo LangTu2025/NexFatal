@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/xingbaiawa/g79client"
+	"github.com/Yeah114/g79client"
 )
 
 func main() {
@@ -17,7 +17,7 @@ func main() {
 	}
 
 	// 认证
-	if err := client.G79AuthenticateWithCookie(cookie); err != nil {
+	if err := client.X19AuthenticateWithCookie(cookie); err != nil {
 		log.Fatalf("认证失败: %v", err)
 	}
 	fmt.Printf("登录成功, 用户ID: %v, 昵称: %s\n", client.UserID, client.UserDetail.Name)

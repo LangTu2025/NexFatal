@@ -192,7 +192,7 @@ type StartGame struct {
 	EducationSharedResourceURI protocol.EducationSharedResourceURI
 	// ForceExperimentalGameplay specifies if experimental gameplay should be force enabled. For servers this
 	// should always be set to false.
-	ForceExperimentalGameplay bool
+	ForceExperimentalGameplay protocol.Optional[bool]
 	// LevelID is a base64 encoded world ID that is used to identify the world.
 	LevelID string
 	// WorldName is the name of the world that the player is joining. Note that this field shows up above the
@@ -252,75 +252,8 @@ type StartGame struct {
 	// its index in the expected block palette. This is useful for servers that wish to support multiple protocol versions
 	// and custom blocks, but it will result in extra bytes being written for every block in a sub chunk palette.
 	UseBlockNetworkIDHashes bool
-	// TickDeathSystemsEnabled specifies if the new tick death systems are enabled.
-	TickDeathSystemsEnabled bool
 	// ServerAuthoritativeSound is currently unknown as to what it does.
 	ServerAuthoritativeSound bool
-
-	//NeteaseData []protocol.NeteaseStartGameData
-
-	// Netease
-	Unknown1 bool
-	// Netease
-	Unknown2 string
-	// Netease
-	Unknown3 string
-	// Netease
-	Unknown4 bool
-	// Netease
-	Unknown5 bool
-	// Netease
-	Unknown6 int32
-	// Netease
-	Unknown7 int32
-	// Netease
-	Unknown8 int32
-	// Netease
-	Unknown9 int32
-	// Netease
-	Unknown10 int32
-	// Netease
-	Unknown11 bool
-	// Netease
-	Unknown12 bool
-	// Netease
-	Unknown13 bool
-	// Netease
-	Unknown14 int32
-	// Netease
-	Unknown15 bool
-	// Netease
-	Unknown16 bool
-	// Netease
-	Unknown17 bool
-	// Netease
-	Unknown18 bool
-	// Netease
-	Unknown19 bool
-	// Netease
-	Unknown20 bool
-	// Netease
-	Unknown21 bool
-	// Netease
-	Unknown22 bool
-	// Netease
-	Unknown23 bool
-	// Netease: uncertain
-	Unknown24 []byte
-	// Netease
-	Unknown25 bool
-	// Netease
-	Unknown26 bool
-	// Netease
-	Unknown27 bool
-	// Netease: UUID string
-	Unknown28 string
-	// Netease
-	//Unknown29 bool
-	// Netease
-	//Unknown30 bool
-	// Netease
-	//Unknown31 bool
 }
 
 // ID ...
@@ -361,7 +294,7 @@ func (pk *StartGame) Marshal(io protocol.IO) {
 	io.Varint32(&pk.PlatformBroadcastMode)
 	io.Bool(&pk.CommandsEnabled)
 	io.Bool(&pk.TexturePackRequired)
-	protocol.FuncSlice(io, &pk.GameRules, io.GameRuleLegacy)
+	protocol.FuncSlice(io, &pk.GameRules, io.GameRule)
 	protocol.SliceUint32Length(io, &pk.Experiments)
 	io.Bool(&pk.ExperimentsPreviouslyToggled)
 	io.Bool(&pk.BonusChestEnabled)
@@ -383,7 +316,7 @@ func (pk *StartGame) Marshal(io protocol.IO) {
 	io.Int32(&pk.LimitedWorldDepth)
 	io.Bool(&pk.NewNether)
 	protocol.Single(io, &pk.EducationSharedResourceURI)
-	io.Bool(&pk.ForceExperimentalGameplay)
+	protocol.OptionalFunc(io, &pk.ForceExperimentalGameplay, io.Bool)
 	io.Uint8(&pk.ChatRestrictionLevel)
 	io.Bool(&pk.DisablePlayerInteractions)
 	io.String(&pk.ServerID)
@@ -406,39 +339,5 @@ func (pk *StartGame) Marshal(io protocol.IO) {
 	io.UUID(&pk.WorldTemplateID)
 	io.Bool(&pk.ClientSideGeneration)
 	io.Bool(&pk.UseBlockNetworkIDHashes)
-	io.Bool(&pk.TickDeathSystemsEnabled)
 	io.Bool(&pk.ServerAuthoritativeSound)
-	//protocol.Slice(io, &pk.NeteaseData)
-	// Netease
-	io.Bool(&pk.Unknown1)
-	io.String(&pk.Unknown2)
-	io.String(&pk.Unknown3)
-	io.Bool(&pk.Unknown4)
-	io.Bool(&pk.Unknown5)
-	io.Int32(&pk.Unknown6)
-	io.Int32(&pk.Unknown7)
-	io.Int32(&pk.Unknown8)
-	io.Int32(&pk.Unknown9)
-	io.Int32(&pk.Unknown10)
-	io.Bool(&pk.Unknown11)
-	io.Bool(&pk.Unknown12)
-	io.Bool(&pk.Unknown13)
-	io.Int32(&pk.Unknown14)
-	io.Bool(&pk.Unknown15)
-	io.Bool(&pk.Unknown16)
-	io.Bool(&pk.Unknown17)
-	io.Bool(&pk.Unknown18)
-	io.Bool(&pk.Unknown19)
-	io.Bool(&pk.Unknown20)
-	io.Bool(&pk.Unknown21)
-	io.Bool(&pk.Unknown22)
-	io.Bool(&pk.Unknown23)
-	io.ByteSlice(&pk.Unknown24)
-	io.Bool(&pk.Unknown25)
-	io.Bool(&pk.Unknown26)
-	io.Bool(&pk.Unknown27)
-	io.String(&pk.Unknown28)
-	//io.Bool(&pk.Unknown29)
-	//io.Bool(&pk.Unknown30)
-	//io.Bool(&pk.Unknown31)
 }

@@ -2,21 +2,18 @@ package g79client
 
 import (
 	"net/http"
-	"net/url"
 	"strconv"
 	"time"
 )
 
-// EngineVersion matches the supplied APK's native PE authentication getter
-// at libminecraftpe.so 0x0e659a90. The resource manifest's engineVersion
-// 3.10.0.300675 is separate from this authentication request field.
-var EngineVersion = "3.10.0.300878"
+var EngineVersion = "3.8.15.292836"
 
 func Refetch() {
-	// Keep the engine version bound to the supplied APK; pack-list refreshes
-	// must not replace it with a versionName from another installation.
-	_, _ = RefreshG79PackList()
-	// _, _ = RefreshG79LatestVersion() // 已禁用动态获取 patch version
+	packList, _ := RefreshG79PackList()
+	if neteasePack, ok := packList["netease"]; ok && neteasePack.Version != "" {
+		EngineVersion = neteasePack.Version
+	}
+	_, _ = RefreshG79LatestVersion()
 	_, _ = RefreshG79ReleaseJSON()
 	_, _ = RefreshX19ReleaseJSON()
 	_, _ = RefreshG79ChatServers()
@@ -36,11 +33,9 @@ func init() {
 
 // Client 结构体
 type Client struct {
-	UserID    string
-	UserToken string
-	Seed      string
-	// Sead 保留旧版会话字段名称，兼容 authentication/reconnect 调用方。
-	Sead               string
+	UserID             string
+	UserToken          string
+	Seed               string
 	ReleaseJSON        G79ReleaseJSON
 	X19ReleaseJSON     X19ReleaseJSON
 	EngineVersion      string
@@ -56,16 +51,6 @@ type Client struct {
 // 创建新的客户端
 func NewClient() (*Client, error) {
 	return NewClientWithHTTPClient(nil)
-}
-
-// NewClientWithProxy configures every request made while constructing and
-// using the client to use proxyURL. A nil proxyURL keeps the direct behavior.
-func NewClientWithProxy(proxyURL *url.URL) (*Client, error) {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if proxyURL != nil {
-		transport.Proxy = http.ProxyURL(proxyURL)
-	}
-	return NewClientWithHTTPClient(&http.Client{Transport: transport})
 }
 
 // NewClientWithHTTPClient 允许调用方传入自定义的 http.Client，例如配置代理等场景。

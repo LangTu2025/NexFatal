@@ -31,17 +31,17 @@ type RentalServerPlayerGrowth struct {
 
 // RentalServerPlayerEntity 表示租赁服玩家条目。
 type RentalServerPlayerEntity struct {
-	EntityID  string                   `json:"entity_id"`
-	ServerID  string                   `json:"server_id"`
-	UserID    string                   `json:"user_id"`
-	Name      string                   `json:"name"`
-	Status    Uncertain                `json:"status"`
-	CreateTS  Uncertain                `json:"create_ts"`
-	DeleteTS  Uncertain                `json:"delete_ts"`
-	HeadImage string                   `json:"headImage"`
-	FrameID   string                   `json:"frame_id"`
-	PEGrowth  RentalServerPlayerGrowth `json:"pe_growth"`
-	IsOnline  bool                     `json:"is_online"`
+	EntityID   string                   `json:"entity_id"`
+	ServerID   string                   `json:"server_id"`
+	UserID     string                   `json:"user_id"`
+	Name       string                   `json:"name"`
+	Status     Uncertain                `json:"status"`
+	CreateTS   Uncertain                `json:"create_ts"`
+	DeleteTS   Uncertain                `json:"delete_ts"`
+	HeadImage  string                   `json:"headImage"`
+	FrameID    string                   `json:"frame_id"`
+	PEGrowth   RentalServerPlayerGrowth `json:"pe_growth"`
+	IsOnline   bool                     `json:"is_online"`
 }
 
 // SearchRentalServerPlayersByServerResponse 表示按租赁服查询玩家列表响应。

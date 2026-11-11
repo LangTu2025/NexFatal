@@ -19,17 +19,13 @@ type OnlineLobbyRoomEnterResponse struct {
 }
 
 // 进入在线大厅房间（未加密响应）
-func (c *Client) EnterOnlineLobbyRoom(roomID, password string, lobbyManifestVersion ...string) (*OnlineLobbyRoomEnterResponse, error) {
+func (c *Client) EnterOnlineLobbyRoom(roomID, password string) (*OnlineLobbyRoomEnterResponse, error) {
 	api := "/online-lobby-room-enter/"
-	manifestVersion := ""
-	if len(lobbyManifestVersion) > 0 {
-		manifestVersion = lobbyManifestVersion[0]
-	}
 
 	requestData := map[string]interface{}{
 		"password":               password,
 		"room_id":                roomID,
-		"lobby_manifest_version": manifestVersion,
+		"lobby_manifest_version": "",
 		"check_visibilily":       1,
 	}
 

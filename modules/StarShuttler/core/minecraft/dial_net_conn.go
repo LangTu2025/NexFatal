@@ -6,17 +6,16 @@ import (
 	"crypto/elliptic"
 	cryptoRand "crypto/rand"
 	"fmt"
-	"io"
 	"log/slog"
 	"math"
 	"net"
 	"time"
 
-	tanauth "github.com/xingbaiawa/StarShuttler/client/local_lobby/tan_solver/bunker"
+	tanauth "github.com/Happy2018new/nemc-tan-lobby-solver/bunker"
 	"github.com/xingbaiawa/StarShuttler/core/bunker/auth"
+	"github.com/xingbaiawa/StarShuttler/core/minecraft/internal"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/login"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
-	"github.com/xingbaiawa/StarShuttler/core/termlog"
 )
 
 func DialNetConnContext(ctx context.Context, netConn net.Conn, identityData login.IdentityData, clientData login.ClientData) (*Conn, error) {
@@ -24,33 +23,35 @@ func DialNetConnContext(ctx context.Context, netConn net.Conn, identityData logi
 	return d.DialNetConnContext(ctx, netConn, identityData, clientData)
 }
 
-// 使用本地联机房间的身份信息建立 Minecraft 连接
-func TanLobbyDialContext(ctx context.Context, netConn net.Conn, response tanauth.TanLobbyLoginResponse) (*Conn, error) {
-	return (Dialer{EnableLocalOnlineAuth: true}).TanLobbyDialContext(ctx, netConn, response)
+func TanLobbyDialContext(ctx context.Context, netConn net.Conn, tanLobbyLoginResp tanauth.TanLobbyLoginResponse) (*Conn, error) {
+	var d Dialer
+	return d.TanLobbyDialContext(ctx, netConn, tanLobbyLoginResp)
 }
 
-// 使用本地联机登录外壳建立 Minecraft 连接
-func (d Dialer) TanLobbyDialContext(ctx context.Context, netConn net.Conn, response tanauth.TanLobbyLoginResponse) (*Conn, error) {
-	d.EnableLocalOnlineAuth = true
-	return d.DialNetConnContext(
+func (d Dialer) TanLobbyDialContext(ctx context.Context, netConn net.Conn, tanLobbyLoginResp tanauth.TanLobbyLoginResponse) (*Conn, error) {
+	return d.dialOfflineNetConnContext(
 		ctx,
 		netConn,
 		login.IdentityData{
-			Uid:         int64(response.UserUniqueID),
-			DisplayName: response.UserPlayerName,
+			Uid:         int64(tanLobbyLoginResp.UserUniqueID),
+			DisplayName: tanLobbyLoginResp.UserPlayerName,
 		},
-		login.ClientData{ServerAddress: response.RaknetServerAddress},
+		login.ClientData{
+			ServerAddress: tanLobbyLoginResp.RaknetServerAddress,
+		},
+		"dial tan lobby",
 	)
 }
 
 func (d Dialer) DialNetConnContext(ctx context.Context, netConn net.Conn, identityData login.IdentityData, clientData login.ClientData) (*Conn, error) {
-	termlog.LoginInfo("开始执行登陆序列")
-	termlog.LoginInfo("正在检查并更新本地网络中的属性信息")
-	termlog.LoginInfo("正在生成客户端密钥对")
+	return d.dialOfflineNetConnContext(ctx, netConn, identityData, clientData, "dial net conn")
+}
+
+func (d Dialer) dialOfflineNetConnContext(ctx context.Context, netConn net.Conn, identityData login.IdentityData, clientData login.ClientData, op string) (*Conn, error) {
 	key, _ := ecdsa.GenerateKey(elliptic.P384(), cryptoRand.Reader)
 
 	if d.ErrorLog == nil {
-		d.ErrorLog = slog.New(slog.NewTextHandler(io.Discard, nil))
+		d.ErrorLog = slog.New(internal.DiscardHandler{})
 	}
 	d.ErrorLog = d.ErrorLog.With("src", "dialer")
 	if d.Protocol == nil {
@@ -60,10 +61,7 @@ func (d Dialer) DialNetConnContext(ctx context.Context, netConn net.Conn, identi
 		d.FlushRate = time.Second / 20
 	}
 
-	termlog.LoginInfo("正在封装数据帧连接层")
 	conn := newConn(netConn, key, d.ErrorLog, d.Protocol, d.FlushRate, false)
-	conn.localLobbyCompression = d.EnableLocalOnlineAuth
-	termlog.LoginInfo("正在封装数据包连接层")
 	conn.pool = conn.proto.Packets(false)
 	conn.identityData = identityData
 	conn.clientData = clientData
@@ -81,19 +79,10 @@ func (d Dialer) DialNetConnContext(ctx context.Context, netConn net.Conn, identi
 	defaultClientData(&conn.clientData, auth.AuthResponse{RentalServerIP: conn.clientData.ServerAddress})
 	setAndroidData(&conn.clientData)
 
-	termlog.LoginInfo("正在生成关键登陆数据")
-	request := login.EncodeOffline(conn.identityData, conn.clientData, key)
-	if d.EnableLocalOnlineAuth {
-		request = login.EncodeOfflineWithMode(
-			conn.identityData,
-			conn.clientData,
-			key,
-			login.LocalOnlineLoginOuterMode,
-		)
-	}
+	request := login.EncodeOffline(conn.identityData, conn.clientData, key, false)
 	parsedIdentityData, _, _, err := login.Parse(request)
 	if err != nil {
-		return nil, fmt.Errorf("dial net conn: parse identity data: %w", err)
+		return nil, fmt.Errorf("%s: parse identity data: %w", op, err)
 	}
 	conn.identityData = parsedIdentityData
 
@@ -102,32 +91,29 @@ func (d Dialer) DialNetConnContext(ctx context.Context, netConn net.Conn, identi
 	go listenConn(conn, readyForLogin, connected, cancel)
 
 	conn.expect(packet.IDNetworkSettings, packet.IDPlayStatus)
-	termlog.LoginInfo("正在向 Minecraft 服务器请求网络参数")
 	if err := conn.WritePacket(&packet.RequestNetworkSettings{ClientProtocol: d.Protocol.ID()}); err != nil {
-		return nil, conn.wrap(fmt.Errorf("send request network settings: %w", err), "dial net conn")
+		return nil, conn.wrap(fmt.Errorf("send request network settings: %w", err), op)
 	}
 	_ = conn.Flush()
 
 	select {
 	case <-ctx.Done():
-		return nil, conn.wrap(context.Cause(ctx), "dial net conn")
+		return nil, conn.wrap(fmt.Errorf("wait network settings: %w", context.Cause(ctx)), op)
 	case <-conn.ctx.Done():
-		return nil, conn.closeErr("dial net conn")
+		return nil, conn.closeErr(op)
 	case <-readyForLogin:
 		conn.expect(packet.IDServerToClientHandshake, packet.IDPlayStatus)
-		termlog.LoginInfo("正在向 Minecraft 服务器请求游戏登录")
 		if err := conn.WritePacket(&packet.Login{ConnectionRequest: request, ClientProtocol: d.Protocol.ID()}); err != nil {
-			return nil, conn.wrap(fmt.Errorf("send login: %w", err), "dial net conn")
+			return nil, conn.wrap(fmt.Errorf("send login: %w", err), op)
 		}
 		_ = conn.Flush()
 
 		select {
 		case <-ctx.Done():
-			return nil, conn.wrap(context.Cause(ctx), "dial net conn")
+			return nil, conn.wrap(fmt.Errorf("wait login complete: %w", context.Cause(ctx)), op)
 		case <-conn.ctx.Done():
-			return nil, conn.closeErr("dial net conn")
+			return nil, conn.closeErr(op)
 		case <-connected:
-			termlog.LoginDone("登录序列完成")
 			return conn, nil
 		}
 	}

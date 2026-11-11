@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/xingbaiawa/g79client/example/login"
-	chatconnection "github.com/xingbaiawa/g79client/service/chat_connection"
+	"github.com/Yeah114/g79client/example/login"
+	chatconnection "github.com/Yeah114/g79client/service/chat_connection"
 )
 
 func main() {

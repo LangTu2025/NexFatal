@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/xingbaiawa/g79client"
+	"github.com/Yeah114/g79client"
 )
 
 func main() {

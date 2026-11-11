@@ -59,7 +59,11 @@ func (x *AbilityData) Marshal(r IO) {
 	r.Int64(&x.EntityUniqueID)
 	r.Uint8(&x.PlayerPermissions)
 	r.Uint8(&x.CommandPermissions)
-	SliceUint8Length(r, &x.Layers)
+
+	// PhoenixBuilder specific changes.
+	// Author: Happy2018new
+	Slice(r, &x.Layers)
+	// SliceUint8Length(r, &x.Layers)
 }
 
 // AbilityLayer represents the abilities of a specific layer, such as the base layer or the spectator layer.

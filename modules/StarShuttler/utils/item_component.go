@@ -85,13 +85,70 @@ func (i *ItemComponent) Marshal(io protocol.IO) {
 
 // ParseItemComponent 从 nbtMap 解析一个物品的物品组件数据
 func ParseItemComponent(nbtMap map[string]any) (result ItemComponent) {
-	parseItemComponentMap(nbtMap, &result)
-	if tag, ok := nbtMap["tag"].(map[string]any); ok {
-		parseItemComponentMap(tag, &result)
-		if components, ok := tag["components"].(map[string]any); ok {
-			parseItemComponentMap(components, &result)
+	list, ok := nbtMap["CanDestroy"].([]any)
+	if ok {
+		for _, value := range list {
+			val, ok := value.(string)
+			if !ok {
+				continue
+			}
+
+			val = strings.ToLower(val)
+			if !strings.HasPrefix(val, "minecraft:") {
+				val = "minecraft:" + val
+			}
+
+			newItem := itemupgrader.Upgrade(
+				itemupgrader.ItemMeta{
+					Name: val,
+					Meta: 0,
+				},
+			)
+			result.CanDestroy = append(result.CanDestroy, newItem.Name)
 		}
 	}
+
+	list, ok = nbtMap["CanPlaceOn"].([]any)
+	if ok {
+		for _, value := range list {
+			val, ok := value.(string)
+			if !ok {
+				continue
+			}
+
+			val = strings.ToLower(val)
+			if !strings.HasPrefix(val, "minecraft:") {
+				val = "minecraft:" + val
+			}
+
+			newItem := itemupgrader.Upgrade(
+				itemupgrader.ItemMeta{
+					Name: val,
+					Meta: 0,
+				},
+			)
+			result.CanPlaceOn = append(result.CanPlaceOn, newItem.Name)
+		}
+	}
+
+	tag, ok := nbtMap["tag"].(map[string]any)
+	if !ok {
+		return
+	}
+
+	itemLock, _ := tag["minecraft:item_lock"].(byte)
+	switch itemLock {
+	case 1:
+		result.LockInSlot = true
+	case 2:
+		result.LockInInventory = true
+	}
+
+	keepOnDeath, _ := tag["minecraft:keep_on_death"].(byte)
+	if keepOnDeath == 1 {
+		result.KeepOnDeath = true
+	}
+
 	return
 }
 
@@ -106,92 +163,20 @@ func ParseItemComponentNetwork(item protocol.ItemStack) (result ItemComponent) {
 		return
 	}
 
-	parseItemComponentMap(item.NBTData, &result)
-	if components, ok := item.NBTData["components"].(map[string]any); ok {
-		parseItemComponentMap(components, &result)
+	itemLock, _ := item.NBTData["minecraft:item_lock"].(byte)
+	switch itemLock {
+	case 1:
+		result.LockInSlot = true
+	case 2:
+		result.LockInInventory = true
 	}
-	return
-}
 
-func parseItemComponentMap(values map[string]any, result *ItemComponent) {
-	appendItemBlockNames(&result.CanDestroy, values["CanDestroy"])
-	appendItemBlockNames(&result.CanPlaceOn, values["CanPlaceOn"])
-	appendItemBlockNames(&result.CanDestroy, values["minecraft:can_destroy"])
-	appendItemBlockNames(&result.CanPlaceOn, values["minecraft:can_place_on"])
-	parseItemLock(values["minecraft:item_lock"], result)
-	parseItemLock(values["item_lock"], result)
-	if itemKeepOnDeath(values["minecraft:keep_on_death"]) || itemKeepOnDeath(values["keep_on_death"]) {
+	keepOnDeath, _ := item.NBTData["minecraft:keep_on_death"].(byte)
+	if keepOnDeath == 1 {
 		result.KeepOnDeath = true
 	}
-}
 
-func appendItemBlockNames(target *[]string, value any) {
-	switch value := value.(type) {
-	case map[string]any:
-		appendItemBlockNames(target, value["blocks"])
-		appendItemBlockNames(target, value["block"])
-	case []any:
-		for _, entry := range value {
-			appendItemBlockNames(target, entry)
-		}
-	case []string:
-		for _, entry := range value {
-			appendItemBlockNames(target, entry)
-		}
-	case string:
-		name := strings.ToLower(value)
-		if !strings.HasPrefix(name, "minecraft:") {
-			name = "minecraft:" + name
-		}
-		name = itemupgrader.Upgrade(itemupgrader.ItemMeta{Name: name, Meta: 0}).Name
-		for _, existing := range *target {
-			if existing == name {
-				return
-			}
-		}
-		*target = append(*target, name)
-	}
-}
-
-func parseItemLock(value any, result *ItemComponent) {
-	switch value := value.(type) {
-	case map[string]any:
-		parseItemLock(value["mode"], result)
-	case string:
-		switch value {
-		case "lock_in_slot":
-			result.LockInSlot = true
-		case "lock_in_inventory":
-			result.LockInInventory = true
-		}
-	case byte:
-		if value == 1 {
-			result.LockInSlot = true
-		} else if value == 2 {
-			result.LockInInventory = true
-		}
-	case int32:
-		if value == 1 {
-			result.LockInSlot = true
-		} else if value == 2 {
-			result.LockInInventory = true
-		}
-	}
-}
-
-func itemKeepOnDeath(value any) bool {
-	switch value := value.(type) {
-	case bool:
-		return value
-	case map[string]any:
-		return true
-	case byte:
-		return value != 0
-	case int32:
-		return value != 0
-	default:
-		return false
-	}
+	return
 }
 
 // MarshalItemComponent 将 component 序列化为 MC 命令中的物品组件字符串

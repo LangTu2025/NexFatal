@@ -1,4 +1,0 @@
-# 每行一个 Cookie JSON 对象；不要包裹成 JSON 数组。
-# 将下面所有 REPLACE_* 占位符替换为真实账号导出的值后，再上传为 Gitee 仓库中的 auth_cookies.json。
-# 空行、# 开头和 // 开头的行会被忽略。
-{"sauth_json":{"aim_info":"{\"aim\":\"127.0.0.1\",\"country\":\"CN\",\"tz\":\"+0800\",\"tzid\":\"Asia/Shanghai\",\"celluar_ip\":\"\",\"operator\":\"\",\"is_vpn_enabled\":false}","app_channel":"4399com","client_login_sn":"REPLACE_CLIENT_LOGIN_SN","deviceid":"REPLACE_DEVICE_ID","gameid":"x19","gas_token":"","get_access_token":"1","ip":"127.0.0.1","is_unisdk_guest":0,"login_channel":"4399com","platform":"ad","sdk_version":"3.18.0","sdkuid":"REPLACE_SDKUID","sessionid":"REPLACE_SESSION_ID","source_app_channel":"4399com","source_platform":"ad","udid":"REPLACE_UDID"},"mac_addr":"REPLACE_MAC_ADDR","ram":"1035337728","rom":"134208294912","is_guest":false,"emulator":1}

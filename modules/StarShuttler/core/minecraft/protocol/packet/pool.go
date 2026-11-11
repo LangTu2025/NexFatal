@@ -1,54 +1,42 @@
+/*
+PhoenixBuilder specific changes.
+Author: Liliya233, Happy2018new
+
+There are so many changes that is different from upstream,
+so we don't show all the changes here.
+*/
 package packet
 
-// RegisterPacketFromClient registers a function that returns a packet for a
-// specific ID. Packets with this ID coming in from connections will resolve to
-// the packet returned by the function passed. noinspection
-func RegisterPacketFromClient(id uint32, pk func() Packet) {
-	packetsFromClient[id] = pk
+// PhoenixBuilder specific func.
+// Author: Happy2018new
+
+// RegisterPacket registers a function that returns a packet for a specific ID.
+// Packets with this ID coming in from connections will resolve to the packet
+// returned by the function passed.
+//
+// noinspection
+func RegisterPacket(id uint32, pk func() Packet) {
+	packets[id] = pk
 }
 
-// RegisterPacketFromServer registers a function that returns a packet for a
-// specific ID. Packets with this ID coming in from connections will resolve to
-// the packet returned by the function passed. noinspection
-func RegisterPacketFromServer(id uint32, pk func() Packet) {
-	packetsFromServer[id] = pk
-}
-
-// packetsFromClient holds packets that could be sent by the client.
-var packetsFromClient = map[uint32]func() Packet{}
-
-// packetsFromServer holds packets that could be sent by the server.
-var packetsFromServer = map[uint32]func() Packet{}
+// PhoenixBuilder specific changes.
+// Author: Liliya233
+//
+// Rewrite from upstream.
+// packets holds all packets.
+var packets = map[uint32]func() Packet{}
 
 // Pool is a map holding packets indexed by a packet ID.
 type Pool map[uint32]func() Packet
 
-// NewClientPool returns a new pool containing packets sent by a client.
-// Packets may be retrieved from it simply by indexing it with the packet ID.
-func NewClientPool() Pool {
+// PhoenixBuilder specific changes.
+// Author: CMA2041PT, Happy2018new
+//
+// List all packets which include packets from server
+// and packets from client.
+func ListAllPackets() Pool {
 	p := Pool{}
-	for id, pk := range packetsFromClient {
-		p[id] = pk
-	}
-	return p
-}
-
-// NewServerPool returns a new pool containing packets sent by a server.
-// Packets may be retrieved from it simply by indexing it with the packet ID.
-func NewServerPool() Pool {
-	p := Pool{}
-	for id, pk := range packetsFromServer {
-		p[id] = pk
-	}
-	return p
-}
-
-func NewPool() Pool {
-	p := Pool{}
-	for id, pk := range packetsFromClient {
-		p[id] = pk
-	}
-	for id, pk := range packetsFromServer {
+	for id, pk := range packets {
 		p[id] = pk
 	}
 	return p
@@ -76,11 +64,9 @@ func init() {
 		IDTakeItemActor:     func() Packet { return &TakeItemActor{} },
 		IDMoveActorAbsolute: func() Packet { return &MoveActorAbsolute{} },
 		IDMovePlayer:        func() Packet { return &MovePlayer{} },
-		IDPassengerJump:     func() Packet { return &PassengerJump{} },
+		IDTickSync:          func() Packet { return &TickSync{} },
 		IDUpdateBlock:       func() Packet { return &UpdateBlock{} },
 		IDAddPainting:       func() Packet { return &AddPainting{} },
-		IDTickSync:          func() Packet { return &TickSync{} },
-		IDLevelSoundEventV1: func() Packet { return &LevelSoundEventV1{} }, // Netease
 		// ---
 		IDLevelEvent:           func() Packet { return &LevelEvent{} },
 		IDBlockEvent:           func() Packet { return &BlockEvent{} },
@@ -95,25 +81,25 @@ func init() {
 		IDActorPickRequest:     func() Packet { return &ActorPickRequest{} },
 		IDPlayerAction:         func() Packet { return &PlayerAction{} },
 		// ---
-		IDHurtArmour:                  func() Packet { return &HurtArmour{} },
-		IDSetActorData:                func() Packet { return &SetActorData{} },
-		IDSetActorMotion:              func() Packet { return &SetActorMotion{} },
-		IDSetActorLink:                func() Packet { return &SetActorLink{} },
-		IDSetHealth:                   func() Packet { return &SetHealth{} },
-		IDSetSpawnPosition:            func() Packet { return &SetSpawnPosition{} },
-		IDAnimate:                     func() Packet { return &Animate{} },
-		IDRespawn:                     func() Packet { return &Respawn{} },
-		IDContainerOpen:               func() Packet { return &ContainerOpen{} },
-		IDContainerClose:              func() Packet { return &ContainerClose{} },
-		IDPlayerHotBar:                func() Packet { return &PlayerHotBar{} },
-		IDInventoryContent:            func() Packet { return &InventoryContent{} },
-		IDInventorySlot:               func() Packet { return &InventorySlot{} },
-		IDContainerSetData:            func() Packet { return &ContainerSetData{} },
-		IDCraftingData:                func() Packet { return &CraftingData{} },
-		IDGUIDataPickItem:             func() Packet { return &GUIDataPickItem{} },
-		IDAdventureSettings:           func() Packet { return &AdventureSettings{} },
-		IDBlockActorData:              func() Packet { return &BlockActorData{} },
-		IDPlayerInput:                 func() Packet { return &PlayerInput{} },
+		IDHurtArmour:        func() Packet { return &HurtArmour{} },
+		IDSetActorData:      func() Packet { return &SetActorData{} },
+		IDSetActorMotion:    func() Packet { return &SetActorMotion{} },
+		IDSetActorLink:      func() Packet { return &SetActorLink{} },
+		IDSetHealth:         func() Packet { return &SetHealth{} },
+		IDSetSpawnPosition:  func() Packet { return &SetSpawnPosition{} },
+		IDAnimate:           func() Packet { return &Animate{} },
+		IDRespawn:           func() Packet { return &Respawn{} },
+		IDContainerOpen:     func() Packet { return &ContainerOpen{} },
+		IDContainerClose:    func() Packet { return &ContainerClose{} },
+		IDPlayerHotBar:      func() Packet { return &PlayerHotBar{} },
+		IDInventoryContent:  func() Packet { return &InventoryContent{} },
+		IDInventorySlot:     func() Packet { return &InventorySlot{} },
+		IDContainerSetData:  func() Packet { return &ContainerSetData{} },
+		IDCraftingData:      func() Packet { return &CraftingData{} },
+		IDGUIDataPickItem:   func() Packet { return &GUIDataPickItem{} },
+		IDAdventureSettings: func() Packet { return &AdventureSettings{} },
+		IDBlockActorData:    func() Packet { return &BlockActorData{} },
+		// ---
 		IDLevelChunk:                  func() Packet { return &LevelChunk{} },
 		IDSetCommandsEnabled:          func() Packet { return &SetCommandsEnabled{} },
 		IDSetDifficulty:               func() Packet { return &SetDifficulty{} },
@@ -127,7 +113,6 @@ func init() {
 		IDMapInfoRequest:              func() Packet { return &MapInfoRequest{} },
 		IDRequestChunkRadius:          func() Packet { return &RequestChunkRadius{} },
 		IDChunkRadiusUpdated:          func() Packet { return &ChunkRadiusUpdated{} },
-		IDItemFrameDropItem:           func() Packet { return &ItemFrameDropItem{} },
 		IDGameRulesChanged:            func() Packet { return &GameRulesChanged{} },
 		IDCamera:                      func() Packet { return &Camera{} },
 		IDBossEvent:                   func() Packet { return &BossEvent{} },
@@ -173,10 +158,10 @@ func init() {
 		IDUpdateSoftEnum:              func() Packet { return &UpdateSoftEnum{} },
 		IDNetworkStackLatency:         func() Packet { return &NetworkStackLatency{} },
 		// ---
-		IDScriptCustomEvent:           func() Packet { return &ScriptCustomEvent{} },
-		IDSpawnParticleEffect:         func() Packet { return &SpawnParticleEffect{} },
-		IDAvailableActorIdentifiers:   func() Packet { return &AvailableActorIdentifiers{} },
-		IDLevelSoundEventV2:           func() Packet { return &LevelSoundEventV2{} }, // Netease
+		IDScriptCustomEvent:         func() Packet { return &ScriptCustomEvent{} },
+		IDSpawnParticleEffect:       func() Packet { return &SpawnParticleEffect{} },
+		IDAvailableActorIdentifiers: func() Packet { return &AvailableActorIdentifiers{} },
+		// ---
 		IDNetworkChunkPublisherUpdate: func() Packet { return &NetworkChunkPublisherUpdate{} },
 		IDBiomeDefinitionList:         func() Packet { return &BiomeDefinitionList{} },
 		IDLevelSoundEvent:             func() Packet { return &LevelSoundEvent{} },
@@ -254,35 +239,18 @@ func init() {
 		IDClientCheatAbility:                func() Packet { return &ClientCheatAbility{} },
 		IDCameraPresets:                     func() Packet { return &CameraPresets{} },
 		IDUnlockedRecipes:                   func() Packet { return &UnlockedRecipes{} },
-		IDPyRpc:                             func() Packet { return &PyRpc{} },
-		IDChangeModel:                       func() Packet { return &ChangeModel{} },              // Netease
-		IDStoreBuySucc:                      func() Packet { return &StoreBuySucc{} },             // Netease
-		IDNeteaseJson:                       func() Packet { return &NeteaseJson{} },              // Netease
-		IDChangeModelTexture:                func() Packet { return &ChangeModelTexture{} },       // Netease
-		IDChangeModelOffset:                 func() Packet { return &ChangeModelOffset{} },        // Netease
-		IDChangeModelBind:                   func() Packet { return &ChangeModelBind{} },          // Netease
-		IDHungerAttr:                        func() Packet { return &HungerAttr{} },               // Netease
-		IDSetDimensionLocalTime:             func() Packet { return &SetDimensionLocalTime{} },    // Netease
-		IDWithdrawFurnaceXp:                 func() Packet { return &WithdrawFurnaceXp{} },        // Netease
-		IDSetDimensionLocalWeather:          func() Packet { return &SetDimensionLocalWeather{} }, // Netease
+
+		// PhoenixBuilder specific changes.
+		// Author: LNSSPsd, Liliya233, Happy2018new
+		IDPyRpc: func() Packet { return &PyRpc{} },
+
+		// PhoenixBuilder specific changes.
+		// Author: Liliya233
+		// Netease: new packet
+		IDNeteaseJson: func() Packet { return &NeteaseJson{} },
+
+		IDCameraInstruction: func() Packet { return &CameraInstruction{} },
 		// ---
-		IDCustomV1:             func() Packet { return &CustomV1{} },             // Netease
-		IDCombine:              func() Packet { return &Combine{} },              // Netease
-		IDVConnection:          func() Packet { return &VConnection{} },          // Netease
-		IDTransport:            func() Packet { return &Transport{} },            // Netease
-		IDCustomV2:             func() Packet { return &CustomV2{} },             // Netease
-		IDConfirmSkin:          func() Packet { return &ConfirmSkin{} },          // Netease
-		IDTransportNoCompress:  func() Packet { return &TransportNoCompress{} },  // Netease
-		IDMobEffectV2:          func() Packet { return &MobEffectV2{} },          // Netease
-		IDMobBlockActorChanged: func() Packet { return &MobBlockActorChanged{} }, // Netease
-		IDChangeActorMotion:    func() Packet { return &ChangeActorMotion{} },    // Netease
-		IDAnimateEmoteEntity:   func() Packet { return &AnimateEmoteEntity{} },   // Netease
-		IDChangeBiome:          func() Packet { return &ChangeBiome{} },          // Netease
-		IDUpdateBiome:          func() Packet { return &UpdateBiome{} },          // Netease
-		IDSyncSkin:             func() Packet { return &SyncSkin{} },             // Netease
-		// ---
-		IDCameraInstruction:              func() Packet { return &CameraInstruction{} },
-		IDCompressedBiomeDefinitionList:  func() Packet { return &CompressedBiomeDefinitionList{} },
 		IDTrimData:                       func() Packet { return &TrimData{} },
 		IDOpenSign:                       func() Packet { return &OpenSign{} },
 		IDAgentAnimation:                 func() Packet { return &AgentAnimation{} },
@@ -292,25 +260,26 @@ func init() {
 		IDSetHud:                         func() Packet { return &SetHud{} },
 		IDAwardAchievement:               func() Packet { return &AwardAchievement{} },
 		IDClientBoundCloseForm:           func() Packet { return &ClientBoundCloseForm{} },
+		IDServerBoundLoadingScreen:       func() Packet { return &ServerBoundLoadingScreen{} },
 		IDJigsawStructureData:            func() Packet { return &JigsawStructureData{} },
 		IDCurrentStructureFeature:        func() Packet { return &CurrentStructureFeature{} },
+		IDServerBoundDiagnostics:         func() Packet { return &ServerBoundDiagnostics{} },
 		IDCameraAimAssist:                func() Packet { return &CameraAimAssist{} },
 		IDContainerRegistryCleanup:       func() Packet { return &ContainerRegistryCleanup{} },
 		IDMovementEffect:                 func() Packet { return &MovementEffect{} },
-		IDCameraAimAssistPresets:         func() Packet { return &CameraAimAssistPresets{} },
-		IDClientCameraAimAssist:          func() Packet { return &ClientCameraAimAssist{} },
-		IDClientMovementPredictionSync:   func() Packet { return &ClientMovementPredictionSync{} },
-		IDUpdateClientOptions:            func() Packet { return &UpdateClientOptions{} },
-		IDPlayerVideoCapture:             func() Packet { return &PlayerVideoCapture{} },
-		IDPlayerUpdateEntityOverrides:    func() Packet { return &PlayerUpdateEntityOverrides{} },
-		IDPlayerLocation:                 func() Packet { return &PlayerLocation{} },
-		IDClientBoundControlSchemeSet:    func() Packet { return &ClientBoundControlSchemeSet{} },
-		IDDebugDrawer:                    func() Packet { return &DebugDrawer{} },
-		IDServerBoundPackSettingChange:   func() Packet { return &ServerBoundPackSettingChange{} },
-		IDGraphicsOverrideParameter:      func() Packet { return &GraphicsOverrideParameter{} },
+		// ---
+		IDCameraAimAssistPresets:       func() Packet { return &CameraAimAssistPresets{} },
+		IDClientCameraAimAssist:        func() Packet { return &ClientCameraAimAssist{} },
+		IDClientMovementPredictionSync: func() Packet { return &ClientMovementPredictionSync{} },
+		IDUpdateClientOptions:          func() Packet { return &UpdateClientOptions{} },
+		IDPlayerVideoCapture:           func() Packet { return &PlayerVideoCapture{} },
+		IDPlayerUpdateEntityOverrides:  func() Packet { return &PlayerUpdateEntityOverrides{} },
+		IDPlayerLocation:               func() Packet { return &PlayerLocation{} },
+		IDClientBoundControlSchemeSet:  func() Packet { return &ClientBoundControlSchemeSet{} },
+		IDServerScriptDebugDrawer:      func() Packet { return &ServerScriptDebugDrawer{} },
 	}
 	for id, pk := range serverOriginating {
-		RegisterPacketFromServer(id, pk)
+		RegisterPacket(id, pk)
 	}
 }
 
@@ -322,9 +291,8 @@ func init() {
 		IDResourcePackClientResponse:      func() Packet { return &ResourcePackClientResponse{} },
 		IDText:                            func() Packet { return &Text{} },
 		IDMovePlayer:                      func() Packet { return &MovePlayer{} },
-		IDActorEvent:                      func() Packet { return &ActorEvent{} },
-		IDPassengerJump:                   func() Packet { return &PassengerJump{} },
 		IDTickSync:                        func() Packet { return &TickSync{} },
+		IDActorEvent:                      func() Packet { return &ActorEvent{} },
 		IDInventoryTransaction:            func() Packet { return &InventoryTransaction{} },
 		IDMobEquipment:                    func() Packet { return &MobEquipment{} },
 		IDInteract:                        func() Packet { return &Interact{} },
@@ -337,11 +305,11 @@ func init() {
 		IDContainerOpen:                   func() Packet { return &ContainerOpen{} },
 		IDContainerClose:                  func() Packet { return &ContainerClose{} },
 		IDAdventureSettings:               func() Packet { return &AdventureSettings{} },
-		IDPlayerInput:                     func() Packet { return &PlayerInput{} },
 		IDSetPlayerGameType:               func() Packet { return &SetPlayerGameType{} },
 		IDMapInfoRequest:                  func() Packet { return &MapInfoRequest{} },
 		IDRequestChunkRadius:              func() Packet { return &RequestChunkRadius{} },
 		IDBossEvent:                       func() Packet { return &BossEvent{} },
+		IDShowCredits:                     func() Packet { return &ShowCredits{} },
 		IDCommandRequest:                  func() Packet { return &CommandRequest{} },
 		IDCommandBlockUpdate:              func() Packet { return &CommandBlockUpdate{} },
 		IDResourcePackChunkRequest:        func() Packet { return &ResourcePackChunkRequest{} },
@@ -388,19 +356,27 @@ func init() {
 		IDEditorNetwork:                   func() Packet { return &EditorNetwork{} },
 		IDRequestNetworkSettings:          func() Packet { return &RequestNetworkSettings{} },
 		IDGameTestResults:                 func() Packet { return &GameTestResults{} },
-		IDOpenSign:                        func() Packet { return &OpenSign{} },
-		IDBlockActorData:                  func() Packet { return &BlockActorData{} },
-		IDPlayerToggleCrafterSlotRequest:  func() Packet { return &PlayerToggleCrafterSlotRequest{} },
-		IDServerBoundLoadingScreen:        func() Packet { return &ServerBoundLoadingScreen{} },
-		IDServerBoundDiagnostics:          func() Packet { return &ServerBoundDiagnostics{} },
-		IDClientMovementPredictionSync:    func() Packet { return &ClientMovementPredictionSync{} },
-		IDClientCameraAimAssist:           func() Packet { return &ClientCameraAimAssist{} },
-		IDUpdateClientOptions:             func() Packet { return &UpdateClientOptions{} },
-		IDServerBoundPackSettingChange:    func() Packet { return &ServerBoundPackSettingChange{} },
-		IDPyRpc:                           func() Packet { return &PyRpc{} },    // Netease
-		IDSyncSkin:                        func() Packet { return &SyncSkin{} }, // Netease
+
+		// PhoenixBuilder specific changes.
+		// Author: LNSSPsd, Liliya233, Happy2018new
+		IDPyRpc: func() Packet { return &PyRpc{} },
+
+		// PhoenixBuilder specific changes.
+		// Author: Liliya233
+		// Netease: new packet
+		IDNeteaseJson: func() Packet { return &NeteaseJson{} },
+
+		IDOpenSign:                       func() Packet { return &OpenSign{} },
+		IDBlockActorData:                 func() Packet { return &BlockActorData{} },
+		IDPlayerToggleCrafterSlotRequest: func() Packet { return &PlayerToggleCrafterSlotRequest{} },
+		IDSetPlayerInventoryOptions:      func() Packet { return &SetPlayerInventoryOptions{} },
+		IDServerBoundLoadingScreen:       func() Packet { return &ServerBoundLoadingScreen{} },
+		IDServerBoundDiagnostics:         func() Packet { return &ServerBoundDiagnostics{} },
+		IDClientMovementPredictionSync:   func() Packet { return &ClientMovementPredictionSync{} },
+		IDClientCameraAimAssist:          func() Packet { return &ClientCameraAimAssist{} },
+		IDUpdateClientOptions:            func() Packet { return &UpdateClientOptions{} },
 	}
 	for id, pk := range clientOriginating {
-		RegisterPacketFromClient(id, pk)
+		RegisterPacket(id, pk)
 	}
 }

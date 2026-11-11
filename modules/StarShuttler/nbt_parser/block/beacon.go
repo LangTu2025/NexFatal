@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/mitchellh/mapstructure"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/mapping"
+	"github.com/mitchellh/mapstructure"
 )
 
 // BeaconNBT...

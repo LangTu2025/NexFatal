@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xingbaiawa/g79client/account/com4399"
+	"github.com/Yeah114/g79client/account/com4399"
 )
 
 func main() {

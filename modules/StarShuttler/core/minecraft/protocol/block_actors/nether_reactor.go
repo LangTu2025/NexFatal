@@ -20,7 +20,7 @@ func (*NetherReactor) ID() string {
 
 func (n *NetherReactor) Marshal(io protocol.IO) {
 	protocol.Single(io, &n.BlockActor)
-	io.Uint8(&n.HasFinished)
 	io.Uint8(&n.IsInitialized)
 	io.Int16(&n.Progress)
+	io.Uint8(&n.HasFinished)
 }

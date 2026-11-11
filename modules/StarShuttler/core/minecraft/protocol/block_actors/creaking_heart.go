@@ -8,8 +8,8 @@ import (
 // 嘎吱之心
 type CreakingHeart struct {
 	general.BlockActor `mapstructure:",squash"`
-	Cooldown           int32 `mapstructure:"Cooldown"`
-	SpawnedCreakingID  int64 `mapstructure:"SpawnedCreakingID,omitempty"`
+	Cooldown          int32 `mapstructure:"Cooldown"`
+	SpawnedCreakingID int64 `mapstructure:"SpawnedCreakingID,omitempty"`
 }
 
 // ID ...

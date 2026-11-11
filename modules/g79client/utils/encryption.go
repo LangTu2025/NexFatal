@@ -188,7 +188,7 @@ func G79HttpEncrypt(data string) (string, error) {
 	padded := append(dataBytes, []byte(tail)...)
 
 	// 步骤2：填充到16字节倍数（补0x00）
-	paddedLen := len(padded) + (16-len(padded)%16)%16
+	paddedLen := len(padded) + (16 - len(padded)%16)%16
 	padded = append(padded, make([]byte, paddedLen-len(padded))...)
 
 	// 步骤3：生成版本和随机密钥索引

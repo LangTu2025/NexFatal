@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/mitchellh/mapstructure"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
+	"github.com/mitchellh/mapstructure"
 )
 
 // MobSpawnerNBT...

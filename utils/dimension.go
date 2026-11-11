@@ -6,7 +6,7 @@ import (
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
 )
 
-// NormalizeDimensionName 将用户输入的维度名规范化为命令可用的英文标识
+// NormalizeDimensionName 将用户输入的维度名规范化为命令可用的英文标识。
 func NormalizeDimensionName(input string) (string, error) {
 	name := strings.ToLower(strings.TrimSpace(input))
 	switch name {
@@ -21,7 +21,7 @@ func NormalizeDimensionName(input string) (string, error) {
 	}
 }
 
-// DimensionID 返回指定维度在协议中的数字 ID
+// DimensionID 返回指定维度在协议中的数字 ID。
 func DimensionID(input string) (uint8, error) {
 	name, err := NormalizeDimensionName(input)
 	if err != nil {

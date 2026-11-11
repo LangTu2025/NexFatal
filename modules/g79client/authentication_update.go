@@ -78,14 +78,3 @@ func (c *Client) AuthenticationUpdate() (*AuthenticationUpdateResponse, error) {
 
 	return &result, nil
 }
-
-func (c *Client) UpdateToken() (string, error) {
-	resp, err := c.AuthenticationUpdate()
-	if err != nil {
-		return "", err
-	}
-	if resp.Entity.Token != "" {
-		return resp.Entity.Token, nil
-	}
-	return "", nil
-}

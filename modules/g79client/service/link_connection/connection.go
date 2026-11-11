@@ -17,8 +17,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	g79client "github.com/xingbaiawa/g79client"
-	"github.com/xingbaiawa/g79client/utils"
+	g79client "github.com/Yeah114/g79client"
+	"github.com/Yeah114/g79client/utils"
 )
 
 const (

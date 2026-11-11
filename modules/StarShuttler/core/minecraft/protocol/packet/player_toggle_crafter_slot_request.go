@@ -22,6 +22,7 @@ type PlayerToggleCrafterSlotRequest struct {
 func (*PlayerToggleCrafterSlotRequest) ID() uint32 {
 	return IDPlayerToggleCrafterSlotRequest
 }
+
 func (pk *PlayerToggleCrafterSlotRequest) Marshal(io protocol.IO) {
 	io.Int32(&pk.PosX)
 	io.Int32(&pk.PosY)

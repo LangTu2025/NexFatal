@@ -3,7 +3,7 @@ package localauth
 import (
 	"fmt"
 
-	"github.com/xingbaiawa/g79client"
+	"github.com/Yeah114/g79client"
 )
 
 func TransferServerList() ([]string, []string, error) {

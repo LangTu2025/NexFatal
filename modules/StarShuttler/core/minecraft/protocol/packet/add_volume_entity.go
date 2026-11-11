@@ -9,8 +9,7 @@ import (
 type AddVolumeEntity struct {
 	// EntityRuntimeID is the runtime ID of the volume. The runtime ID is unique for each world session, and
 	// entities are generally identified in packets using this runtime ID.
-	// Netease
-	EntityRuntimeID uint32
+	EntityRuntimeID uint64
 	// EntityMetadata is a map of entity metadata, which includes flags and data properties that alter in
 	// particular the way the volume functions or looks.
 	EntityMetadata map[string]any
@@ -34,7 +33,7 @@ func (*AddVolumeEntity) ID() uint32 {
 }
 
 func (pk *AddVolumeEntity) Marshal(io protocol.IO) {
-	io.Varuint32(&pk.EntityRuntimeID) // For Netease
+	io.Uint64(&pk.EntityRuntimeID)
 	io.NBT(&pk.EntityMetadata, nbt.NetworkLittleEndian)
 	io.String(&pk.EncodingIdentifier)
 	io.String(&pk.InstanceIdentifier)

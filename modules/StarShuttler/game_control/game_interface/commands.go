@@ -7,19 +7,24 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
 	"github.com/xingbaiawa/StarShuttler/core/py_rpc"
-	cts "github.com/xingbaiawa/StarShuttler/core/py_rpc/mod_event/client_to_server"
-	ctsMinecraft "github.com/xingbaiawa/StarShuttler/core/py_rpc/mod_event/client_to_server/minecraft"
-	ctsAICommand "github.com/xingbaiawa/StarShuttler/core/py_rpc/mod_event/client_to_server/minecraft/ai_command"
+	mod_event_client_to_server "github.com/xingbaiawa/StarShuttler/core/py_rpc/mod_event/client_to_server"
+	minecraft_client_to_server "github.com/xingbaiawa/StarShuttler/core/py_rpc/mod_event/client_to_server/minecraft"
+	ai_command_client_to_server "github.com/xingbaiawa/StarShuttler/core/py_rpc/mod_event/client_to_server/minecraft/ai_command"
 	mei "github.com/xingbaiawa/StarShuttler/core/py_rpc/mod_event/interface"
+
+	"github.com/google/uuid"
 )
 
+// ------------------------- Define -------------------------
+
 const (
-	DefaultTimeoutCommandRequest = 5 * time.Second
-	DefaultAwaitChangesCount     = 2
+	// DefaultTimeoutCommandRequest 是默认的指令超时设置
+	DefaultTimeoutCommandRequest = time.Second * 5
+	// DefaultAwaitChangesCount 是 Await Chanegs 需要等待的游戏刻数
+	DefaultAwaitChangesCount = 2
 )
 
 // Commands 是基于 ResourcesWrapper
@@ -71,20 +76,22 @@ func (o *aiCommandOutputCollector) commandOutput(success bool, requestID uuid.UU
 	}
 }
 
+// ------------------------- Basic function -------------------------
+
 // NewCommands 基于 api 创建并返回一个新的 Commands
 func NewCommands(api *ResourcesWrapper) *Commands {
 	return &Commands{api: api}
 }
 
 // SetLobbyAICommands 设置联机大厅命令兼容模式。
-// 开启后，WS 与 SettingsCommand 通过 AICommand 发送。
+// 开启后 WS/Settings 写命令改走 AICommand；其他服务器保持旧路径。
 func (c *Commands) SetLobbyAICommands(enabled bool) {
 	c.lobbyAICommands = enabled
 }
 
 // SetDomainWSCommands 设置山头命令兼容模式。
 // 开启后所有命令统一使用 WS（CommandOriginAutomationPlayer）发送，
-// 因为山头环境下仅 WS 命令可用。
+// 因为山头环境下 Player 和 SettingsCommand 命令无法使用。
 func (c *Commands) SetDomainWSCommands(enabled bool) {
 	c.domainWSCommands = enabled
 }
@@ -99,9 +106,9 @@ func packCommandRequest(command string, origin uint32, requestID uuid.UUID) *pac
 			UUID:      requestID,
 			RequestID: "96045347-a6a3-4114-94c0-1bc4cc561694",
 		},
-		IsInternal: false,
-		UnLimit:    false,
-		Version:    "Latest",
+		Internal:  false,
+		UnLimited: false,
+		Version:   44,
 	}
 }
 
@@ -118,12 +125,12 @@ func (c *Commands) sendAICommand(command string, dimensional bool, requestID uui
 		)
 	}
 
-	event := ctsAICommand.ExecuteCommandEvent{
+	event := ai_command_client_to_server.ExecuteCommandEvent{
 		CommandLine:      "execute run " + command,
 		CommandRequestID: requestID,
 	}
-	module := ctsMinecraft.AICommand{Module: &mei.DefaultModule{Event: &event}}
-	pack := cts.Minecraft{Default: mei.Default{Module: &module}}
+	module := minecraft_client_to_server.AICommand{Module: &mei.DefaultModule{Event: &event}}
+	pack := mod_event_client_to_server.Minecraft{Default: mei.Default{Module: &module}}
 
 	err := api.WritePacket(&packet.PyRpc{
 		Value: py_rpc.Marshal(&py_rpc.ModEvent{
@@ -176,24 +183,6 @@ func (c *Commands) SendAICommandWithTimeout(command string, dimensional bool, ti
 		}
 		return
 	}
-	return c.sendAICommandWithTimeout(command, dimensional, timeout)
-}
-
-// SendAICommandWithTimeoutDirect always uses the PyRpc AI command channel,
-// including when the domain compatibility mode redirects regular commands to WS.
-func (c *Commands) SendAICommandWithTimeoutDirect(command string, dimensional bool, timeout time.Duration) (
-	resp *packet.CommandOutput,
-	isTimeOut bool,
-	err error,
-) {
-	return c.sendAICommandWithTimeout(command, dimensional, timeout)
-}
-
-func (c *Commands) sendAICommandWithTimeout(command string, dimensional bool, timeout time.Duration) (
-	resp *packet.CommandOutput,
-	isTimeOut bool,
-	err error,
-) {
 	if timeout <= 0 {
 		timeout = DefaultTimeoutCommandRequest
 	}
@@ -359,31 +348,44 @@ func aiCommandEventArgs(value any) (eventName string, args map[string]any, ok bo
 
 // ------------------------- Send settings command -------------------------
 
-// SendSettingsCommand 发送 SettingsCommand；联机大厅和山头环境使用对应的兼容命令通道。
+// 向租赁服发送 Sizukana 命令且无视返回值。
+// 当 dimensional 为真时，
+// 将使用 execute 更换命令执行环境为机器人所在的环境
 func (c *Commands) SendSettingsCommand(command string, dimensional bool) error {
 	if c.domainWSCommands {
 		if dimensional {
-			command = fmt.Sprintf(`execute as @a[name="%s"] at @s run %s`, c.api.BotName, command)
+			command = fmt.Sprintf(
+				`execute as @a[name="%s"] at @s run %s`,
+				c.api.BotName,
+				command,
+			)
 		}
 		if err := c.SendWSCommand(command); err != nil {
 			return fmt.Errorf("SendSettingsCommand: %v", err)
 		}
 		return nil
 	}
-	if c.lobbyAICommands {
-		if err := c.SendAICommand(command, dimensional); err != nil {
+	if !c.lobbyAICommands {
+		api := c.api
+
+		if dimensional {
+			command = fmt.Sprintf(
+				`execute as @a[name="%s"] at @s run %s`,
+				api.BotName,
+				command,
+			)
+		}
+
+		err := api.WritePacket(&packet.SettingsCommand{
+			CommandLine:    command,
+			SuppressOutput: false,
+		})
+		if err != nil {
 			return fmt.Errorf("SendSettingsCommand: %v", err)
 		}
 		return nil
 	}
-
-	if dimensional {
-		command = fmt.Sprintf(`execute as @a[name="%s"] at @s run %s`, c.api.BotName, command)
-	}
-	if err := c.api.WritePacket(&packet.SettingsCommand{
-		CommandLine:    command,
-		SuppressOutput: false,
-	}); err != nil {
+	if err := c.SendAICommand(command, dimensional); err != nil {
 		return fmt.Errorf("SendSettingsCommand: %v", err)
 	}
 	return nil
@@ -396,7 +398,11 @@ func (c *Commands) SendSettingsCommandWithTimeout(command string, dimensional bo
 ) {
 	if c.domainWSCommands {
 		if dimensional {
-			command = fmt.Sprintf(`execute as @a[name="%s"] at @s run %s`, c.api.BotName, command)
+			command = fmt.Sprintf(
+				`execute as @a[name="%s"] at @s run %s`,
+				c.api.BotName,
+				command,
+			)
 		}
 		resp, isTimeOut, err = c.SendWSCommandWithTimeout(command, timeout)
 		if err != nil {
@@ -404,57 +410,65 @@ func (c *Commands) SendSettingsCommandWithTimeout(command string, dimensional bo
 		}
 		return
 	}
-	if c.lobbyAICommands {
-		resp, isTimeOut, err = c.SendAICommandWithTimeout(command, dimensional, timeout)
-		if err != nil {
-			return nil, isTimeOut, fmt.Errorf("SendSettingsCommandWithTimeout: %v", err)
+	if !c.lobbyAICommands {
+		api := c.api
+		if dimensional {
+			command = fmt.Sprintf(
+				`execute as @a[name="%s"] at @s run %s`,
+				api.BotName,
+				command,
+			)
 		}
-		return
-	}
 
-	if dimensional {
-		command = fmt.Sprintf(`execute as @a[name="%s"] at @s run %s`, c.api.BotName, command)
+		var terminalErr error
+		doOnce := new(sync.Once)
+		channel := make(chan struct{})
+
+		uniqueID, err := api.PacketListener().ListenPacket(
+			[]uint32{packet.IDCommandOutput},
+			func(p packet.Packet, connCloseErr error) {
+				doOnce.Do(func() {
+					terminalErr = connCloseErr
+					if output, ok := p.(*packet.CommandOutput); ok {
+						resp = output
+					}
+					close(channel)
+				})
+			},
+		)
+		if err != nil {
+			return nil, false, fmt.Errorf("SendSettingsCommandWithTimeout: %v", err)
+		}
+		defer api.PacketListener().DestroyListener(uniqueID)
+
+		if err = api.WritePacket(&packet.SettingsCommand{
+			CommandLine:    command,
+			SuppressOutput: false,
+		}); err != nil {
+			return nil, false, fmt.Errorf("SendSettingsCommandWithTimeout: %v", err)
+		}
+
+		if timeout <= 0 {
+			timeout = DefaultTimeoutCommandRequest
+		}
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+		select {
+		case <-channel:
+		case <-timer.C:
+			return nil, true, fmt.Errorf("SendSettingsCommandWithTimeout: command %#v is time out (timeout = %v seconds)", command, float64(timeout)/float64(time.Second))
+		}
+
+		if terminalErr != nil {
+			return nil, false, fmt.Errorf("SendSettingsCommandWithTimeout: %v", terminalErr)
+		}
+		return resp, false, nil
 	}
-	var terminalErr error
-	doOnce := new(sync.Once)
-	channel := make(chan struct{})
-	uniqueID, err := c.api.PacketListener().ListenPacket(
-		[]uint32{packet.IDCommandOutput},
-		func(p packet.Packet, connCloseErr error) {
-			doOnce.Do(func() {
-				terminalErr = connCloseErr
-				if output, ok := p.(*packet.CommandOutput); ok {
-					resp = output
-				}
-				close(channel)
-			})
-		},
-	)
+	resp, isTimeOut, err = c.SendAICommandWithTimeout(command, dimensional, timeout)
 	if err != nil {
-		return nil, false, fmt.Errorf("SendSettingsCommandWithTimeout: %v", err)
+		return nil, isTimeOut, fmt.Errorf("SendSettingsCommandWithTimeout: %v", err)
 	}
-	defer c.api.PacketListener().DestroyListener(uniqueID)
-
-	if err = c.api.WritePacket(&packet.SettingsCommand{
-		CommandLine:    command,
-		SuppressOutput: false,
-	}); err != nil {
-		return nil, false, fmt.Errorf("SendSettingsCommandWithTimeout: %v", err)
-	}
-	if timeout <= 0 {
-		timeout = DefaultTimeoutCommandRequest
-	}
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	select {
-	case <-channel:
-	case <-timer.C:
-		return nil, true, fmt.Errorf("SendSettingsCommandWithTimeout: command %#v is time out (timeout = %v seconds)", command, float64(timeout)/float64(time.Second))
-	}
-	if terminalErr != nil {
-		return nil, false, fmt.Errorf("SendSettingsCommandWithTimeout: %v", terminalErr)
-	}
-	return resp, false, nil
+	return
 }
 
 // ------------------------- Send command with no response -------------------------
@@ -489,14 +503,14 @@ func (c *Commands) SendPlayerCommand(command string) error {
 
 // SendPlayerCommand 以 Websocket 的身份向租赁服发送命令 command 并无视返回值
 func (c *Commands) SendWSCommand(command string) error {
-	if c.lobbyAICommands && !c.domainWSCommands {
-		if err := c.SendAICommand(command, false); err != nil {
+	if c.domainWSCommands || !c.lobbyAICommands {
+		err := c.sendCommand(command, protocol.CommandOriginAutomationPlayer)
+		if err != nil {
 			return fmt.Errorf("SendWSCommand: %v", err)
 		}
 		return nil
 	}
-	err := c.sendCommand(command, protocol.CommandOriginAutomationPlayer)
-	if err != nil {
+	if err := c.SendAICommand(command, false); err != nil {
 		return fmt.Errorf("SendWSCommand: %v", err)
 	}
 	return nil
@@ -519,30 +533,16 @@ func (c *Commands) sendCommandWithResp(command string, origin uint32, timeout ti
 	requestID := uuid.New()
 	channel := make(chan struct{})
 
-	uniqueID, err := api.PacketListener().ListenPacket(
-		[]uint32{packet.IDCommandOutput},
-		func(p packet.Packet, connCloseErr error) {
-			if connCloseErr != nil {
-				doOnce.Do(func() {
-					terminalErr = connCloseErr
-					close(channel)
-				})
-				return
-			}
-			output, ok := p.(*packet.CommandOutput)
-			if !ok || output.CommandOrigin.UUID != requestID {
-				return
-			}
+	api.Resources.Commands().SetCommandRequestCallback(
+		requestID,
+		func(p *packet.CommandOutput, connCloseErr error) {
 			doOnce.Do(func() {
-				resp = output
+				resp, terminalErr = p, connCloseErr
 				close(channel)
 			})
 		},
 	)
-	if err != nil {
-		return nil, false, fmt.Errorf("sendCommandWithResp: %v", err)
-	}
-	defer api.PacketListener().DestroyListener(uniqueID)
+	defer api.Resources.Commands().DeleteCommandRequestCallback(requestID)
 
 	err = api.WritePacket(
 		packCommandRequest(
@@ -608,14 +608,14 @@ func (c *Commands) SendWSCommandWithTimeout(command string, timeout time.Duratio
 	isTimeOut bool,
 	err error,
 ) {
-	if c.lobbyAICommands && !c.domainWSCommands {
-		resp, isTimeOut, err = c.SendAICommandWithTimeout(command, false, timeout)
+	if c.domainWSCommands || !c.lobbyAICommands {
+		resp, isTimeOut, err = c.sendCommandWithResp(command, protocol.CommandOriginAutomationPlayer, max(0, timeout))
 		if err != nil {
 			return nil, isTimeOut, fmt.Errorf("SendWSCommandWithTimeout: %v", err)
 		}
 		return
 	}
-	resp, isTimeOut, err = c.sendCommandWithResp(command, protocol.CommandOriginAutomationPlayer, max(0, timeout))
+	resp, isTimeOut, err = c.SendAICommandWithTimeout(command, false, timeout)
 	if err != nil {
 		return nil, isTimeOut, fmt.Errorf("SendWSCommandWithTimeout: %v", err)
 	}
@@ -654,14 +654,14 @@ func (c *Commands) SendPlayerCommandWithResp(command string) (resp *packet.Comma
 // SendWSCommandWithResp 以 Websocket 的身份向租赁服发送命令 command 并获取响应体。
 // 值得说明的是，此过程中不考虑超时因素
 func (c *Commands) SendWSCommandWithResp(command string) (resp *packet.CommandOutput, err error) {
-	if c.lobbyAICommands && !c.domainWSCommands {
-		resp, _, err = c.SendAICommandWithTimeout(command, false, DefaultTimeoutCommandRequest)
+	if c.domainWSCommands || !c.lobbyAICommands {
+		resp, err = c.sendCommandWithRespNoTimeout(command, protocol.CommandOriginAutomationPlayer)
 		if err != nil {
 			return nil, fmt.Errorf("SendWSCommandWithResp: %v", err)
 		}
-		return resp, nil
+		return
 	}
-	resp, err = c.sendCommandWithRespNoTimeout(command, protocol.CommandOriginAutomationPlayer)
+	resp, _, err = c.SendAICommandWithTimeout(command, false, DefaultTimeoutCommandRequest)
 	if err != nil {
 		return nil, fmt.Errorf("SendWSCommandWithResp: %v", err)
 	}
@@ -670,53 +670,64 @@ func (c *Commands) SendWSCommandWithResp(command string) (resp *packet.CommandOu
 
 // ------------------------- Other legacy function -------------------------
 
-// AwaitChangesGeneral 通过发送空 WS 指令并等待响应，确认租赁服已处理
-// 前面的 AI 指令及其产生的库存变化。它曾被广泛使用而难以替代。
+// AwaitChangesGeneral 通过发送空指令以等待租赁服更改。
+// 它曾被广泛使用而难以替代，但此处出于语义兼容性而保留
 func (c *Commands) AwaitChangesGeneral() error {
-	if c.lobbyAICommands {
-		time.Sleep(200 * time.Millisecond)
+	if !c.lobbyAICommands {
+		for range DefaultAwaitChangesCount {
+			// 在原版的代码中发送的为空命令，但是在山头下会导致 badPacket ，我们使用 /testfor
+			_, err := c.SendWSCommandWithResp("execute as @r at @s run testfor @s")
+			if err != nil {
+				return fmt.Errorf("AwaitChangesGeneral: %v", err)
+			}
+		}
 		return nil
 	}
 	for range DefaultAwaitChangesCount {
-		if _, err := c.SendWSCommandWithResp(""); err != nil {
-			return fmt.Errorf("AwaitChangesGeneral: %v", err)
-		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	return nil
 }
 
-// SendChat 使机器人在聊天栏说出 content 的内容。
+// SendChat 使机器人在聊天栏说出 content 的内容
 func (c *Commands) SendChat(content string) error {
 	api := c.api
-	if err := api.WritePacket(&packet.Text{
-		TextType:         packet.TextTypeChat,
-		NeedsTranslation: false,
-		SourceName:       api.BotName,
-		Message:          content,
-		XUID:             api.XUID,
-		PlatformChatID:   "",
-		NeteaseExtraData: []string{"PlayerId", fmt.Sprintf("%d", api.EntityRuntimeID)},
-	}); err != nil {
+
+	err := api.WritePacket(
+		&packet.Text{
+			TextType:         packet.TextTypeChat,
+			NeedsTranslation: false,
+			SourceName:       api.BotName,
+			Message:          content,
+			XUID:             api.XUID,
+			PlatformChatID:   "",
+			Unknown1:         []string{"PlayerId", fmt.Sprintf("%d", api.EntityRuntimeID)},
+		},
+	)
+	if err != nil {
 		return fmt.Errorf("SendChat: %v", err)
 	}
+
 	return nil
 }
 
-// Title 以 actionbar 的形式向所有在线玩家显示 message。
+// 以 actionbar 的形式向所有在线玩家显示 message
 func (c *Commands) Title(message string) error {
 	title := map[string]any{
-		"rawtext": []any{map[string]any{"text": message}},
+		"rawtext": []any{
+			map[string]any{
+				"text": message,
+			},
+		},
 	}
 	jsonBytes, _ := json.Marshal(title)
-	if err := c.SendSettingsCommand(fmt.Sprintf("titleraw @a actionbar %s", jsonBytes), false); err != nil {
+
+	err := c.SendSettingsCommand(fmt.Sprintf("titleraw @a actionbar %s", jsonBytes), false)
+	if err != nil {
 		return fmt.Errorf("Title: %v", err)
 	}
+
 	return nil
 }
 
-func max(a, b time.Duration) time.Duration {
-	if a > b {
-		return a
-	}
-	return b
-}
+// ------------------------- End -------------------------

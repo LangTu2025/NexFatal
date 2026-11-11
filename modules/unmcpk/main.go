@@ -4,105 +4,101 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"os/exec"
+	"fmt"
 	"strings"
 
-	"github.com/xingbaiawa/unmcpk/mcpk"
-	"github.com/xingbaiawa/unmcpk/pymarshal"
+	"github.com/Yeah114/unmcpk/mcpk"
+	"github.com/Yeah114/unmcpk/pymarshal"
 )
 
-func transformDynamicData(data []byte) []byte {
-	dataLength := len(data)
+func reverseData(data []byte) []byte {
+	length := len(data)
 
-	for index := 0; index < 130 && index < dataLength; index++ {
-		data[index] ^= 156
+	for i := 0; i < 130 && i < length; i++ {
+		data[i] = data[i] ^ 156
 	}
 
-	for index := 0; index < dataLength/2; index++ {
-		oppositeIndex := dataLength - index - 1
-		data[index], data[oppositeIndex] = data[oppositeIndex], data[index]
+	for i := 0; i < length/2; i++ {
+		data[i], data[length-i-1] = data[length-i-1], data[i]
 	}
 
 	return data
 }
 
-func netEaseDynamicKey() string {
-	keyName := "j2h56ogodh3sk"
-	keySalt := "=dziaq;"
-	keyTail := "|`o=5v7!\"-276"
+func DecryptDynamicMCP(decrypted []byte) ([]byte, error) {
 
-	return strings.Repeat(keyName, 4) +
-		strings.Repeat(keySalt+keyName+keyTail, 5) +
-		"$@" +
-		strings.Repeat(keySalt, 7) +
-		strings.Repeat(keyTail, 2) +
-		"&]`"
-}
+	asdf_dn := "j2h56ogodh3sk"
+	asdf_dt := "=dziaq;"
+	asdf_df := "|`o=5v7!\"-276"
 
-// 将动态 MCP 数据解密并修复为标准 pyc 数据
-func DecryptDynamicMCP(encrypted []byte) ([]byte, error) {
-	payload := append([]byte(nil), encrypted...)
-	rotor := mcpk.NewRotor(6, netEaseDynamicKey())
-	rotor.Decrypt(payload, true)
+	asdf_tm := strings.Repeat(asdf_dn, 4) + strings.Repeat(asdf_dt+asdf_dn+asdf_df, 5) + "$@" + strings.Repeat(asdf_dt, 7) + strings.Repeat(asdf_df, 2) + "&]`"
+
+	rotor := mcpk.NewRotorObj(6, asdf_tm)
+
+	rotor.DRegion(decrypted, true)
 
 	var unzipped bytes.Buffer
-	reader, err := zlib.NewReader(bytes.NewReader(payload))
+	reader, err := zlib.NewReader(bytes.NewBuffer(decrypted))
 	if err != nil {
-		return nil, fmt.Errorf("DecryptDynamicMCP: %v", err)
+		return nil, err
 	}
 	_, err = io.Copy(&unzipped, reader)
-	if err != nil {
-		_ = reader.Close()
-		return nil, fmt.Errorf("DecryptDynamicMCP: %v", err)
+	if err != io.EOF && err != nil {
+		return nil, err
 	}
-	if err = reader.Close(); err != nil {
-		return nil, fmt.Errorf("DecryptDynamicMCP: %v", err)
-	}
+	reader.Close()
 
-	payload = transformDynamicData(unzipped.Bytes())
+	decrypted = reverseData(unzipped.Bytes())
 
-	repaired, err := pymarshal.RepairPYC(payload, true)
+	repaired, err := pymarshal.PycRepairer(decrypted, true)
 	if err != nil {
-		return nil, fmt.Errorf("DecryptDynamicMCP: %v", err)
+		return nil, err
 	}
 	return repaired, nil
+
 }
 
-// 将标准 pyc 数据重新加密为动态 MCP 数据
 func EncryptDynamicMCP(pyc []byte) ([]byte, error) {
-	marshalEncrypted, err := pymarshal.EncryptPYC(pyc, pymarshal.EncryptOptions{
+	asdfDn := "j2h56ogodh3sk"
+	asdfDt := "=dziaq;"
+	asdfDf := "|`o=5v7!\"-276"
+
+	asdfTm := strings.Repeat(asdfDn, 4) + strings.Repeat(asdfDt+asdfDn+asdfDf, 5) + "$@" + strings.Repeat(asdfDt, 7) + strings.Repeat(asdfDf, 2) + "&]`"
+
+	marshalEncrypted, err := pymarshal.PycEncryptor(pyc, pymarshal.EncryptOptions{
 		StringVersion: 2,
 		CodeVersion:   1,
 		OpcodeType:    0,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("EncryptDynamicMCP: %v", err)
+		return nil, fmt.Errorf("PycEncryptor 错误: %v", err)
 	}
 
-	payload := append([]byte(nil), marshalEncrypted...)
-	payload = transformDynamicData(payload)
+	payload := make([]byte, len(marshalEncrypted))
+	copy(payload, marshalEncrypted)
+	payload = reverseData(payload)
 
 	var compressed bytes.Buffer
 	zw := zlib.NewWriter(&compressed)
 	if _, err := zw.Write(payload); err != nil {
-		_ = zw.Close()
-		return nil, fmt.Errorf("EncryptDynamicMCP: %v", err)
+		zw.Close()
+		return nil, fmt.Errorf("zlib 写入错误: %v", err)
 	}
 	if err := zw.Close(); err != nil {
-		return nil, fmt.Errorf("EncryptDynamicMCP: %v", err)
+		return nil, fmt.Errorf("zlib 关闭错误: %v", err)
 	}
 
-	out := append([]byte(nil), compressed.Bytes()...)
+	out := make([]byte, compressed.Len())
+	copy(out, compressed.Bytes())
 
-	rotor := mcpk.NewRotor(6, netEaseDynamicKey())
-	rotor.Encrypt(out, true)
+	rotor := mcpk.NewRotorObj(6, asdfTm)
+	rotor.ERegion(out, true)
 	return out, nil
 }
 
-// 使用 Python 2 编译源码并返回动态 MCP 加密数据
-func CompileDynamicMCP(pythonSource, filename, python2Path string) ([]byte, error) {
+func CompileDynamicMCP(pySource, filename, python2Path string) ([]byte, error) {
 	const pythonScript = `import binascii
 import marshal
 import struct
@@ -118,51 +114,47 @@ bytecode = marshal.dumps(code_obj)
 
 sys.stdout.write(binascii.hexlify(magic + timestamp + bytecode))
 `
-	inputHex := hex.EncodeToString([]byte(pythonSource))
-	command := exec.Command(python2Path, "-c", pythonScript, inputHex, filename)
-	output, err := command.CombinedOutput()
+	inputHex := hex.EncodeToString([]byte(pySource))
+	cmd := exec.Command(python2Path, "-c", pythonScript, inputHex, filename)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("CompileDynamicMCP: Python 2 编译失败: %v, output: %s", err, strings.TrimSpace(string(output)))
+		return nil, fmt.Errorf("命令执行错误: %v, 输出: %s", err, string(out))
 	}
 
-	decoded, err := hex.DecodeString(strings.TrimSpace(string(output)))
+	decoded, err := hex.DecodeString(strings.TrimSpace(string(out)))
 	if err != nil {
-		return nil, fmt.Errorf("CompileDynamicMCP: %v", err)
+		return nil, fmt.Errorf("解码错误: %v", err)
 	}
+	fmt.Println(decoded)
 
 	encrypted, err := EncryptDynamicMCP(decoded)
 	if err != nil {
-		return nil, fmt.Errorf("CompileDynamicMCP: %v", err)
+		return nil, fmt.Errorf("加密错误: %v", err)
 	}
 
 	return encrypted, nil
 }
 
-// 解密动态 MCP 数据并调用 uncompyle6 反编译源码
-func DecompileDynamicMCP(encrypted []byte, python3Path string) (string, error) {
-	repaired, err := DecryptDynamicMCP(encrypted)
+func DecompileDynamicMCP(decrypted []byte, python3Path string) (string, error) {
+	repaired, err := DecryptDynamicMCP(decrypted)
 	if err != nil {
-		return "", fmt.Errorf("DecompileDynamicMCP: %v", err)
+		return "", err
 	}
 	const pythonScript = `import binascii
 import io
 import os
 import sys
-import tempfile
 import uncompyle6
 def decompile_pyc_hex(pyc_hex_str):
  pyc_file_data=binascii.unhexlify(pyc_hex_str)
- temp_file=tempfile.NamedTemporaryFile(suffix='.pyc', delete=False)
- temp_pyc=temp_file.name
- with temp_file as f:
+ temp_pyc='temp.pyc'
+ with open(temp_pyc,'wb+') as f:
   f.write(pyc_file_data)
- try:
-  output_stream=io.StringIO()
-  uncompyle6.decompile_file(temp_pyc, output_stream)
-  decompiled_source=output_stream.getvalue()
-  output_stream.close()
- finally:
-  os.remove(temp_pyc)
+ output_stream=io.StringIO()
+ uncompyle6.decompile_file(temp_pyc, output_stream)
+ decompiled_source=output_stream.getvalue()
+ output_stream.close()
+ os.remove(temp_pyc)
  return binascii.hexlify(decompiled_source.encode("utf-8")).decode("utf-8")
 if len(sys.argv) != 2:
  sys.exit(1)
@@ -170,15 +162,15 @@ input_pyc_hex=sys.argv[1]
 result_hex=decompile_pyc_hex(input_pyc_hex)
 print(result_hex)`
 	inputHex := hex.EncodeToString(repaired)
-	command := exec.Command(python3Path, "-c", pythonScript, inputHex)
-	output, err := command.CombinedOutput()
+	cmd := exec.Command(python3Path, "-c", pythonScript, inputHex)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("DecompileDynamicMCP: 反编译失败: %v, output: %s", err, strings.TrimSpace(string(output)))
+		return "", err
 	}
 
-	decoded, err := hex.DecodeString(strings.TrimSpace(string(output)))
+	decoded, err := hex.DecodeString(strings.TrimSpace(string(out)))
 	if err != nil {
-		return "", fmt.Errorf("DecompileDynamicMCP: %v", err)
+		return "", err
 	}
 
 	return string(decoded), nil

@@ -1,10 +1,15 @@
+/*
+PhoenixBuilder specific NEMC packet.
+Author: Liliya233
+*/
 package packet
 
 import "github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 
 // Netease packet
 type NeteaseJson struct {
-	// Netease: string field, but prased as byte slice for convenience
+	// Netease: string field,
+	// but prased as byte slice for convenience
 	Data []byte
 }
 

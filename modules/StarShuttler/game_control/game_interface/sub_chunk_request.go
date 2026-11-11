@@ -106,10 +106,6 @@ func (s *SubChunkRequest) MakeSubChunkRequestBySubChunkPos(dimension int32, subC
 }
 
 func (s *SubChunkRequest) SetChunkRadius(chunkRadius int32) (resp int32, err error) {
-	if chunkRadius < 0 || chunkRadius > 255 {
-		return -1, fmt.Errorf("SetChunkRadius: chunk radius %d out of uint8 range", chunkRadius)
-	}
-
 	api := s.api
 	channel := make(chan struct{})
 
@@ -121,7 +117,7 @@ func (s *SubChunkRequest) SetChunkRadius(chunkRadius int32) (resp int32, err err
 	)
 	request := &packet.RequestChunkRadius{
 		ChunkRadius:    chunkRadius,
-		MaxChunkRadius: uint8(chunkRadius),
+		MaxChunkRadius: chunkRadius,
 	}
 	err = api.WritePacket(request)
 	if err != nil {

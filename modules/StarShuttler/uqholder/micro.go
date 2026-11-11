@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/vmihailenco/msgpack/v5"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
 	"github.com/xingbaiawa/StarShuttler/uqholder/defines"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 const (

@@ -1,21 +1,53 @@
 package g79client
 
 const (
-	g79AndroidStep  = "695616851"
-	g79AndroidStep2 = "2146985406"
-	g79LibraryHash  = "c4fbc0625fe2ff8f3aa0b931feb04217"
-	// 3.10.0.300878 libminecraftpe.so: 0x0e706468/0x0e70646c。
-	// 原生签名函数直接使用 0-based 索引，不需要再减一。
-	g79PESignGroupIndex = 2
-	g79PESignRounds     = 8
-	// 所给 APK Signing Block v2 中 885 字节 X.509 证书 DER 的 MD5。
-	g79SignatureHash = "2b3e7ca013bb30a74d822579860c042b"
-	g79BaseMCPHash   = ""
-	// Android UniSDK 会话使用的渠道和 SDK 版本必须与 Cookie 的渠道一致。
-	g79Android4399Channel    = "4399com"
-	g79AndroidMpayChannel    = "netease"
-	g79Android4399SDKVersion = "3.18.0"
-	g79AndroidMpaySDKVersion = "5.16.0"
+	g79AndroidStep       = "695616851"
+	g79AndroidStep2      = "2146985406"
+	g79LibraryHash       = "c50629910b3d5a1a32a1b47fe7a94bfa"
+	g79SignatureHash     = "2b3e7ca013bb30a74d822579860c042b"
+	g79BaseMCPHash       = ""
+	g79AndroidMessageTag = "dashen_cloudgame"
 )
+/*
+3.6.5.281774
+59cc563ed3c6430aff44500cd3f9e525
+3.6.18.283127
+22c622f4245a37ec3f1012a5325ddc25
+2b3e7ca013bb30a74d822579860c042b
+facb8049-0188-45b5-a0e5-8f149c0c1c91
 
-// 3.10.0.300878 APK: libraryHash 与证书 signatureHash 均来自同一安装包。
+3.6.5.281774
+815873bdd82cb7a4ce422da361f7d60d
+3.6.18.283127
+22c622f4245a37ec3f1012a5325ddc25
+2b3e7ca013bb30a74d822579860c042b
+8888777a-03ff-4075-a3f3-e30363cc763b
+
+3.7.0.287029
+2edfc7ecba3646f64a600185d5b9e8a2
+3.7.2.287101
+7b5476ce3b8e3c840a1dca06da66e0cc
+2b3e7ca013bb30a74d822579860c042b
+5e4fed57-1bca-4623-8d59-37f5468629bb
+
+3.7.0.287029
+2edfc7ecba3646f64a600185d5b9e8a2
+3.7.2.287101
+7b5476ce3b8e3c840a1dca06da66e0cc
+2b3e7ca013bb30a74d822579860c042b
+5c42fc3d-8dc0-469e-bd56-886b9acb784f
+
+3.7.0.287029
+815873bdd82cb7a4ce422da361f7d60d
+3.7.2.287101
+7b5476ce3b8e3c840a1dca06da66e0cc
+2b3e7ca013bb30a74d822579860c042b
+56fe6c2f-93d1-46de-b552-fee1dadce231
+
+3.6.5.283524
+ab8b4fa4e9a1eb5830d6155393772301
+3.6.43.286727
+7b5c2dad570a79dbf722b222a50afa2e
+2b3e7ca013bb30a74d822579860c042b
+154f1bed-9a68-43b4-b403-fcc8bea96b8f
+*/

@@ -2,109 +2,74 @@ package hotpatch
 
 import (
 	"encoding/json"
-	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 )
 
-// 热更新版本列表
-type PatchListResponse struct {
-	LegacyURL   string   `json:"url"`
-	URL         string   `json:"urlNew"`
-	IOS         []string `json:"ios"`
-	Android     []string `json:"android"`
-	ThreadCount string   `json:"threadNum"`
+type PatchlistResponse struct {
+	URL     string   `json:"url"`
+	NewURL  string   `json:"urlNew"`
+	IOS     []string `json:"ios"`
+	Android []string `json:"android"`
+	Threads string   `json:"threadNum"`
 }
 
-// 返回最新 Android 热更新版本
-func (p *PatchListResponse) Latest() string {
-	if p == nil || len(p.Android) == 0 {
-		return ""
-	}
-
+func (p *PatchlistResponse) Latest() string {
+	// compare with semver
 	list := make([]string, len(p.Android))
+
 	copy(list, p.Android)
 	sort.Slice(list, func(i, j int) bool {
-		return compareVersions(list[i], list[j]) < 0
+		vi := strings.Split(list[i], ".")
+		vj := strings.Split(list[j], ".")
+
+		for k := 0; k < len(vi) && k < len(vj); k++ {
+			numVi, _ := strconv.Atoi(vi[k])
+			numVj, _ := strconv.Atoi(vj[k])
+
+			if numVi != numVj {
+				return numVi < numVj
+			}
+		}
+
+		return false
 	})
 
 	return list[len(list)-1]
 }
 
-// 返回 MCPK 内容发生变化的 Android 版本
-func (p *PatchListResponse) UniqueMCPKVersions() ([]string, error) {
-	if p == nil {
-		return nil, fmt.Errorf("UniqueMCPKVersions: 热更新版本列表为空")
-	}
-
-	lastHash := ""
-	hasHash := false
+func (p *PatchlistResponse) ListUniqueMCPK() ([]string, error) {
+	hash := ""
 	versions := make([]string, 0)
 
-	for _, version := range p.Android {
-		manifest, err := FetchManifest(p.URL, version)
+	for _, e := range p.Android {
+		m, err := FetchManifest(p.NewURL, e)
 		if err != nil {
-			return nil, fmt.Errorf("UniqueMCPKVersions: %v", err)
+			return nil, err
 		}
 
-		currentHash := manifest.MCPKHash()
-		if !hasHash || currentHash != lastHash {
-			versions = append(versions, version)
-			lastHash = currentHash
-			hasHash = true
+		currentHash := m.GetHashMCPK()
+		if currentHash != hash {
+			versions = append(versions, e)
+			hash = currentHash
 		}
 	}
 
 	return versions, nil
 }
 
-// 获取热更新版本列表
-func FetchPatchList() (*PatchListResponse, error) {
+func FetchPatchlist() (*PatchlistResponse, error) {
 	body, err := fetch("https://g79.update.netease.com/patch_list/production/g79_rn_patchlist")
 	if err != nil {
-		return nil, fmt.Errorf("FetchPatchList: %v", err)
+		return nil, err
 	}
 
-	var data PatchListResponse
+	var data PatchlistResponse
 	err = json.Unmarshal(body, &data)
 	if err != nil {
-		return nil, fmt.Errorf("FetchPatchList: %v", err)
+		return nil, err
 	}
 
 	return &data, nil
-}
-
-func compareVersions(left, right string) int {
-	leftParts := strings.Split(left, ".")
-	rightParts := strings.Split(right, ".")
-	partCount := max(len(leftParts), len(rightParts))
-
-	for index := 0; index < partCount; index++ {
-		leftPart := 0
-		if index < len(leftParts) {
-			value, err := strconv.Atoi(leftParts[index])
-			if err != nil {
-				return strings.Compare(left, right)
-			}
-			leftPart = value
-		}
-
-		rightPart := 0
-		if index < len(rightParts) {
-			value, err := strconv.Atoi(rightParts[index])
-			if err != nil {
-				return strings.Compare(left, right)
-			}
-			rightPart = value
-		}
-
-		if leftPart < rightPart {
-			return -1
-		}
-		if leftPart > rightPart {
-			return 1
-		}
-	}
-	return 0
 }

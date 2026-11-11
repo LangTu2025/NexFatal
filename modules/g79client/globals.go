@@ -3,14 +3,12 @@ package g79client
 import (
 	"archive/zip"
 	"bytes"
-
-	// "crypto/md5"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-
-	// "strings"
+	"strings"
 	"sync"
 )
 
@@ -102,12 +100,13 @@ func resolveHTTPClient(httpClient *http.Client) *http.Client {
 
 func init() {
 	globalG79PatchMeta = &PatchMetadata{
-		Version:       "3.10.6.301389",
-		ResourcesHash: "c91713f56bbba226e4e8120c2d7a9ac4",
+		Version:       "3.8.17.293053",
+		ResourcesHash: "bb7f1b60be0354fbacdc9788514ca401",
 	}
 
 	// 在包初始化时尝试预取；失败则忽略，后续调用会再次尝试
 	go func() {
+		_, _ = GetGlobalG79LatestVersion()
 		_, _ = GetGlobalG79ReleaseJSON()
 		_, _ = GetGlobalX19ReleaseJSON()
 		_, _ = GetGlobalG79ChatServers()
@@ -126,14 +125,13 @@ func GetGlobalG79LatestVersion() (string, error) {
 }
 
 // RefreshG79LatestVersion forces a refresh of the cached latest version.
-// 已禁用动态获取为了减少适配网易版本更新工作量 我们暂时移除PatchVersions
-// func RefreshG79LatestVersion() (string, error) {
-// 	meta, err := RefreshG79PatchMetadata()
-// 	if err != nil {
-// 		return "", err
-// 	}
-// 	return meta.Version, nil
-// }
+func RefreshG79LatestVersion() (string, error) {
+	meta, err := RefreshG79PatchMetadata()
+	if err != nil {
+		return "", err
+	}
+	return meta.Version, nil
+}
 
 func GetGlobalG79PatchMetadata() (*PatchMetadata, error) {
 	return GetGlobalG79PatchMetadataWithHTTPClient(nil)
@@ -154,144 +152,138 @@ func GetGlobalG79PatchMetadataWithHTTPClient(httpClient *http.Client) (*PatchMet
 		meta := *globalG79PatchMeta
 		return &meta, nil
 	}
-	// 已禁用动态获取，直接返回固定值
-	globalG79PatchMeta = &PatchMetadata{
-		Version:       "3.10.6.301389",
-		ResourcesHash: "c91713f56bbba226e4e8120c2d7a9ac4",
+	meta, err := fetchG79PatchMetadataWithHTTPClient(httpClient)
+	if err != nil {
+		return nil, err
 	}
-	return globalG79PatchMeta, nil
-	// meta, err := fetchG79PatchMetadataWithHTTPClient(httpClient)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// globalG79PatchMeta = meta
-	// return meta, nil
+	globalG79PatchMeta = meta
+	return meta, nil
 }
 
-// 已禁用动态获取
-// func RefreshG79PatchMetadata() (*PatchMetadata, error) {
-// 	return RefreshG79PatchMetadataWithHTTPClient(nil)
-// }
+func RefreshG79PatchMetadata() (*PatchMetadata, error) {
+	return RefreshG79PatchMetadataWithHTTPClient(nil)
+}
 
-// func RefreshG79PatchMetadataWithHTTPClient(httpClient *http.Client) (*PatchMetadata, error) {
-// 	meta, err := fetchG79PatchMetadataWithHTTPClient(httpClient)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	g79PatchMu.Lock()
-// 	globalG79PatchMeta = meta
-// 	g79PatchMu.Unlock()
-// 	return meta, nil
-// }
+func RefreshG79PatchMetadataWithHTTPClient(httpClient *http.Client) (*PatchMetadata, error) {
+	meta, err := fetchG79PatchMetadataWithHTTPClient(httpClient)
+	if err != nil {
+		return nil, err
+	}
+	g79PatchMu.Lock()
+	globalG79PatchMeta = meta
+	g79PatchMu.Unlock()
+	return meta, nil
 
-// func fetchG79PatchMetadata() (*PatchMetadata, error) {
-// 	return fetchG79PatchMetadataWithHTTPClient(nil)
-// }
+}
 
-// func fetchG79PatchMetadataWithHTTPClient(httpClient *http.Client) (*PatchMetadata, error) {
-// 	req, err := http.NewRequest(http.MethodGet, g79PatchListURL, nil)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	resp, err := resolveHTTPClient(httpClient).Do(req)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	defer resp.Body.Close()
-//
-// 	body, err := readResponseBody(resp)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-//
-// 	var patchInfo PatchInfo
-// 	if err := json.Unmarshal(body, &patchInfo); err != nil {
-// 		return nil, err
-// 	}
-//
-// 	version, err := selectAndroidPatchVersion(patchInfo.Android)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-//
-// 	resourcesHash, err := fetchAndroidResourcesHashWithHTTPClient(httpClient, version, patchInfo.URLNew)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-//
-// 	return &PatchMetadata{
-// 		Version:       version,
-// 		ResourcesHash: resourcesHash,
-// 	}, nil
-// }
+func fetchG79PatchMetadata() (*PatchMetadata, error) {
+	return fetchG79PatchMetadataWithHTTPClient(nil)
+}
 
-// func selectAndroidPatchVersion(versions []string) (string, error) {
-// 	if len(versions) == 0 {
-// 		return "", fmt.Errorf("no android patch versions available")
-// 	}
-// 	base, err := getEngineBasePrefix()
-// 	if err != nil {
-// 		return "", err
-// 	}
-// 	for i := len(versions) - 1; i >= 0; i-- {
-// 		if strings.HasPrefix(versions[i], base) {
-// 			return versions[i], nil
-// 		}
-// 	}
-// 	return "", fmt.Errorf("no android patch version matches base prefix %s", base)
-// }
+func fetchG79PatchMetadataWithHTTPClient(httpClient *http.Client) (*PatchMetadata, error) {
+	req, err := http.NewRequest(http.MethodGet, g79PatchListURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := resolveHTTPClient(httpClient).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
 
-// func getEngineBasePrefix() (string, error) {
-// 	parts := strings.Split(EngineVersion, ".")
-// 	if len(parts) < 2 {
-// 		return "", fmt.Errorf("invalid engine version %q", EngineVersion)
-// 	}
-// 	return fmt.Sprintf("%s.%s", parts[0], parts[1]), nil
-// }
+	body, err := readResponseBody(resp)
+	if err != nil {
+		return nil, err
+	}
 
-// func fetchAndroidResourcesHash(version, baseURL string) (string, error) {
-// 	return fetchAndroidResourcesHashWithHTTPClient(nil, version, baseURL)
-// }
+	var patchInfo PatchInfo
+	if err := json.Unmarshal(body, &patchInfo); err != nil {
+		return nil, err
+	}
 
-// func fetchAndroidResourcesHashWithHTTPClient(httpClient *http.Client, version, baseURL string) (string, error) {
-// 	if baseURL == "" {
-// 		return "", fmt.Errorf("empty patch base url")
-// 	}
-// 	root := strings.TrimRight(baseURL, "/")
-// 	pre := fmt.Sprintf("%s/android_%s/%s/android", root, version, version)
-// 	manifest, err := fetchFirstZipEntryWithHTTPClient(httpClient, fmt.Sprintf("%s/manifest.zip", pre))
-// 	if err != nil {
-// 		return "", err
-// 	}
-// 	var manifestPayload struct {
-// 		Assets map[string]struct {
-// 			MD5 string `json:"md5"`
-// 		} `json:"assets"`
-// 	}
-// 	if err := json.Unmarshal(manifest, &manifestPayload); err != nil {
-// 		return "", err
-// 	}
-//
-// 	hashBase := g79BaseMCPHash
-// 	if asset, ok := manifestPayload.Assets["vanilla.mcp"]; ok && asset.MD5 != "" {
-// 		hashBase = asset.MD5
-// 	}
-// 	if asset, ok := manifestPayload.Assets["vanilla_patch.mcp"]; ok && asset.MD5 != "" {
-// 		hashBase += asset.MD5
-// 	}
-//
-// 	rnURL := fmt.Sprintf("%s/rn/index.bundle.backup", pre)
-// 	rnHash := ""
-// 	if raw, err := downloadBytesWithHTTPClient(httpClient, rnURL); err == nil {
-// 		payload := raw
-// 		if zipped, zipErr := readFirstFileFromZipData(raw); zipErr == nil {
-// 			payload = zipped
-// 		}
-// 		rnHash = fmt.Sprintf("%x", md5.Sum(payload))
-// 	}
-// 	final := fmt.Sprintf("%x", md5.Sum([]byte(hashBase+rnHash)))
-// 	return final, nil
-// }
+	version, err := selectAndroidPatchVersion(patchInfo.Android)
+	if err != nil {
+		return nil, err
+	}
+
+	resourcesHash, err := fetchAndroidResourcesHashWithHTTPClient(httpClient, version, patchInfo.URLNew)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PatchMetadata{
+		Version:       version,
+		ResourcesHash: resourcesHash,
+	}, nil
+}
+
+func selectAndroidPatchVersion(versions []string) (string, error) {
+	if len(versions) == 0 {
+		return "", fmt.Errorf("no android patch versions available")
+	}
+	base, err := getEngineBasePrefix()
+	if err != nil {
+		return "", err
+	}
+	for i := len(versions) - 1; i >= 0; i-- {
+		if strings.HasPrefix(versions[i], base) {
+			return versions[i], nil
+		}
+	}
+	return "", fmt.Errorf("no android patch version matches base prefix %s", base)
+}
+
+func getEngineBasePrefix() (string, error) {
+	parts := strings.Split(EngineVersion, ".")
+	if len(parts) < 2 {
+		return "", fmt.Errorf("invalid engine version %q", EngineVersion)
+	}
+	return fmt.Sprintf("%s.%s", parts[0], parts[1]), nil
+}
+
+func fetchAndroidResourcesHash(version, baseURL string) (string, error) {
+	return fetchAndroidResourcesHashWithHTTPClient(nil, version, baseURL)
+}
+
+func fetchAndroidResourcesHashWithHTTPClient(httpClient *http.Client, version, baseURL string) (string, error) {
+	if baseURL == "" {
+		return "", fmt.Errorf("empty patch base url")
+	}
+	root := strings.TrimRight(baseURL, "/")
+	pre := fmt.Sprintf("%s/android_%s/%s/android", root, version, version)
+	manifest, err := fetchFirstZipEntryWithHTTPClient(httpClient, fmt.Sprintf("%s/manifest.zip", pre))
+	if err != nil {
+		return "", err
+	}
+	var manifestPayload struct {
+		Assets map[string]struct {
+			MD5 string `json:"md5"`
+		} `json:"assets"`
+	}
+	if err := json.Unmarshal(manifest, &manifestPayload); err != nil {
+		return "", err
+	}
+
+	hashBase := g79BaseMCPHash
+	if asset, ok := manifestPayload.Assets["vanilla.mcp"]; ok && asset.MD5 != "" {
+		hashBase = asset.MD5
+	}
+	if asset, ok := manifestPayload.Assets["vanilla_patch.mcp"]; ok && asset.MD5 != "" {
+		hashBase += asset.MD5
+	}
+
+	rnURL := fmt.Sprintf("%s/rn/index.bundle.backup", pre)
+	rnHash := ""
+	if raw, err := downloadBytesWithHTTPClient(httpClient, rnURL); err == nil {
+		payload := raw
+		if zipped, zipErr := readFirstFileFromZipData(raw); zipErr == nil {
+			payload = zipped
+		}
+		rnHash = fmt.Sprintf("%x", md5.Sum(payload))
+	}
+	final := fmt.Sprintf("%x", md5.Sum([]byte(hashBase+rnHash)))
+	return final, nil
+}
 
 func fetchFirstZipEntry(url string) ([]byte, error) {
 	return fetchFirstZipEntryWithHTTPClient(nil, url)

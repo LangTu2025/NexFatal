@@ -7,7 +7,7 @@ import (
 	"time"
 
 	bwo_chunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
-	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
+	wsdefine "github.com/Yeah114/WaterStructure/define"
 	"github.com/LangTu2025/NexFatal/control"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
 )

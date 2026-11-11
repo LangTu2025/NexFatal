@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net"
 
+	tanauth "github.com/Happy2018new/nemc-tan-lobby-solver/bunker"
+	tanservice "github.com/Happy2018new/nemc-tan-lobby-solver/protocol/service"
 	"github.com/google/uuid"
-	tanauth "github.com/xingbaiawa/StarShuttler/client/local_lobby/tan_solver/bunker"
-	tanservice "github.com/xingbaiawa/StarShuttler/client/local_lobby/tan_solver/protocol/service"
 	"github.com/xingbaiawa/StarShuttler/core/bunker/auth"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/login"
@@ -22,7 +22,7 @@ import (
 
 func openConnection(
 	ctx context.Context,
-	authenticator *auth.AccessWrapper,
+	authenticator minecraft.Authenticator,
 ) (conn *minecraft.Conn, err error) {
 	var dialer minecraft.Dialer
 	var authResponse auth.AuthResponse
@@ -31,17 +31,7 @@ func openConnection(
 		Authenticator:        authenticator,
 		DownloadResourcePack: skipResourcePackDownload,
 	}
-
-	// 不同目标在 3.9 中使用不同的登录外壳和压缩格式
-	switch {
-	case IsDomainGameTarget(authenticator.ServerCode):
-		dialer.DisablePharosSpeedUp = true
-		conn, authResponse, err = dialer.DialDomainGameContext(ctx, "raknet")
-	case IsLobbyGameTarget(authenticator.ServerCode), IsNetworkGameTarget(authenticator.ServerCode):
-		conn, authResponse, err = dialer.DialNetworkGameContext(ctx, "raknet")
-	default:
-		conn, authResponse, err = dialer.DialRentalServerContext(ctx, "raknet")
-	}
+	conn, authResponse, err = dialer.DialContext(ctx, "raknet")
 	if err != nil {
 		return nil, err
 	}
@@ -107,8 +97,7 @@ func dialTanLobbyMinecraft(ctx context.Context, netConn net.Conn, resp tanauth.T
 		ServerAddress: resp.RaknetServerAddress,
 	}
 	dialer := minecraft.Dialer{
-		DownloadResourcePack:  skipResourcePackDownload,
-		EnableLocalOnlineAuth: true,
+		DownloadResourcePack: skipResourcePackDownload,
 	}
 	return dialer.DialNetConnContext(ctx, netConn, identityData, clientData)
 }

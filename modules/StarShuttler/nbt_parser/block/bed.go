@@ -29,7 +29,7 @@ func (Bed) NeedCheckCompletely() bool {
 }
 
 func (b Bed) Direction() int32 {
-	return blockStateInt32(b.States, "direction", 0)
+	return doorStateInt32(b.States, "direction", 0)
 }
 
 func (b Bed) HeadOffset() protocol.BlockPos {
@@ -64,8 +64,8 @@ func (b Bed) normalizedStates() map[string]any {
 	for key, value := range b.States {
 		states[key] = value
 	}
-	states["direction"] = blockStateInt32(states, "direction", 0)
-	states["occupied_bit"] = boolByte(blockStateBool(states, "occupied_bit", false))
+	states["direction"] = doorStateInt32(states, "direction", 0)
+	states["occupied_bit"] = doorBoolByte(doorStateBool(states, "occupied_bit", false))
 	return states
 }
 

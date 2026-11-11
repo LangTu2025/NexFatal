@@ -265,8 +265,6 @@ const (
 	EntityDataFlagWASDAirControlled
 	EntityDataFlagDoesServerAuthOnlyDismount
 	EntityDataFlagBodyRotationAlwaysFollowsHead
-	EntityDataFlagCanUseVerticalMovementAction
-	EntityDataFlagRotationLockedToVehicle
 	EntityDataFlagCount
 )
 

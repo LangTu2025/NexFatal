@@ -7,23 +7,23 @@ import (
 )
 
 var (
-	// Version 是当前构建版本号
-	Version = "1.0.0"
-	// CommitHash 可由构建脚本注入完整提交哈希
+	// Version 是当前构建版本号。
+	Version = "1.3.4"
+	// CommitHash 可由构建脚本注入完整提交哈希。
 	CommitHash string
 
 	shortCommitHashOnce sync.Once
 	shortCommitHash     string
 )
 
-// VersionLine 返回包含版本号和短提交哈希的显示文本
+// VersionLine 返回包含版本号和短提交哈希的显示文本。
 func VersionLine() string {
 	line := Name + " " + Version
 	line += " (" + ShortCommitHash() + ")"
 	return line
 }
 
-// ShortCommitHash 返回用于界面显示的短提交哈希
+// ShortCommitHash 返回用于界面显示的短提交哈希。
 func ShortCommitHash() string {
 	shortCommitHashOnce.Do(func() {
 		shortCommitHash = shortenCommitHash(CommitHash)

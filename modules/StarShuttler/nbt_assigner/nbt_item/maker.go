@@ -15,7 +15,6 @@ import (
 )
 
 func init() {
-	nbt_assigner_interface.NBTItemIsSupported = NBTItemIsSupported
 	nbt_assigner_interface.MakeNBTItemMethod = MakeNBTItemMethod
 	nbt_assigner_interface.EnchMultiple = EnchMultiple
 	nbt_assigner_interface.RenameMultiple = RenameMultiple
@@ -180,7 +179,7 @@ func EnchMultiple(
 			}
 
 			for _, ench := range defaultItem.Enhance.EnchList {
-				err = api.Commands().SendAICommand(fmt.Sprintf("enchant @s %d %d", ench.ID, ench.Level), true)
+				err = api.Commands().SendSettingsCommand(fmt.Sprintf("enchant @s %d %d", ench.ID, ench.Level), true)
 				if err != nil {
 					return fmt.Errorf("EnchMultiple: %v", err)
 				}
@@ -821,7 +820,7 @@ func EnchRenameOrDyeSingle(
 		}
 
 		for _, ench := range defaultItem.Enhance.EnchList {
-			err := api.Commands().SendAICommand(fmt.Sprintf("enchant @s %d %d", ench.ID, ench.Level), true)
+			err := api.Commands().SendSettingsCommand(fmt.Sprintf("enchant @s %d %d", ench.ID, ench.Level), true)
 			if err != nil {
 				return fmt.Errorf("EnchRenameOrDyeSingle: %v", err)
 			}

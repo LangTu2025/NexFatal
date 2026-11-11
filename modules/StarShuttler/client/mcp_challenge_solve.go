@@ -113,13 +113,13 @@ func (m *MCPCheckChallengesSolver) waitMCPCheckChallengesDown(commandOutput chan
 				UUID:      uuid.New(),
 				RequestID: "96045347-a6a3-4114-94c0-1bc4cc561694",
 			},
-			IsInternal: false,
+			Internal: false,
 			// PhoenixBuilder specific changes.
 			// Author: LNSSPsd
-			UnLimit: false,
+			UnLimited: false,
 			// PhoenixBuilder specific changes.
 			// Author: Liliya233
-			Version: "Latest",
+			Version: 39,
 		})
 
 		if err != nil {
@@ -139,13 +139,7 @@ func (m *MCPCheckChallengesSolver) waitMCPCheckChallengesDown(commandOutput chan
 func (m *MCPCheckChallengesSolver) onPyRpc(p *packet.PyRpc) error {
 	// prepare
 	conn := m.client.connection
-	var client interface {
-		TransferData(string) (string, error)
-		TransferCheckNum(string) (string, error)
-	} = m.client.authClient
-	if m.client.remoteAuthClient != nil {
-		client = m.client.remoteAuthClient
-	}
+	client := m.client.authClient
 	if p.Value == nil {
 		return nil
 	}

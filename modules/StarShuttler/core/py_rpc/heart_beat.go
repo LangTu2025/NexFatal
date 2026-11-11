@@ -50,7 +50,7 @@ func (h *HeartBeat) FromGo(obj any) error {
 	if !success {
 		return fmt.Errorf("FromGo: Failed to convert object[0] to map[string]interface{}; object[0] = %#v", object[0])
 	}
-	T, success := pyRpcUint64(content["t"])
+	T, success := content["t"].(uint64)
 	if !success {
 		return fmt.Errorf(`FromGo: Failed to convert content["t"] to uint64; content["t"] = %#v`, content["t"])
 	}
@@ -63,46 +63,4 @@ func (h *HeartBeat) FromGo(obj any) error {
 	// sync data
 	return nil
 	// return
-}
-
-func pyRpcUint64(value any) (uint64, bool) {
-	switch typed := value.(type) {
-	case uint64:
-		return typed, true
-	case uint:
-		return uint64(typed), true
-	case uint32:
-		return uint64(typed), true
-	case uint16:
-		return uint64(typed), true
-	case uint8:
-		return uint64(typed), true
-	case int:
-		if typed < 0 {
-			return 0, false
-		}
-		return uint64(typed), true
-	case int64:
-		if typed < 0 {
-			return 0, false
-		}
-		return uint64(typed), true
-	case int32:
-		if typed < 0 {
-			return 0, false
-		}
-		return uint64(typed), true
-	case int16:
-		if typed < 0 {
-			return 0, false
-		}
-		return uint64(typed), true
-	case int8:
-		if typed < 0 {
-			return 0, false
-		}
-		return uint64(typed), true
-	default:
-		return 0, false
-	}
 }

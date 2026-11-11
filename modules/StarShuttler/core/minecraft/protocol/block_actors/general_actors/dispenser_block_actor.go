@@ -13,8 +13,7 @@ type DispenserBlockActor struct {
 func (d *DispenserBlockActor) Marshal(r protocol.IO) {
 	var name string = d.CustomName
 
-	// Dispenser-family tags use the opposite LootTable marker from chest-family tags.
-	d.RandomizableBlockActor.marshal(r, true)
+	protocol.Single(r, &d.RandomizableBlockActor)
 	protocol.NBTSlice(r, &d.Items, func(t *[]protocol.ItemWithSlot) { r.ItemList(t) })
 	r.String(&name)
 

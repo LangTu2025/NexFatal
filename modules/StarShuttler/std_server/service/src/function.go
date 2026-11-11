@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/nbt"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/nbt_assigner/block_helper"
@@ -16,6 +15,7 @@ import (
 	nbt_parser_interface "github.com/xingbaiawa/StarShuttler/nbt_parser/interface"
 	"github.com/xingbaiawa/StarShuttler/std_server/define"
 	"github.com/xingbaiawa/StarShuttler/utils"
+	"github.com/google/uuid"
 
 	"github.com/gin-gonic/gin"
 )

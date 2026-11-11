@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/xingbaiawa/g79client"
+	"github.com/Yeah114/g79client"
 )
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 	}
 	inviteResp, _ := client.JoinDomainServerWithInviteCode(inviteCode)
 	if inviteResp.Code != 0 {
-		panic(fmt.Errorf("main: Entry failed: %s", inviteResp.Message))
+		panic(fmt.Errorf("进入失败 因为: %s", inviteResp.Message))
 	}
 	serversResp, _ := client.GetOtherDomainServers()
 	serverID := serversResp.Entities[0].Sid

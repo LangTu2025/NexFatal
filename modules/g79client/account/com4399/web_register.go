@@ -12,25 +12,21 @@ import (
 	"fmt"
 	"html"
 	"io"
-	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"regexp"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
 const (
-	webRegisterClientID             = "a9a16636dbaeb917e2ffb16f0d52006e"
-	webRegisterCallbackReturnURL    = "https://h.4399.com/wap/user.htm"
-	webRegisterUserAgent            = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36"
-	webRegisterXRequestedWith       = "mark.via.gp"
-	webRegisterCryptoPassphrase     = "lzYW5qaXVqa"
-	maxWebRegisterPleaseWaitRetries = 0
-	webRegisterRealNameSubmitDelay  = 500 * time.Millisecond
+	webRegisterClientID          = "a9a16636dbaeb917e2ffb16f0d52006e"
+	webRegisterCallbackReturnURL = "https://h.4399.com/wap/user.htm"
+	webRegisterUserAgent         = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36"
+	webRegisterXRequestedWith    = "mark.via.gp"
+	webRegisterCryptoPassphrase  = "lzYW5qaXVqa"
 )
 
 var (
@@ -144,93 +140,34 @@ func (c *WebRegisterClient) Register(ctx context.Context, req WebRegisterRequest
 	if err := validateWebRegisterRequest(req); err != nil {
 		return nil, err
 	}
-	const maxOCRAttempts = 3
-	for attempt := 0; attempt <= maxOCRAttempts; attempt++ {
-		page, reused, err := c.registrationPageForAttempt(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		if !reused {
-			exists, message, err := c.usernameExists(ctx, req.Username, page.fieldOrDefault("reg_mode", "reg_normal"))
-			if err != nil {
-				return nil, err
-			}
-			if exists {
-				return nil, fmt.Errorf("%w: %s", ErrUsernameExists, message)
-			}
-		}
-		err = c.submitRegistration(ctx, page, req)
-		for retry := 0; isWebRegisterPleaseWait(err) && retry < maxWebRegisterPleaseWaitRetries; retry++ {
-			if !waitWebRegisterRetry(ctx) {
-				return nil, ctx.Err()
-			}
-			err = c.submitRegistration(ctx, page, req)
-		}
-		if err != nil {
-			var captchaErr *WebCaptchaRequiredError
-			if errors.As(err, &captchaErr) && captchaErr.CaptchaURL != "" && attempt < maxOCRAttempts {
-				ocrResult, ocrErr := RecognizeCaptcha(captchaErr.CaptchaURL)
-				if ocrErr != nil {
-					log.Printf("[OCR] 注册验证码自动识别失败: %v", ocrErr)
-					return nil, err
-				}
-				log.Printf("[OCR] 注册验证码自动识别结果: %s", ocrResult)
-				req.CaptchaCode = ocrResult
-				// c.pending 已在 submitRegistration 中被设为含新 captcha_id 的页面，
-				// 不要清空它，让 registrationPageForAttempt 复用该页面
-				continue
-			}
-			return nil, err
-		}
-		c.pending = nil
-		if !waitWebRegisterRealNameSubmit(ctx) {
-			return nil, ctx.Err()
-		}
-		callbackURL, err := c.submitRealName(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		if err := c.followCallback(ctx, callbackURL); err != nil {
-			return nil, err
-		}
-		return c.buildWebRegisterResult(callbackURL), nil
+	page, reused, err := c.registrationPageForAttempt(ctx, req)
+	if err != nil {
+		return nil, err
 	}
-	return nil, fmt.Errorf("com4399: 注册验证码自动识别失败: 超过最大重试次数 %d", maxOCRAttempts)
+	if !reused {
+		exists, message, err := c.usernameExists(ctx, req.Username, page.fieldOrDefault("reg_mode", "reg_normal"))
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, fmt.Errorf("%w: %s", ErrUsernameExists, message)
+		}
+	}
+	if err := c.submitRegistration(ctx, page, req); err != nil {
+		return nil, err
+	}
+	c.pending = nil
+	callbackURL, err := c.submitRealName(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.followCallback(ctx, callbackURL); err != nil {
+		return nil, err
+	}
+	return c.buildWebRegisterResult(callbackURL), nil
 }
 
 // SaveCaptchaImage 保存注册验证码图片。
-func isWebRegisterPleaseWait(err error) bool {
-	if err == nil || !errors.Is(err, ErrRegisterRejected) {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "status=202") ||
-		strings.Contains(message, "请稍后再试") ||
-		strings.Contains(message, "please wait")
-}
-
-func waitWebRegisterRetry(ctx context.Context) bool {
-	timer := time.NewTimer(2 * time.Second)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-timer.C:
-		return true
-	}
-}
-
-func waitWebRegisterRealNameSubmit(ctx context.Context) bool {
-	timer := time.NewTimer(webRegisterRealNameSubmitDelay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-timer.C:
-		return true
-	}
-}
-
 func (c *WebRegisterClient) SaveCaptchaImage(ctx context.Context, captchaURL, path string) error {
 	if strings.TrimSpace(captchaURL) == "" {
 		return errors.New("com4399: captcha url is empty")
@@ -337,7 +274,7 @@ func (c *WebRegisterClient) submitRegistration(ctx context.Context, page *webReg
 		return err
 	}
 	doc := string(body)
-	if resp.StatusCode == http.StatusOK && webLooksLikeRealNamePageV2(doc) {
+	if resp.StatusCode == http.StatusOK && webLooksLikeRealNamePage(doc) && c.hasWebCookie("Pauth") {
 		return nil
 	}
 	if challenge := extractWebCaptchaChallenge(doc, loginBaseURL); challenge != nil {
@@ -353,13 +290,9 @@ func (c *WebRegisterClient) submitRegistration(ctx context.Context, page *webReg
 		return fmt.Errorf("%w: %s", ErrRiskControlTriggered, message)
 	}
 	if message == "" {
-		message = describeUnexpectedRegistrationResponse(resp, doc)
+		message = "registration page did not transition to real-name form"
 	}
 	return fmt.Errorf("%w: %s", ErrRegisterRejected, message)
-}
-
-func (c *WebRegisterClient) SubmitRealName(ctx context.Context, req WebRegisterRequest) (string, error) {
-	return c.submitRealName(ctx, req)
 }
 
 func (c *WebRegisterClient) submitRealName(ctx context.Context, req WebRegisterRequest) (string, error) {
@@ -395,10 +328,6 @@ func (c *WebRegisterClient) submitRealName(ctx context.Context, req WebRegisterR
 	return "", fmt.Errorf("%w: %s", ErrRealNameRejected, message)
 }
 
-func (c *WebRegisterClient) FollowCallback(ctx context.Context, callbackURL string) error {
-	return c.followCallback(ctx, callbackURL)
-}
-
 func (c *WebRegisterClient) followCallback(ctx context.Context, callbackURL string) error {
 	resp, _, err := c.webRequest(ctx, callbackURL, http.MethodGet, nil, map[string]string{"Referer": webRegisterCallbackReturnURL}, true)
 	if err != nil {
@@ -408,10 +337,6 @@ func (c *WebRegisterClient) followCallback(ctx context.Context, callbackURL stri
 		return fmt.Errorf("com4399: callback follow status %d", resp.StatusCode)
 	}
 	return nil
-}
-
-func (c *WebRegisterClient) BuildRegisterResult(callbackURL string) *WebRegisterResult {
-	return c.buildWebRegisterResult(callbackURL)
 }
 
 func (c *WebRegisterClient) buildWebRegisterResult(callbackURL string) *WebRegisterResult {
@@ -625,79 +550,9 @@ func webLooksLikeRealNamePage(doc string) bool {
 	return strings.Contains(doc, `id="set_register_idcard"`) || strings.Contains(doc, `/oauth2/setIdcardAndRealname.do`) || strings.Contains(doc, "身份认证")
 }
 
-func webLooksLikeRealNamePageV2(doc string) bool {
-	if webLooksLikeRealNamePage(doc) {
-		return true
-	}
-	lower := strings.ToLower(doc)
-	if strings.Contains(lower, `/oauth2/setidcardandrealname.do`) ||
-		strings.Contains(lower, `setidcardandrealname`) {
-		return true
-	}
-	fields := extractWebInputValues(doc)
-	_, hasRealName := fields["realname"]
-	_, hasIDCard := fields["idcard"]
-	return hasRealName && hasIDCard
-}
-
-func describeUnexpectedRegistrationResponse(resp *http.Response, doc string) string {
-	parts := []string{"registration page did not transition to real-name form"}
-	if resp != nil {
-		parts = append(parts, fmt.Sprintf("status=%d", resp.StatusCode))
-		if location := strings.TrimSpace(resp.Header.Get("Location")); location != "" {
-			parts = append(parts, "location="+location)
-		}
-	}
-	doc = strings.TrimSpace(doc)
-	if doc == "" {
-		parts = append(parts, "body=empty")
-		return strings.Join(parts, " ")
-	}
-	if title := extractWebTitle(doc); title != "" {
-		parts = append(parts, "title="+title)
-	}
-	if snippet := compactWebText(doc, 160); snippet != "" {
-		parts = append(parts, "body="+snippet)
-	}
-	return strings.Join(parts, " ")
-}
-
-func extractWebTitle(doc string) string {
-	titlePattern := regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
-	matches := titlePattern.FindStringSubmatch(doc)
-	if len(matches) < 2 {
-		return ""
-	}
-	return compactPlainText(matches[1], 80)
-}
-
-func compactWebText(doc string, limit int) string {
-	bodyPattern := regexp.MustCompile(`(?is)<body[^>]*>(.*?)</body>`)
-	if matches := bodyPattern.FindStringSubmatch(doc); len(matches) > 1 {
-		doc = matches[1]
-	}
-	scriptPattern := regexp.MustCompile(`(?is)<(?:script|style)[^>]*>.*?</(?:script|style)>`)
-	doc = scriptPattern.ReplaceAllString(doc, " ")
-	tagPattern := regexp.MustCompile(`(?is)<[^>]+>`)
-	return compactPlainText(tagPattern.ReplaceAllString(doc, " "), limit)
-}
-
-func compactPlainText(text string, limit int) string {
-	text = strings.TrimSpace(html.UnescapeString(text))
-	for strings.Contains(text, "  ") {
-		text = strings.ReplaceAll(text, "  ", " ")
-	}
-	if limit > 0 && len(text) > limit {
-		text = text[:limit] + "..."
-	}
-	return text
-}
-
 func extractWebPageErrors(doc string) []string {
 	idPattern := regexp.MustCompile(`(?is)<(?:p|div)[^>]*id="(?:username\d?_err_msg|captcha\d?_err_msg|protocol\d?_err_msg|login_err_msg)"[^>]*>(.*?)</(?:p|div)>`)
 	warnPattern := regexp.MustCompile(`(?is)<div[^>]*class="[^"]*ipt_error_warntip[^"]*"[^>]*>.*?<p>(.*?)</p>`)
-	tipPattern := regexp.MustCompile(`(?is)<(?:p|div|span)[^>]*(?:class|id)="[^"]*(?:error|err|warn|tip|message|msg)[^"]*"[^>]*>(.*?)</(?:p|div|span)>`)
-	alertPattern := regexp.MustCompile(`(?is)alert\s*\(\s*["']([^"']+)["']\s*\)`)
 	tagPattern := regexp.MustCompile(`(?is)<[^>]+>`)
 	messages := make([]string, 0, 2)
 	for _, match := range idPattern.FindAllStringSubmatch(doc, -1) {
@@ -707,16 +562,6 @@ func extractWebPageErrors(doc string) []string {
 	}
 	for _, match := range warnPattern.FindAllStringSubmatch(doc, -1) {
 		if text := strings.TrimSpace(html.UnescapeString(tagPattern.ReplaceAllString(match[1], ""))); text != "" {
-			messages = append(messages, text)
-		}
-	}
-	for _, match := range tipPattern.FindAllStringSubmatch(doc, -1) {
-		if text := strings.TrimSpace(html.UnescapeString(tagPattern.ReplaceAllString(match[1], ""))); text != "" {
-			messages = append(messages, text)
-		}
-	}
-	for _, match := range alertPattern.FindAllStringSubmatch(doc, -1) {
-		if text := strings.TrimSpace(html.UnescapeString(match[1])); text != "" {
 			messages = append(messages, text)
 		}
 	}

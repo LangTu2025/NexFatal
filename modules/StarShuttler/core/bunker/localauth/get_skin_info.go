@@ -3,7 +3,7 @@ package localauth
 import (
 	"fmt"
 
-	"github.com/xingbaiawa/g79client"
+	"github.com/Yeah114/g79client"
 )
 
 var DefaultSkinItemID = "4672395235685216085"

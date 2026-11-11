@@ -19,7 +19,7 @@ const (
 	defaultAppChannel          = "netease"
 	defaultPlatform            = "ad"
 	defaultSDKVersion          = "5.16.0"
-	defaultAppVersionGV        = "840300878"
+	defaultAppVersionGV        = "840292836"
 	defaultUniSauthUserAgent   = "Dalvik/2.1.0 (Linux; U; Android 12; V2166A Build/b27cb4b.0)"
 	defaultCheckEnterUserAgent = "Anti-Addiction/1.11.0 (V2166A;32)"
 	defaultCommonSDK           = "ad=2.0.5"
@@ -264,8 +264,6 @@ type DecodedUniSDKLoginPayload struct {
 	SDKUID                   string                        `json:"sdkuid"`
 	Username                 string                        `json:"username"`
 	ServerTime               int64                         `json:"server_time"`
-	GasToken                 string                        `json:"gas_token"`
-	SDKToken                 string                        `json:"sdk_token"`
 	AccessToken              string                        `json:"access_token"`
 	ExpiresIn                string                        `json:"expires_in"`
 	RefreshToken             string                        `json:"refresh_token"`
@@ -319,193 +317,20 @@ func (r *UniSauthResponse) DecodeUniSDKLoginJSON() (*DecodedUniSDKLoginPayload, 
 	if r == nil {
 		return nil, fmt.Errorf("uni_sauth 响应为空")
 	}
-	encoded := strings.TrimSpace(r.UniSDKLoginJSON)
-	if encoded == "" && strings.TrimSpace(r.RawBody) != "" {
-		// 某些网关把字段包在 data/extra 中；不要只依赖顶层结构体字段。
-		var envelope any
-		if err := json.Unmarshal([]byte(r.RawBody), &envelope); err == nil {
-			if value, ok := findUniSDKLoginJSON(envelope, 0); ok {
-				encoded = value
-			}
-		}
-	}
-	if encoded == "" {
+	if strings.TrimSpace(r.UniSDKLoginJSON) == "" {
 		return nil, fmt.Errorf("uni_sauth 响应缺少 unisdk_login_json")
 	}
 
-	raw, err := decodeUniSDKLoginJSON(encoded)
+	raw, err := base64.StdEncoding.DecodeString(r.UniSDKLoginJSON)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("解码 unisdk_login_json 失败: %w", err)
 	}
 
 	var result DecodedUniSDKLoginPayload
-	// 直接反序列化保留已知结构字段；如果服务端把 aid 等字段编码成
-	// 数字/字符串混合格式，则由下面的通用提取逻辑继续解析 token。
-	_ = json.Unmarshal(raw, &result)
-
-	var value any
-	if err := json.Unmarshal(raw, &value); err != nil {
+	if err := json.Unmarshal(raw, &result); err != nil {
 		return nil, fmt.Errorf("解析 unisdk_login_json 失败: %w", err)
 	}
-	object, ok := value.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("解析 unisdk_login_json 失败: JSON 根节点不是对象")
-	}
-	collectUniSDKLoginFields(value, &result, 0)
-	// APK setBackSauthLoginJson 只读取当前登录对象的 token；不能从其他
-	// 嵌套对象补出一个无关 token。gas_token 存在但为空时也应保留空值。
-	result.SDKToken = jsonStringValue(object["sdk_token"])
-	result.GasToken = jsonStringValue(object["gas_token"])
-	if token, exists := object["gas_token"]; !exists || token == nil {
-		result.GasToken = result.SDKToken
-	}
-	if strings.TrimSpace(result.SDKUID) == "" {
-		result.SDKUID = firstNonEmptyString(result.ChlSDKJSON.SDKUID, result.Extra.OriginSDKUID)
-	}
 	return &result, nil
-}
-
-// decodeUniSDKLoginJSON 解码 Base64(UTF-8 JSON)，也接受原始 JSON。
-func decodeUniSDKLoginJSON(value string) ([]byte, error) {
-	trimmed := strings.TrimSpace(value)
-	if len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') {
-		return []byte(trimmed), nil
-	}
-	compact := strings.Map(func(r rune) rune {
-		switch r {
-		case ' ', '\t', '\r', '\n':
-			return -1
-		default:
-			return r
-		}
-	}, trimmed)
-	decoders := []*base64.Encoding{
-		base64.StdEncoding,
-		base64.RawStdEncoding,
-		base64.URLEncoding,
-		base64.RawURLEncoding,
-	}
-	var lastErr error
-	for _, decoder := range decoders {
-		raw, err := decoder.DecodeString(compact)
-		if err == nil {
-			return raw, nil
-		}
-		lastErr = err
-	}
-	return nil, fmt.Errorf("解码 unisdk_login_json 失败: %w", lastErr)
-}
-
-// findUniSDKLoginJSON 在网关包装对象中查找登录 JSON。只返回字符串字段，
-// 避免把普通 data 对象误当作 Base64 内容。
-func findUniSDKLoginJSON(value any, depth int) (string, bool) {
-	if depth > 6 {
-		return "", false
-	}
-	switch typed := value.(type) {
-	case map[string]any:
-		for _, key := range []string{"unisdk_login_json", "UNISDK_LOGIN_JSON", "login_json", "loginJsonB64"} {
-			if nested, ok := typed[key].(string); ok && strings.TrimSpace(nested) != "" {
-				return strings.TrimSpace(nested), true
-			}
-		}
-		for _, nested := range typed {
-			if found, ok := findUniSDKLoginJSON(nested, depth+1); ok {
-				return found, true
-			}
-		}
-	case []any:
-		for _, nested := range typed {
-			if found, ok := findUniSDKLoginJSON(nested, depth+1); ok {
-				return found, true
-			}
-		}
-	case string:
-		trimmed := strings.TrimSpace(typed)
-		if len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') {
-			var nested any
-			if err := json.Unmarshal([]byte(trimmed), &nested); err == nil {
-				return findUniSDKLoginJSON(nested, depth+1)
-			}
-		}
-	}
-	return "", false
-}
-
-func collectUniSDKLoginFields(value any, result *DecodedUniSDKLoginPayload, depth int) {
-	if depth > 6 || result == nil {
-		return
-	}
-	switch typed := value.(type) {
-	case map[string]any:
-		if result.AID == "" {
-			result.AID = jsonStringValue(typed["aid"])
-		}
-		if result.SDKUID == "" {
-			result.SDKUID = jsonStringValue(typed["sdkuid"])
-		}
-		if result.SDKToken == "" {
-			result.SDKToken = jsonStringValue(typed["sdk_token"])
-		}
-		if result.GasToken == "" {
-			result.GasToken = jsonStringValue(typed["gas_token"])
-		}
-		if result.AccessToken == "" {
-			result.AccessToken = jsonStringValue(typed["access_token"])
-		}
-		if result.RefreshToken == "" {
-			result.RefreshToken = jsonStringValue(typed["refresh_token"])
-		}
-		if oauth2, ok := typed["oauth2"].(map[string]any); ok {
-			if result.OAuth2.AccessToken == "" {
-				result.OAuth2.AccessToken = jsonStringValue(oauth2["access_token"])
-			}
-			if result.OAuth2.RefreshToken == "" {
-				result.OAuth2.RefreshToken = jsonStringValue(oauth2["refresh_token"])
-			}
-		}
-		for _, nested := range typed {
-			collectUniSDKLoginFields(nested, result, depth+1)
-		}
-	case []any:
-		for _, nested := range typed {
-			collectUniSDKLoginFields(nested, result, depth+1)
-		}
-	case string:
-		trimmed := strings.TrimSpace(typed)
-		if len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') {
-			var nested any
-			if err := json.Unmarshal([]byte(trimmed), &nested); err == nil {
-				collectUniSDKLoginFields(nested, result, depth+1)
-			}
-		}
-	}
-}
-
-func jsonStringValue(value any) string {
-	switch typed := value.(type) {
-	case string:
-		return strings.TrimSpace(typed)
-	case json.Number:
-		return typed.String()
-	case float64:
-		return strconv.FormatFloat(typed, 'f', -1, 64)
-	case float32:
-		return strconv.FormatFloat(float64(typed), 'f', -1, 32)
-	case int:
-		return strconv.Itoa(typed)
-	default:
-		return ""
-	}
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }
 
 // CheckEnterRequest 表示 /x19/sdk/check_enter 请求体。

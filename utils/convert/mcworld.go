@@ -12,9 +12,9 @@ import (
 
 	bwodefine "github.com/TriM-Organization/bedrock-world-operator/define"
 	"github.com/TriM-Organization/bedrock-world-operator/world"
+	"github.com/Yeah114/WaterStructure/define"
+	wsstructure "github.com/Yeah114/WaterStructure/structure"
 	"github.com/mholt/archiver/v3"
-	"github.com/xingbaiawa/LycorisFlow/define"
-	wsstructure "github.com/xingbaiawa/LycorisFlow/structure"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
 )
 
@@ -26,7 +26,7 @@ const (
 	progressRenderMinInterval    = 200 * time.Millisecond
 )
 
-// ConvertToMCWorld 将支持的结构文件转换为 mcworld 文件
+// ConvertToMCWorld 将支持的结构文件转换为 mcworld 文件。
 func ConvertToMCWorld(inputPath, outputDir, nexusPassword string) (string, error) {
 	ext := strings.ToLower(filepath.Ext(inputPath))
 
@@ -97,7 +97,7 @@ func writeStructureChunks(reader wsstructure.Structure, bedrockWorld *world.Bedr
 		return loc.Errf(loc.KeyConvertReaderNil)
 	}
 
-	// 优先使用结构读取器自己的 mcworld 写入实现；老格式没有实现时再走通用 chunk/NBT 兜底路径
+	// 优先使用结构读取器自己的 mcworld 写入实现；老格式没有实现时再走通用 chunk/NBT 兜底路径。
 	if err := writeStructureNative(reader, bedrockWorld, bar); err != nil {
 		if !errors.Is(err, wsstructure.ErrReaderNotImplemented) {
 			return err
@@ -178,7 +178,7 @@ func writeStructureFallback(reader wsstructure.Structure, bedrockWorld *world.Be
 	defer progress.Flush()
 
 	return walkChunkBatches(xCount, zCount, batchSize, func(chunkBatch []define.ChunkPos) error {
-		// 兜底路径先保存普通 chunk 数据，再把同批次的方块实体 NBT 单独写进世界数据库
+		// 兜底路径先保存普通 chunk 数据，再把同批次的方块实体 NBT 单独写进世界数据库。
 		processedChunks, err := reader.GetChunks(chunkBatch)
 		if err != nil {
 			return loc.Errf(loc.KeyConvertGetChunkFailed, err)
@@ -229,7 +229,7 @@ func chunkBlockActors(chunkPos define.ChunkPos, blockMap map[define.BlockPos]map
 		return nil
 	}
 
-	// 结构内 NBT 使用区块局部坐标；写入 mcworld 前需要补成世界内绝对坐标
+	// 结构内 NBT 使用区块局部坐标；写入 mcworld 前需要补成世界内绝对坐标。
 	chunkBaseX := int32(chunkPos.X() << 4)
 	chunkBaseZ := int32(chunkPos.Z() << 4)
 	list := make([]map[string]any, 0, len(blockMap))

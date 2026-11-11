@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mitchellh/mapstructure"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/mapping"
 	"github.com/xingbaiawa/StarShuttler/utils"
+	"github.com/mitchellh/mapstructure"
 )
 
 // CauldronNBT ..

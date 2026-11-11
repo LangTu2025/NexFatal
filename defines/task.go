@@ -2,7 +2,7 @@ package defines
 
 import "context"
 
-// Task 是已保存的构建任务和导出任务的通用运行时接口
+// Task 是已保存的构建任务和导出任务的通用运行时接口。
 type Task interface {
 	SetControl(*ControlRef)
 	ID() int
@@ -19,7 +19,7 @@ type Task interface {
 	RestoreInterruptJSON(string) error
 }
 
-// ControlRef 承载 game_control.Control，但这里不直接导入 game_control 包
+// ControlRef 承载 game_control.Control，但这里不直接导入 game_control 包。
 type ControlRef struct {
-	Any any // 期望类型：*game_control.Control
+	Any any // 期望类型：*game_control.Control。
 }

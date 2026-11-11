@@ -1,8 +1,14 @@
-# 过滤 NexFatal_Storage 目录
+# 运行数据与本地备份
 NexFatal_Storage/
+NovaBuilder_Storage/
+.codex-backup/
+.codex-upstream/
+dist/
+*.exe
+cmd/cli/NexFatal_*
+auth_cookies.json
 
 .gocache/
-*.png
 
 
 # 忽略非 json 格式的所有建筑文件

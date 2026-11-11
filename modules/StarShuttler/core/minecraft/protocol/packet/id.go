@@ -5,26 +5,26 @@ const (
 	IDPlayStatus
 	IDServerToClientHandshake
 	IDClientToServerHandshake
-	IDDisconnect        //b 5
-	IDResourcePacksInfo //b 6
-	IDResourcePackStack //b 7
+	IDDisconnect
+	IDResourcePacksInfo
+	IDResourcePackStack
 	IDResourcePackClientResponse
-	IDText //b 9
+	IDText
 	IDSetTime
-	IDStartGame //b 11
-	IDAddPlayer //b 12
-	IDAddActor  //b 13
+	IDStartGame
+	IDAddPlayer
+	IDAddActor
 	IDRemoveActor
 	IDAddItemActor
 	_
 	IDTakeItemActor
 	IDMoveActorAbsolute
 	IDMovePlayer
-	IDPassengerJump
+	IDTickSync
 	IDUpdateBlock
 	IDAddPainting
-	IDTickSync
-	IDLevelSoundEventV1 // Netease: new packet
+	_
+	_
 	IDLevelEvent
 	IDBlockEvent
 	IDActorEvent
@@ -52,18 +52,18 @@ const (
 	IDInventoryContent
 	IDInventorySlot
 	IDContainerSetData
-	IDCraftingData //b 52
+	IDCraftingData
 	_
 	IDGUIDataPickItem
-	IDAdventureSettings // Netease: missing
+	IDAdventureSettings
 	IDBlockActorData
-	IDPlayerInput
+	_
 	IDLevelChunk
 	IDSetCommandsEnabled
 	IDSetDifficulty
 	IDChangeDimension
 	IDSetPlayerGameType
-	IDPlayerList //b 63
+	IDPlayerList
 	IDSimpleEvent
 	IDEvent
 	IDSpawnExperienceOrb
@@ -71,7 +71,7 @@ const (
 	IDMapInfoRequest
 	IDRequestChunkRadius
 	IDChunkRadiusUpdated
-	IDItemFrameDropItem
+	_
 	IDGameRulesChanged
 	IDCamera
 	IDBossEvent
@@ -117,10 +117,10 @@ const (
 	IDUpdateSoftEnum
 	IDNetworkStackLatency
 	_
-	IDScriptCustomEvent // Netease: missing
+	IDScriptCustomEvent
 	IDSpawnParticleEffect
 	IDAvailableActorIdentifiers
-	IDLevelSoundEventV2 // Netease: new packet
+	_
 	IDNetworkChunkPublisherUpdate
 	IDBiomeDefinitionList
 	IDLevelSoundEvent
@@ -130,8 +130,8 @@ const (
 	_
 	_
 	IDClientCacheStatus
-	IDOnScreenTextureAnimation // Netease: 131 -> 130
-	IDMapCreateLockedCopy      // Netease: 130 -> 131
+	IDOnScreenTextureAnimation
+	IDMapCreateLockedCopy
 	IDStructureTemplateDataRequest
 	IDStructureTemplateDataResponse
 	_
@@ -151,7 +151,7 @@ const (
 	IDItemStackResponse
 	IDPlayerArmourDamage
 	IDCodeBuilder
-	IDUpdatePlayerGameType //b 151
+	IDUpdatePlayerGameType
 	IDEmoteList
 	IDPositionTrackingDBServerBroadcast
 	IDPositionTrackingDBClientRequest
@@ -162,7 +162,7 @@ const (
 	IDCameraShake
 	IDPlayerFog
 	IDCorrectPlayerMovePrediction
-	IDItemComponent
+	IDItemRegistry
 	IDFilterText
 	IDClientBoundDebugRenderer
 	IDSyncActorProperty
@@ -173,7 +173,7 @@ const (
 	IDEducationResourceURI
 	IDCreatePhoto
 	IDUpdateSubChunkBlocks
-	IDPhotoInfoRequest // Netease: missing
+	IDPhotoInfoRequest
 	IDSubChunk
 	IDSubChunkRequest
 	IDClientStartItemCooldown
@@ -187,7 +187,7 @@ const (
 	IDRequestAbility
 	IDRequestPermissions
 	IDToastRequest
-	IDUpdateAbilities //b 187
+	IDUpdateAbilities
 	IDUpdateAdventureSettings
 	IDDeathInfo
 	IDEditorNetwork
@@ -197,70 +197,77 @@ const (
 	IDGameTestRequest
 	IDGameTestResults
 	IDUpdateClientInputLocks
-	IDClientCheatAbility // Netease: missing
+	IDClientCheatAbility
 	IDCameraPresets
 	IDUnlockedRecipes
-	IDPyRpc                                     // Netease: new packet
-	IDChangeModel                               // Netease: new packet
-	IDStoreBuySucc                              // Netease: new packet
-	IDNeteaseJson                               // Netease: new packet
-	IDChangeModelTexture                        // Netease: new packet
-	IDChangeModelOffset                         // Netease: new packet
-	IDChangeModelBind                           // Netease: new packet
-	IDHungerAttr                                // Netease: new packet
-	IDSetDimensionLocalTime                     // Netease: new packet
-	IDWithdrawFurnaceXp                         // Netease: new packet
-	IDSetDimensionLocalWeather                  // Netease: new packet
-	IDCustomV1                      = iota + 13 // Netease: new packet
-	IDCombine                                   // Netease: new packet
-	IDVConnection                               // Netease: new packet
-	IDTransport                                 // Netease: new packet
-	IDCustomV2                                  // Netease: new packet
-	IDConfirmSkin                               // Netease: new packet
-	IDTransportNoCompress                       // Netease: new packet
-	IDMobEffectV2                               // Netease: new packet
-	IDMobBlockActorChanged                      // Netease: new packet
-	IDChangeActorMotion                         // Netease: new packet
-	IDAnimateEmoteEntity                        // Netease: new packet
-	IDChangeBiome                               // Netease: new packet
-	IDUpdateBiome                               // Netease: new packet
-	IDSyncSkin                                  // Netease: new packet
-	IDCameraInstruction             = iota + 76 // Netease: 301 -> 300
-	IDCompressedBiomeDefinitionList             // Netease: 302 -> 301
-	IDTrimData                                  // Netease: 303 -> 302
-	IDOpenSign                                  // Netease: 304 -> 303
-	IDAgentAnimation                            // Netease: 305 -> 304
+
+	// PhoenixBuilder specific changes.
+	// Author: LNSSPsd, Liliya233, Happy2018new
+	IDPyRpc
+
+	// PhoenixBuilder specific changes.
+	// Author: Liliya233
+	_
+	_
+
+	// PhoenixBuilder specific changes.
+	// Author: Liliya233
+	// Netease: new packet
+	IDNeteaseJson
+
+	// PhoenixBuilder specific changes.
+	// Author: Liliya233
+	_
+	_
+	_
+	_
+	_
+	_
+	_
+	_ = iota + 13
+	_
+	_
+	_
+	_
+	_
+	_
+	_
+	_
+	_
+	_
+	_
+	_
+	_
+
+	// PhoenixBuilder specific changes.
+	// Author: Liliya233
+	IDCameraInstruction = iota + 76
+	_
+	IDTrimData
+	IDOpenSign
+	IDAgentAnimation
 	IDRefreshEntitlements
 	IDPlayerToggleCrafterSlotRequest
 	IDSetPlayerInventoryOptions
 	IDSetHud
 	IDAwardAchievement
 	IDClientBoundCloseForm
-	IDUnused311
-	IDServerBoundLoadingScreen = 312
-	IDJigsawStructureData      = 313
-	IDCurrentStructureFeature  = 314
-	IDServerBoundDiagnostics   = 315
-
-	// 1.21.90 additions on top of the NetEase fork.
-	IDCameraAimAssist              = 316
-	IDContainerRegistryCleanup     = 317
-	IDMovementEffect               = 318
-	IDCameraAimAssistPresets       = 320
-	IDClientCameraAimAssist        = 321
-	IDClientMovementPredictionSync = 322
-	IDUpdateClientOptions          = 323
-	IDPlayerVideoCapture           = 324
-	IDPlayerUpdateEntityOverrides  = 325
-	IDPlayerLocation               = 326
-	IDClientBoundControlSchemeSet  = 327
-	IDDebugDrawer                  = 328
-	IDServerBoundPackSettingChange = 329
-	IDUnused330                    = 330 // TODO: Implement client-bound data store.
-	IDGraphicsOverrideParameter    = 331
-	_                              = 332 // TODO: Implement server-bound data store.
+	_
+	IDServerBoundLoadingScreen
+	IDJigsawStructureData
+	IDCurrentStructureFeature
+	IDServerBoundDiagnostics
+	IDCameraAimAssist
+	IDContainerRegistryCleanup
+	IDMovementEffect
+	_
+	IDCameraAimAssistPresets
+	IDClientCameraAimAssist
+	IDClientMovementPredictionSync
+	IDUpdateClientOptions
+	IDPlayerVideoCapture
+	IDPlayerUpdateEntityOverrides
+	IDPlayerLocation
+	IDClientBoundControlSchemeSet
+	IDServerScriptDebugDrawer
 )
-
-const IDServerScriptDebugDrawer = IDDebugDrawer
-
-const IDItemRegistry = IDItemComponent

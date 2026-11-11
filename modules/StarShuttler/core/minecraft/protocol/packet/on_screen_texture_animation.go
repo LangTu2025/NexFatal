@@ -9,8 +9,7 @@ import (
 type OnScreenTextureAnimation struct {
 	// AnimationType is the type of the animation to show. The packet provides no further extra data to allow
 	// modifying the duration or other properties of the animation.
-	// Netease
-	AnimationType uint32
+	AnimationType int32
 }
 
 // ID ...
@@ -19,5 +18,5 @@ func (*OnScreenTextureAnimation) ID() uint32 {
 }
 
 func (pk *OnScreenTextureAnimation) Marshal(io protocol.IO) {
-	io.Uint32(&pk.AnimationType) // For Netease
+	io.Int32(&pk.AnimationType)
 }

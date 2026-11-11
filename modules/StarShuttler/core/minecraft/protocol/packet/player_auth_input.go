@@ -6,7 +6,11 @@ import (
 	"github.com/go-gl/mathgl/mgl32"
 )
 
-const PlayerAuthInputBitsetSize = 65
+// PhoenixBuilder specific changes.
+// Author: Happy2018new
+//
+// const PlayerAuthInputBitsetSize = 65
+const PlayerAuthInputBitsetSize = 66
 
 const (
 	InputFlagAscend = iota
@@ -53,14 +57,13 @@ const (
 	InputFlagStopCrawling
 	InputFlagStartFlying
 	InputFlagStopFlying
+	InputFlagClientAckServerData
 
 	// PhoenixBuilder specific constants.
 	// Author: Happy2018new, Liliya233
 	//
-	// InputFlagClientAckServerData is in InputFlagUnknown1
-	// or InputFlagUnknown2, but we don't know
-	InputFlagUnknown1
-	InputFlagUnknown2
+	// NetEase
+	InputFlagUnknown
 
 	InputFlagClientPredictedVehicle
 	InputFlagPaddlingLeft
@@ -202,8 +205,7 @@ func (pk *PlayerAuthInput) Marshal(io protocol.IO) {
 	// PhoenixBuilder specific changes.
 	// Author: Liliya233
 	//
-	// NetEase: mCameraDeparted should be true when sending PlayerAuthInput.
-	pk.Unknown3 = true
+	// NetEase
 	io.Bool(&pk.Unknown3)
 
 	if pk.InputData.Load(InputFlagPerformItemInteraction) {
@@ -232,13 +234,9 @@ func (pk *PlayerAuthInput) Marshal(io protocol.IO) {
 	//
 	// NetEase
 	{
-		// NetEase: mReadyPosDeltaDirty should be true when sending PlayerAuthInput.
-		pk.Unknown5 = true
 		io.Bool(&pk.Unknown5)
 		io.Float32(&pk.Unknown1)
 		io.Float32(&pk.Unknown2)
-		// NetEase: mThirdPersonPerspective should be true when sending PlayerAuthInput.
-		pk.Unknown4 = true
 		io.Bool(&pk.Unknown4)
 		io.Bool(&pk.Unknown6)
 		io.ByteFloat(&pk.Unknown7)

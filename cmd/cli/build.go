@@ -20,8 +20,8 @@ import (
 	"github.com/LangTu2025/NexFatal/utils"
 	convertpkg "github.com/LangTu2025/NexFatal/utils/convert"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
-	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
-	wsstructure "github.com/xingbaiawa/LycorisFlow/structure"
+	wsdefine "github.com/Yeah114/WaterStructure/define"
+	wsstructure "github.com/Yeah114/WaterStructure/structure"
 )
 
 func runBuildQueue(ctx context.Context, serverConfig defines.ControlConfig, tasks []defines.BuildTaskConfig) error {
@@ -242,6 +242,7 @@ func collectBuildTasks() ([]defines.BuildTaskConfig, error) {
 }
 
 func collectBuildTask(previous *defines.BuildTaskConfig) (defines.BuildTaskConfig, error) {
+	ui.Section("建筑设置", "选择源文件、起点、维度和构建选项")
 	task := *defines.NewBuildTaskConfig()
 
 	filePath, err := pickStructureFile()
@@ -267,7 +268,6 @@ func collectBuildTask(previous *defines.BuildTaskConfig) (defines.BuildTaskConfi
 		task.Speed = previous.Speed
 		task.RegionSize = previous.RegionSize
 		task.VerifyRegion = previous.VerifyRegion
-		task.VerifyCommandBlocks = previous.VerifyCommandBlocks
 		task.AutoPlaceLight = previous.AutoPlaceLight
 		task.LightSpacing = previous.LightSpacing
 		task.StartChunk = previous.StartChunk
@@ -287,7 +287,6 @@ func collectBuildTask(previous *defines.BuildTaskConfig) (defines.BuildTaskConfi
 		task.LightSpacing = ui.InputInfoIntWithDefault("亮度方块最小间距(3~12):", defines.DefaultLightSpacing)
 	}
 	task.VerifyRegion = ui.ConfirmInfoWithDefault(loc.Text(loc.KeyBuildPromptVerifyIntegrity), true)
-	task.VerifyCommandBlocks = ui.ConfirmInfoWithDefault(loc.Text(loc.KeyBuildPromptVerifyCommandBlocks), true)
 	setResumeStart(&task, readResumeStart(task.FilePath))
 	task.Normalize()
 	return task, nil
@@ -334,23 +333,32 @@ func pickStructureFile() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(files) == 0 {
-		return "", loc.Err(loc.KeyBuildFileNotFound)
-	}
-
 	labels := importFileLabels(files)
-	fmt.Println(loc.Text(loc.KeyBuildFileSelect))
+	options := make([]ui.MenuOption, 0, len(files)+1)
 	for i, label := range labels {
-		fmt.Printf("  [%d] %s\n", i+1, label)
+		options = append(options, ui.MenuOption{ID: strconv.Itoa(i + 1), Label: label})
 	}
-
+	if len(files) == 0 {
+		ui.Empty("还没有找到建筑文件", "将文件放入 "+utils.GetImportFileDir()+"，或直接输入文件路径")
+	}
+	options = append(options, ui.MenuOption{ID: "0", Label: "手动输入文件路径", Description: "支持粘贴带空格或引号的路径"})
+	id := ui.SelectID(loc.Text(loc.KeyBuildFileSelect), options, "")
+	if id != "0" {
+		index, _ := strconv.Atoi(id)
+		return files[index-1], nil
+	}
 	for {
-		raw := strings.TrimSpace(ui.Input("  (ID): "))
-		index, err := strconv.Atoi(raw)
-		if err == nil && index >= 1 && index <= len(files) {
-			return files[index-1], nil
+		path := filepath.Clean(strings.Trim(strings.TrimSpace(ui.InputInfo("建筑文件路径")), "\"'"))
+		info, err := os.Stat(path)
+		if err != nil {
+			ui.Warn("无法读取文件：" + err.Error())
+			continue
 		}
-		fmt.Println(loc.Text(loc.KeyUIInvalidSelection))
+		if !info.Mode().IsRegular() || !supportedImportFile(path) {
+			ui.Warn("请选择受支持的建筑文件，例如 .mcworld、.bdx、.schem 或 .mcstructure")
+			continue
+		}
+		return path, nil
 	}
 }
 
@@ -394,6 +402,40 @@ func scanImportFiles() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The storage directory is skipped above; scan its dedicated import folder explicitly.
+	seen := make(map[string]bool, len(files))
+	for _, path := range files {
+		absolute, _ := filepath.Abs(path)
+		seen[strings.ToLower(absolute)] = true
+	}
+	importRoot := utils.GetImportFileDir()
+	if err := filepath.Walk(importRoot, func(path string, info os.FileInfo, walkErr error) error {
+		if os.IsNotExist(walkErr) {
+			return nil
+		}
+		if walkErr != nil {
+			return walkErr
+		}
+		if !info.Mode().IsRegular() || !supportedImportFile(info.Name()) {
+			return nil
+		}
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return err
+		}
+		key := strings.ToLower(absolute)
+		if !seen[key] {
+			label, err := filepath.Rel(root, absolute)
+			if err != nil {
+				label = absolute
+			}
+			files = append(files, label)
+			seen[key] = true
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
 
 	sort.Slice(files, func(i, j int) bool {
 		leftDepth := pathPartCount(files[i])
@@ -424,6 +466,14 @@ func skipImportDir(rel string) bool {
 	parts := strings.Split(rel, string(os.PathSeparator))
 	if len(parts) == 0 {
 		return false
+	}
+	if strings.HasPrefix(parts[0], ".") {
+		return true
+	}
+	storage, _ := filepath.Abs(utils.GetStoragePath())
+	candidate, _ := filepath.Abs(rel)
+	if strings.EqualFold(candidate, storage) {
+		return true
 	}
 
 	switch parts[0] {

@@ -24,7 +24,6 @@ import (
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/resource"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/text"
-	"github.com/xingbaiawa/StarShuttler/core/termlog"
 
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
@@ -61,20 +60,14 @@ type Conn struct {
 	log         *slog.Logger
 	authEnabled bool
 
-	proto                     Protocol
-	acceptedProto             []Protocol
-	pool                      packet.Pool
-	enc                       *packet.Encoder
-	dec                       *packet.Decoder
-	compression               packet.Compression
-	maxDecompressedLen        int
-	targetCompressionEnvelope bool
-	// localLobbyCompression selects the NexusEgo_v2.1.2 本地联机 (TanLobby)
-	// compression wire format: no per-batch compression-ID byte is ever read or
-	// written. Keep this scoped to the local-lobby dial path so the 3.8-aligned
-	// online paths (rental / network / 山头 / 联机大厅) keep their own wire format.
-	localLobbyCompression bool
-	readerLimits          bool
+	proto              Protocol
+	acceptedProto      []Protocol
+	pool               packet.Pool
+	enc                *packet.Encoder
+	dec                *packet.Decoder
+	compression        packet.Compression
+	maxDecompressedLen int
+	readerLimits       bool
 
 	disconnectOnUnknownPacket bool
 	disconnectOnInvalidPacket bool
@@ -739,8 +732,8 @@ func (conn *Conn) handleRequestNetworkSettings(pk *packet.RequestNetworkSettings
 		return fmt.Errorf("send NetworkSettings: %w", err)
 	}
 	_ = conn.Flush()
-	conn.enc.EnableCompression(conn.compression)
-	conn.dec.EnableCompressionWithLimit(conn.compression, conn.maxDecompressedLen)
+	conn.enc.EnableCompression(conn.compression.EncodeCompression())
+	conn.dec.EnableCompression(conn.maxDecompressedLen, true)
 	return nil
 }
 
@@ -751,19 +744,11 @@ func (conn *Conn) handleNetworkSettings(pk *packet.NetworkSettings) error {
 		return fmt.Errorf("unknown compression algorithm %v", pk.CompressionAlgorithm)
 	}
 	alg := compressFunc()
-	if conn.localLobbyCompression {
-		// 本地联机 (TanLobby) — align byte-for-byte with NexusEgo_v2.1.2:
-		// never read or write a per-batch compression-ID byte.
-		conn.enc.EnableCompression(alg)
-		conn.dec.EnableCompressionWithLimit(alg, conn.maxDecompressedLen)
-	} else {
-		// Online paths (rental / network / 山头 / 联机大厅) — align with Fatalder
-		// 3.8: for a non-NetEase algorithm the ID byte is symmetrically written
-		// and read; NetEase compression carries no such byte.
-		withID := alg.EncodeCompression() != packet.CompressionAlgorithmNetEase
-		conn.enc.EnableCompressionWithID(alg, withID)
-		conn.dec.EnableCompressionWithID(alg, withID, conn.maxDecompressedLen)
-	}
+	conn.enc.EnableCompression(alg.EncodeCompression())
+	conn.dec.EnableCompression(
+		conn.maxDecompressedLen,
+		alg.EncodeCompression() != packet.CompressionAlgorithmNetEase,
+	)
 	conn.readyToLogin = true
 	return nil
 }
@@ -807,7 +792,7 @@ func (conn *Conn) handleClientToServerHandshake() error {
 	pk := &packet.ResourcePacksInfo{TexturePackRequired: conn.texturePacksRequired}
 	for _, pack := range conn.resourcePacks {
 		texturePack := protocol.TexturePackInfo{
-			UUID:        pack.UUIDValue(),
+			UUID:        pack.UUID(),
 			Version:     pack.Version(),
 			Size:        uint64(pack.Len()),
 			DownloadURL: pack.DownloadURL(),
@@ -868,7 +853,6 @@ func (conn *Conn) handleServerToClientHandshake(pk *packet.ServerToClientHandsha
 	conn.dec.EnableEncryption(keyBytes)
 
 	// We write a ClientToServerHandshake packet (which has no payload) as a response.
-	termlog.LoginInfo("正在向 Minecraft 服务器确认握手请求")
 	_ = conn.WritePacket(&packet.ClientToServerHandshake{})
 	return nil
 }
@@ -985,7 +969,7 @@ func (conn *Conn) hasPack(uuid string, version string, hasBehaviours bool) bool 
 		}
 	}
 	for _, pack := range conn.resourcePacks {
-		if pack.UUID() == uuid && pack.Version() == version && pack.HasBehaviours() == hasBehaviours {
+		if pack.UUID().String() == uuid && pack.Version() == version && pack.HasBehaviours() == hasBehaviours {
 			return true
 		}
 	}
@@ -1017,7 +1001,13 @@ func (conn *Conn) handleResourcePackClientResponse(pk *packet.ResourcePackClient
 	case packet.PackResponseAllPacksDownloaded:
 		pk := &packet.ResourcePackStack{BaseGameVersion: protocol.CurrentVersion, Experiments: []protocol.ExperimentData{{Name: "cameras", Enabled: true}}}
 		for _, pack := range conn.resourcePacks {
-			resourcePack := protocol.StackResourcePack{UUID: pack.UUID(), Version: pack.Version()}
+			resourcePack := protocol.StackResourcePack{UUID: pack.UUID().String(), Version: pack.Version()}
+			// If it has behaviours, add it to the behaviour pack list. If not, we add it to the texture packs
+			// list.
+			if pack.HasBehaviours() {
+				pk.BehaviourPacks = append(pk.BehaviourPacks, resourcePack)
+				continue
+			}
 			pk.TexturePacks = append(pk.TexturePacks, resourcePack)
 		}
 		for _, exempted := range exemptedPacks {
@@ -1206,7 +1196,7 @@ func (conn *Conn) handleResourcePackChunkData(pk *packet.ResourcePackChunkData) 
 // pack to be downloaded.
 func (conn *Conn) handleResourcePackChunkRequest(pk *packet.ResourcePackChunkRequest) error {
 	current := conn.packQueue.currentPack
-	if current.UUID() != pk.UUID {
+	if current.UUID().String() != pk.UUID {
 		return fmt.Errorf("expected pack UUID %v, but got %v", current.UUID(), pk.UUID)
 	}
 	if conn.packQueue.currentOffset != uint64(pk.ChunkIndex)*packChunkSize {

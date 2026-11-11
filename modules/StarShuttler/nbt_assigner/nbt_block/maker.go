@@ -43,7 +43,6 @@ func NBTBlockIsSupported(block nbt_parser_interface.Block) bool {
 	case *nbt_parser_block.Lectern:
 	case *nbt_parser_block.JukeBox:
 	case *nbt_parser_block.BrewingStand:
-	case *nbt_parser_block.Crafter:
 	case *nbt_parser_block.Skull:
 	case *nbt_parser_block.FlowerPot:
 	case *nbt_parser_block.Cauldron:
@@ -61,9 +60,6 @@ func NBTBlockIsSupported(block nbt_parser_interface.Block) bool {
 	case *nbt_parser_block.Piston:
 	case *nbt_parser_block.Door:
 	case *nbt_parser_block.Bed:
-	case *nbt_parser_block.Shelf:
-	case *nbt_parser_block.CopperGolemStatue:
-	case *nbt_parser_block.FenceGate:
 	default:
 		return false
 	}
@@ -270,29 +266,6 @@ func placeNBTBlock(
 			console: console,
 			data:    *block,
 		}
-	case *nbt_parser_block.Shelf:
-		method = &Shelf{
-			console: console,
-			cache:   cache,
-			data:    *block,
-		}
-	case *nbt_parser_block.CopperGolemStatue:
-		method = &CopperGolemStatue{
-			console: console,
-			data:    *block,
-		}
-	case *nbt_parser_block.FenceGate:
-		method = &FenceGate{
-			console: console,
-			data:    *block,
-		}
-	}
-
-	if method == nil {
-		return false, uuid.UUID{}, protocol.BlockPos{}, fmt.Errorf(
-			"不支持制作 NBT 方块 %s",
-			nbtBlock.BlockName(),
-		)
 	}
 
 	// 放置相应方块

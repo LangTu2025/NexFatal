@@ -3,9 +3,7 @@ package nbt_block
 import (
 	"fmt"
 	"sync"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
 	"github.com/xingbaiawa/StarShuttler/game_control/game_interface"
@@ -23,7 +21,6 @@ func simpleStructureGetterByOffset(console *nbt_console.Console, offset protocol
 		api         *game_interface.GameInterface = console.API()
 		resp        *packet.StructureTemplateDataResponse
 		terminalErr error
-		requestName = "mystructure:neomega_nbt_" + uuid.NewString()
 	)
 	defer func() {
 		if r := recover(); r != nil {
@@ -36,22 +33,12 @@ func simpleStructureGetterByOffset(console *nbt_console.Console, offset protocol
 	uniqueID, err := api.PacketListener().ListenPacket(
 		[]uint32{packet.IDStructureTemplateDataResponse},
 		func(p packet.Packet, connCloseErr error) {
-			if connCloseErr != nil || p == nil {
-				doOnce.Do(func() {
-					terminalErr = connCloseErr
-					if terminalErr == nil {
-						terminalErr = fmt.Errorf("neomega closed")
-					}
-					close(channel)
-				})
-				return
-			}
-			response, ok := p.(*packet.StructureTemplateDataResponse)
-			if !ok || response.StructureName != requestName {
-				return
-			}
 			doOnce.Do(func() {
-				resp = response
+				if connCloseErr != nil {
+					terminalErr = connCloseErr
+				} else {
+					resp = p.(*packet.StructureTemplateDataResponse)
+				}
 				close(channel)
 			})
 		},
@@ -63,7 +50,7 @@ func simpleStructureGetterByOffset(console *nbt_console.Console, offset protocol
 
 	err = api.Resources().WritePacket(
 		&packet.StructureTemplateDataRequest{
-			StructureName: requestName,
+			StructureName: "mystructure:simpleStructureGetter",
 			Position:      console.BlockPosByOffset(offset),
 			Settings: protocol.StructureSettings{
 				PaletteName:               "default",
@@ -85,18 +72,9 @@ func simpleStructureGetterByOffset(console *nbt_console.Console, offset protocol
 		return nil, fmt.Errorf("simpleStructureGetterByOffset: %v", err)
 	}
 
-	timer := time.NewTimer(game_interface.DefaultTimeoutCommandRequest)
-	defer timer.Stop()
-	select {
-	case <-channel:
-	case <-timer.C:
-		return nil, fmt.Errorf("simpleStructureGetterByOffset: structure request timed out")
-	}
+	<-channel
 	if terminalErr != nil {
 		return nil, fmt.Errorf("simpleStructureGetterByOffset: %v", terminalErr)
-	}
-	if !resp.Success {
-		return nil, fmt.Errorf("simpleStructureGetterByOffset: structure request failed")
 	}
 
 	m := resp.StructureTemplate

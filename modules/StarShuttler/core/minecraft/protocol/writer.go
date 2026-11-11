@@ -10,10 +10,17 @@ import (
 	"sort"
 	"unsafe"
 
+	"github.com/xingbaiawa/StarShuttler/core/minecraft/nbt"
+
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/google/uuid"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/internal"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/nbt"
+
+	// PhoenixBuilder specific changes.
+	// Changes Maker: Liliya233
+	// Committed by Happy2018new.
+	//
+	// A Python library which named "msgpack"
+	"github.com/ugorji/go/codec"
 )
 
 // Writer implements writing methods for data types from Minecraft packets. Each Packet implementation has one
@@ -102,6 +109,14 @@ func (w *Writer) BlockPos(x *BlockPos) {
 	w.Varint32(&x[2])
 }
 
+// UBlockPos writes a BlockPos as 2 varint32s and a varuint32 to the underlying buffer.
+func (w *Writer) UBlockPos(x *BlockPos) {
+	w.Varint32(&x[0])
+	y := uint32(x[1])
+	w.Varuint32(&y)
+	w.Varint32(&x[2])
+}
+
 // ChunkPos writes a ChunkPos as 2 varint32s to the underlying buffer.
 func (w *Writer) ChunkPos(x *ChunkPos) {
 	w.Varint32(&x[0])
@@ -118,7 +133,7 @@ func (w *Writer) SubChunkPos(x *SubChunkPos) {
 // SoundPos writes an mgl32.Vec3 that serves as a position for a sound.
 func (w *Writer) SoundPos(x *mgl32.Vec3) {
 	b := BlockPos{int32((*x)[0] * 8), int32((*x)[1] * 8), int32((*x)[2] * 8)}
-	w.BlockPos(&b)
+	w.UBlockPos(&b)
 }
 
 // RGB writes a color.RGBA x as 3 float32s to the underlying buffer.
@@ -173,7 +188,14 @@ func (w *Writer) PlayerInventoryAction(x *UseItemTransactionData) {
 	Slice(w, &x.Actions)
 	w.Varuint32(&x.ActionType)
 	w.Varuint32(&x.TriggerType)
+
+	// PhoenixBuilder specific changes.
+	// Author: Happy2018new
+	//
+	// This is a mistake of upstream.
 	w.UBlockPos(&x.BlockPosition)
+	// w.BlockPos(&x.BlockPosition)
+
 	w.Varint32(&x.BlockFace)
 	w.Varint32(&x.HotBarSlot)
 	w.ItemInstance(&x.HeldItem)
@@ -194,60 +216,23 @@ func (w *Writer) GameRule(x *GameRule) {
 		w.Varuint32(&id)
 		w.Bool(&v)
 	case uint32:
+		// PhoenixBuilder specific changes.
+		// Author: Happy2018new, CoozillaX
 		id := uint32(2)
+		val := int32(v)
 		w.Varuint32(&id)
-		w.Uint32(&v)
+		w.Varint32(&val)
+		/*
+			id := uint32(2)
+			w.Varuint32(&id)
+			w.Varuint32(&v)
+		*/
 	case float32:
 		id := uint32(3)
 		w.Varuint32(&id)
 		w.Float32(&v)
 	default:
 		w.UnknownEnumOption(fmt.Sprintf("%T", v), "game rule type")
-	}
-}
-
-// GameRuleLegacy writes a legacy GameRule x to the Writer.
-func (w *Writer) GameRuleLegacy(x *GameRule) {
-	w.String(&x.Name)
-	w.Bool(&x.CanBeModifiedByPlayer)
-
-	switch v := x.Value.(type) {
-	case bool:
-		id := uint32(1)
-		w.Varuint32(&id)
-		w.Bool(&v)
-	case uint32:
-		id := uint32(2)
-		w.Varuint32(&id)
-		w.Varuint32(&v)
-	case float32:
-		id := uint32(3)
-		w.Varuint32(&id)
-		w.Float32(&v)
-	default:
-		w.UnknownEnumOption(fmt.Sprintf("%T", v), "game rule type")
-	}
-}
-
-// PackSetting writes a PackSetting x to the underlying buffer.
-func (w *Writer) PackSetting(x *PackSetting) {
-	w.String(&x.Name)
-	var id uint32
-	switch val := x.Value.(type) {
-	case float32:
-		id = PackSettingTypeFloat
-		w.Varuint32(&id)
-		w.Float32(&val)
-	case bool:
-		id = PackSettingTypeBool
-		w.Varuint32(&id)
-		w.Bool(&val)
-	case string:
-		id = PackSettingTypeString
-		w.Varuint32(&id)
-		w.String(&val)
-	default:
-		w.UnknownEnumOption(x.Value, "pack setting")
 	}
 }
 
@@ -342,9 +327,22 @@ func (w *Writer) ItemDescriptorCount(i *ItemDescriptorCount) {
 func (w *Writer) ItemInstance(i *ItemInstance) {
 	x := &i.Stack
 	w.Varint32(&x.NetworkID)
-	if x.NetworkID == 0 || x.NetworkID == -1 {
-		// The item was air, so there's no more data to follow. Return immediately.
-		return
+
+	// PhoenixBuilder specific changes.
+	// Author: Happy2018new
+	{
+		switch x.NetworkID {
+		case 0, -1:
+			// The item was air, so there's no more data to follow. Return immediately.
+			// 当 x.NetworkID 为 -1 时代表当前槽位的物品未更改，因此无需写入后续数据，直接跳过即可。
+			return
+		}
+		/*
+			if x.NetworkID == 0 {
+				// The item was air, so there's no more data to follow. Return immediately.
+				return
+			}
+		*/
 	}
 
 	w.Uint16(&x.Count)
@@ -358,13 +356,8 @@ func (w *Writer) ItemInstance(i *ItemInstance) {
 	}
 
 	w.Varint32(&x.BlockRuntimeID)
-	buf := internal.BufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
-	defer func() {
-		buf.Reset()
-		internal.BufferPool.Put(buf)
-	}()
 
+	buf := new(bytes.Buffer)
 	bufWriter := NewWriter(buf, w.shieldID)
 
 	var length int16
@@ -394,7 +387,7 @@ func (w *Writer) ItemInstance(i *ItemInstance) {
 // Item writes an ItemStack x to the underlying buffer.
 func (w *Writer) Item(x *ItemStack) {
 	w.Varint32(&x.NetworkID)
-	if x.NetworkID == 0 || x.NetworkID == -1 {
+	if x.NetworkID == 0 {
 		// The item was air, so there's no more data to follow. Return immediately.
 		return
 	}
@@ -403,13 +396,8 @@ func (w *Writer) Item(x *ItemStack) {
 	w.Varuint32(&x.MetadataValue)
 	w.Varint32(&x.BlockRuntimeID)
 
-	buf := internal.BufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
-	defer func() {
-		buf.Reset()
-		internal.BufferPool.Put(buf)
-	}()
-
+	var extraData []byte
+	buf := bytes.NewBuffer(extraData)
 	bufWriter := NewWriter(buf, w.shieldID)
 
 	var length int16
@@ -432,7 +420,7 @@ func (w *Writer) Item(x *ItemStack) {
 		bufWriter.Int64(&blockingTick)
 	}
 
-	extraData := buf.Bytes()
+	extraData = buf.Bytes()
 	w.ByteSlice(&extraData)
 }
 
@@ -467,24 +455,9 @@ func (w *Writer) Recipe(x *Recipe) {
 func (w *Writer) EventType(x *Event) {
 	var t int32
 	if !lookupEventType(*x, &t) {
-		w.UnknownEnumOption(*x, "event packet event type")
+		w.UnknownEnumOption(fmt.Sprintf("%T", x), "event packet event type")
 	}
 	w.Varint32(&t)
-}
-
-// EventOrdinal writes an Event ordinal to the writer.
-func (w *Writer) EventOrdinal(x *Event) {
-	var ordinal uint32
-	if !lookupEventOrdinal(*x, &ordinal) {
-		w.UnknownEnumOption(*x, "event packet event ordinal")
-		return
-	}
-	w.Varuint32(&ordinal)
-}
-
-// StringConst writes a string constant to the writer.
-func (w *Writer) StringConst(value string) {
-	w.String(&value)
 }
 
 // TransactionDataType writes an InventoryTransactionData type to the writer.
@@ -516,7 +489,6 @@ func (w *Writer) AbilityValue(x *any) {
 
 var varintMaxByteValue = big.NewInt(0x80)
 
-// Bitset writes a Bitset x to the underlying buffer.
 func (w *Writer) Bitset(x *Bitset, size int) {
 	if x.size != size {
 		w.panicf("bitset size mismatch: expected %v, got %v", size, x.size)
@@ -536,6 +508,18 @@ func (w *Writer) Bitset(x *Bitset, size int) {
 	_ = w.w.WriteByte(byte(u.Bits()[0]))
 }
 
+// PhoenixBuilder specific func.
+// Author: Liliya233, CMA2041PT, Happy2018new
+//
+// Netease's Python MsgPack
+func (w *Writer) MsgPack(x *any) {
+	var msgPackBytes []byte
+	if err := codec.NewEncoderBytes(&msgPackBytes, &codec.MsgpackHandle{}).Encode(x); err != nil {
+		panic(fmt.Sprintf("(w *Writer) MsgPack: %v", err))
+	}
+	w.ByteSlice(&msgPackBytes)
+}
+
 // Varint64 writes an int64 as 1-10 bytes to the underlying buffer.
 func (w *Writer) Varint64(x *int64) {
 	u := *x
@@ -552,30 +536,6 @@ func (w *Writer) Varint64(x *int64) {
 
 // Varuint64 writes a uint64 as 1-10 bytes to the underlying buffer.
 func (w *Writer) Varuint64(x *uint64) {
-	u := *x
-	for u >= 0x80 {
-		_ = w.w.WriteByte(byte(u) | 0x80)
-		u >>= 7
-	}
-	_ = w.w.WriteByte(byte(u))
-}
-
-// Varint16 writes an int16 as 1-3 bytes to the underlying buffer.
-func (w *Writer) Varint16(x *int16) {
-	u := *x
-	ux := uint16(u) << 1
-	if u < 0 {
-		ux = ^ux
-	}
-	for ux >= 0x80 {
-		_ = w.w.WriteByte(byte(ux) | 0x80)
-		ux >>= 7
-	}
-	_ = w.w.WriteByte(byte(ux))
-}
-
-// Varuint16 writes a uint16 as 1-3 bytes to the underlying buffer.
-func (w *Writer) Varuint16(x *uint16) {
 	u := *x
 	for u >= 0x80 {
 		_ = w.w.WriteByte(byte(u) | 0x80)
@@ -629,7 +589,7 @@ func (w *Writer) ShieldID() int32 {
 
 // UnknownEnumOption panics with an unknown enum option error.
 func (w *Writer) UnknownEnumOption(value any, enum string) {
-	w.panicf("unknown value '%#v' for enum type '%v'", value, enum)
+	w.panicf("unknown value '%v' for enum type '%v'", value, enum)
 }
 
 // InvalidValue panics with an invalid value error.

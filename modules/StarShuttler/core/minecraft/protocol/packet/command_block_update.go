@@ -51,12 +51,12 @@ type CommandBlockUpdate struct {
 	// ShouldTrackOutput specifies if the command block tracks output. If set to false, the output box won't
 	// be shown within the command block.
 	ShouldTrackOutput bool
-	// TickDelay is the delay in ticks between executions of a command block, if it is a repeating command
-	// block.
-	TickDelay uint32
 	// ExecuteOnFirstTick specifies if the command block should execute on the first tick, AKA as soon as the
 	// command block is enabled.
 	ExecuteOnFirstTick bool
+	// TickDelay is the delay in ticks between executions of a command block, if it is a repeating command
+	// block.
+	TickDelay int32
 }
 
 // ID ...
@@ -79,6 +79,6 @@ func (pk *CommandBlockUpdate) Marshal(io protocol.IO) {
 	io.String(&pk.Name)
 	io.String(&pk.FilteredName)
 	io.Bool(&pk.ShouldTrackOutput)
-	io.Uint32(&pk.TickDelay)
+	io.Int32(&pk.TickDelay)
 	io.Bool(&pk.ExecuteOnFirstTick)
 }

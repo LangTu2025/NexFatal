@@ -10,8 +10,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/xingbaiawa/g79client"
-	"github.com/xingbaiawa/g79client/account/mpay"
+	"github.com/Yeah114/g79client"
+	"github.com/Yeah114/g79client/account/mpay"
 )
 
 func main() {

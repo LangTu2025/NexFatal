@@ -24,7 +24,7 @@ func (conn *Conn) wrap(err error, op string) error {
 
 // DisconnectError is an error returned by operations from Conn when the connection is closed by the other
 // end through a packet.Disconnect. It is wrapped in a net.OpError and may be obtained using
-// errors.Unwrap(net.OpError)by yuansi&langtu give @2026.8.4.
+// errors.Unwrap(net.OpError).
 type DisconnectError string
 
 // Error returns the message held in the packet.Disconnect.

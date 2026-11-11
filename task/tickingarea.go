@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	game_control "github.com/LangTu2025/NexFatal/control"
+	"github.com/LangTu2025/NexFatal/control"
 	"github.com/LangTu2025/NexFatal/utils"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
@@ -52,8 +52,8 @@ func (b *BuildTask) saveAndClearTickingAreas(ctx context.Context, ctrl *game_con
 		return nil, nil
 	}
 
-	// 只有常加载区数量明显偏多时才备份并清空，避免误动用户正常使用的小范围常加载区
-	// 备份写入磁盘，后续即使进入修补模式，也能按本次导入前的状态恢复
+	// 只有常加载区数量明显偏多时才备份并清空，避免误动用户正常使用的小范围常加载区。
+	// 备份写入磁盘，后续即使进入修补模式，也能按本次导入前的状态恢复。
 	if err := ctrl.SendSettingsDimensionCommand("overworld", "gamerule commandblockoutput false"); err != nil {
 		return nil, loc.Errf(loc.KeyTickingAreaDisableCommandBlockOutputFailed, err)
 	}
@@ -115,7 +115,7 @@ func (b *BuildTask) restoreSavedTickingAreas(ctrl *game_control.Control, backup 
 		return nil
 	}
 
-	// 恢复时逐条重放 tickingarea add，并单独恢复 preload 状态
+	// 恢复时逐条重放 tickingarea add，并单独恢复 preload 状态。
 	for _, entry := range backup.Entries {
 		cmd := entry.addCommand()
 		if err := ctrl.SendSettingsDimensionCommand("overworld", cmd); err != nil {
@@ -153,7 +153,7 @@ func loadAreaOutputLines(resp *packet.CommandOutput) []string {
 func parseLoadAreas(lines []string) []tickingAreaEntry {
 	entries := make([]tickingAreaEntry, 0)
 	for _, line := range lines {
-		// 网易返回的是本地化 key 文本，不是稳定 JSON；这里分别兼容圆形和矩形常加载区
+		// 网易返回的是本地化 key 文本，不是稳定 JSON；这里分别兼容圆形和矩形常加载区。
 		if circleMatch := tickingAreaCircleLinePattern.FindStringSubmatch(line); len(circleMatch) > 0 {
 			centerX, err1 := strconv.ParseInt(circleMatch[2], 10, 32)
 			centerY, err2 := strconv.ParseInt(circleMatch[3], 10, 32)

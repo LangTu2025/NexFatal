@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/xingbaiawa/g79client/example/login"
+	"github.com/Yeah114/g79client/example/login"
 )
 
 func main() {

@@ -79,39 +79,6 @@ const (
 	BiomeExpressionReturn
 	BiomeExpressionComma
 	BiomeExpressionThis
-	BiomeExpressionNonEvaluatedArray
-	BiomeExpressionInverseLerp
-	BiomeExpressionEaseInQuad
-	BiomeExpressionEaseOutQuad
-	BiomeExpressionEaseInOutQuad
-	BiomeExpressionEaseInCubic
-	BiomeExpressionEaseOutCubic
-	BiomeExpressionEaseInOutCubic
-	BiomeExpressionEaseInQuart
-	BiomeExpressionEaseOutQuart
-	BiomeExpressionEaseInOutQuart
-	BiomeExpressionEaseInQuint
-	BiomeExpressionEaseOutQuint
-	BiomeExpressionEaseInOutQuint
-	BiomeExpressionEaseInSine
-	BiomeExpressionEaseOutSine
-	BiomeExpressionEaseInOutSine
-	BiomeExpressionEaseInExpo
-	BiomeExpressionEaseOutExpo
-	BiomeExpressionEaseInOutExpo
-	BiomeExpressionEaseInCirc
-	BiomeExpressionEaseOutCirc
-	BiomeExpressionEaseInOutCirc
-	BiomeExpressionEaseInBounce
-	BiomeExpressionEaseOutBounce
-	BiomeExpressionEaseInOutBounce
-	BiomeExpressionEaseInBack
-	BiomeExpressionEaseOutBack
-	BiomeExpressionEaseInOutBack
-	BiomeExpressionEaseInElastic
-	BiomeExpressionEaseOutElastic
-	BiomeExpressionEaseInOutElastic
-	BiomeExpressionCount
 )
 
 const (
@@ -138,22 +105,36 @@ const (
 type BiomeDefinition struct {
 	// NameIndex represents the index of the biome name in the string list.
 	NameIndex int16
-	// BiomeID is the biome ID.
-	BiomeID int16
+	// BiomeID is the biome ID. This is optional and can be empty.
+	BiomeID Optional[uint16]
 	// Temperature is the temperature of the biome, used for weather, biome behaviours and sky colour.
 	Temperature float32
 	// Downfall is the amount that precipitation affects colours and block changes.
 	Downfall float32
-	// FoliageSnow is the progression factor for foliage turning white due to snow.
-	FoliageSnow float32
-	// Depth is the depth of the biome.
+	// RedSporeDensity is the density of red spore precipitation visuals.
+	RedSporeDensity float32
+	// BlueSporeDensity is the density of blue spore precipitation visuals.
+	BlueSporeDensity float32
+	// AshDensity is the density of ash precipitation visuals.
+	AshDensity float32
+	// WhiteAshDensity is the density of white ash precipitation visuals.
+	WhiteAshDensity float32
+	// Depth ...
 	Depth float32
-	// Scale is the scale of the biome.
+	// Scale ...
 	Scale float32
 	// MapWaterColour is an ARGB value for the water colour on maps in the biome.
 	MapWaterColour int32
 	// Rain is true if the biome has rain, false if it is a dry biome.
 	Rain bool
+
+	// PhoenixBuilder specific fields.
+	// Author: Happy2018new
+	//
+	// Netease
+	Dimension int32
+	Vanilla   string
+
 	// Tags are a list of indices of tags in the string list. These are used to group biomes together for
 	// biome generation and other purposes.
 	Tags Optional[[]uint16]
@@ -165,14 +146,25 @@ type BiomeDefinition struct {
 
 func (x *BiomeDefinition) Marshal(r IO) {
 	r.Int16(&x.NameIndex)
-	r.Int16(&x.BiomeID)
+	OptionalFunc(r, &x.BiomeID, r.Uint16)
 	r.Float32(&x.Temperature)
 	r.Float32(&x.Downfall)
-	r.Float32(&x.FoliageSnow)
+	r.Float32(&x.RedSporeDensity)
+	r.Float32(&x.BlueSporeDensity)
+	r.Float32(&x.AshDensity)
+	r.Float32(&x.WhiteAshDensity)
 	r.Float32(&x.Depth)
 	r.Float32(&x.Scale)
 	r.Int32(&x.MapWaterColour)
 	r.Bool(&x.Rain)
+
+	// PhoenixBuilder specific changes.
+	// Author: Happy2018new
+	//
+	// Netease
+	r.Int32(&x.Dimension)
+	r.String(&x.Vanilla)
+
 	OptionalFunc(r, &x.Tags, func(s *[]uint16) {
 		FuncSlice(r, s, r.Uint16)
 	})
@@ -192,8 +184,6 @@ type BiomeChunkGeneration struct {
 	SurfaceMaterialAdjustments Optional[[]BiomeElementData]
 	// SurfaceMaterials is a set of materials to use for the surface layers of the biome.
 	SurfaceMaterials Optional[BiomeSurfaceMaterial]
-	// HasDefaultOverworldSurface is true if the biome has a default overworld surface.
-	HasDefaultOverworldSurface bool
 	// HasSwampSurface is true if the biome has a swamp surface.
 	HasSwampSurface bool
 	// HasFrozenOceanSurface is true if the biome has a frozen ocean surface.
@@ -211,8 +201,6 @@ type BiomeChunkGeneration struct {
 	// LegacyRules is a list of legacy rules for the biomes using an older format, which is just a list of
 	// weighted biomes.
 	LegacyRules Optional[[]BiomeConditionalTransformation]
-	// ReplacementsData is a list of biome replacement data.
-	ReplacementsData Optional[[]BiomeReplacementData]
 }
 
 func (x *BiomeChunkGeneration) Marshal(r IO) {
@@ -225,7 +213,6 @@ func (x *BiomeChunkGeneration) Marshal(r IO) {
 		Slice(r, s)
 	})
 	OptionalMarshaler(r, &x.SurfaceMaterials)
-	r.Bool(&x.HasDefaultOverworldSurface)
 	r.Bool(&x.HasSwampSurface)
 	r.Bool(&x.HasFrozenOceanSurface)
 	r.Bool(&x.HasEndSurface)
@@ -236,9 +223,6 @@ func (x *BiomeChunkGeneration) Marshal(r IO) {
 	OptionalFunc(r, &x.LegacyRules, func(s *[]BiomeConditionalTransformation) {
 		Slice(r, s)
 	})
-	OptionalFunc(r, &x.ReplacementsData, func(s *[]BiomeReplacementData) {
-		Slice(r, s)
-	})
 }
 
 // BiomeClimate represents the climate of a biome, mainly for ambience but also defines certain behaviours.
@@ -247,6 +231,14 @@ type BiomeClimate struct {
 	Temperature float32
 	// Downfall is the amount that precipitation affects colours and block changes.
 	Downfall float32
+	// RedSporeDensity is the density of red spore precipitation visuals.
+	RedSporeDensity float32
+	// BlueSporeDensity is the density of blue spore precipitation visuals.
+	BlueSporeDensity float32
+	// AshDensity is the density of ash precipitation visuals.
+	AshDensity float32
+	// WhiteAshDensity is the density of white ash precipitation visuals.
+	WhiteAshDensity float32
 	// SnowAccumulationMin is the minimum amount of snow that can accumulate in the biome, every 0.125 is
 	// another layer of snow.
 	SnowAccumulationMin float32
@@ -258,6 +250,10 @@ type BiomeClimate struct {
 func (x *BiomeClimate) Marshal(r IO) {
 	r.Float32(&x.Temperature)
 	r.Float32(&x.Downfall)
+	r.Float32(&x.RedSporeDensity)
+	r.Float32(&x.BlueSporeDensity)
+	r.Float32(&x.AshDensity)
+	r.Float32(&x.WhiteAshDensity)
 	r.Float32(&x.SnowAccumulationMin)
 	r.Float32(&x.SnowAccumulationMax)
 }
@@ -563,50 +559,4 @@ type BiomeTemperatureWeight struct {
 func (x *BiomeTemperatureWeight) Marshal(r IO) {
 	r.Varint32(&x.Temperature)
 	r.Uint32(&x.Weight)
-}
-
-// BiomeReplacementData represents data for biome replacements.
-type BiomeReplacementData struct {
-	// Biome is the biome ID to replace.
-	Biome int16
-	// Dimension is the dimension ID where the replacement applies.
-	Dimension int16
-	// TargetBiomes is a list of target biome IDs for the replacement.
-	TargetBiomes []int16
-	// Amount is the amount of replacement to apply.
-	Amount float32
-	// NoiseFrequencyScale ...
-	NoiseFrequencyScale float32
-	// ReplacementIndex is the index of the replacement.
-	ReplacementIndex uint32
-}
-
-// Marshal encodes/decodes a BiomeReplacementData.
-func (x *BiomeReplacementData) Marshal(r IO) {
-	r.Int16(&x.Biome)
-	r.Int16(&x.Dimension)
-	FuncSlice(r, &x.TargetBiomes, r.Int16)
-	r.Float32(&x.Amount)
-	r.Float32(&x.NoiseFrequencyScale)
-	r.Uint32(&x.ReplacementIndex)
-}
-
-// NeteaseBiomeData is the legacy NetEase biome payload preserved for local compatibility.
-type NeteaseBiomeData struct {
-	Flag     uint8
-	Unknown1 int32
-	Unknown2 string
-	Pos1     BlockPos
-	Pos2     BlockPos
-}
-
-// Marshal encodes/decodes a NeteaseBiomeData.
-func (x *NeteaseBiomeData) Marshal(r IO) {
-	r.Uint8(&x.Flag)
-	r.Varint32(&x.Unknown1)
-	r.String(&x.Unknown2)
-	r.UBlockPos(&x.Pos1)
-	if x.Flag == 1 {
-		r.UBlockPos(&x.Pos2)
-	}
 }

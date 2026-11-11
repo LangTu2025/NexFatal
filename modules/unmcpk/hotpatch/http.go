@@ -1,35 +1,29 @@
 package hotpatch
 
 import (
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"time"
 )
 
-var httpClient = &http.Client{
+var httpClient *http.Client = &http.Client{
 	Timeout: 10 * time.Second,
 	Transport: &http.Transport{
 		Proxy: nil,
 	},
 }
 
-func fetch(address string) ([]byte, error) {
-	response, err := httpClient.Get(address)
+func fetch(url string) ([]byte, error) {
+	resp, err := httpClient.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("fetch: %v", err)
+		return nil, err
 	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
+	defer resp.Body.Close()
 
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch: 服务端返回状态 %s", response.Status)
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.New("status: " + resp.Status)
 	}
 
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, fmt.Errorf("fetch: %v", err)
-	}
-	return body, nil
+	return io.ReadAll(resp.Body)
 }

@@ -27,7 +27,7 @@ type EntityLink struct {
 	// RiderInitiated specifies if the link was created by the rider, for example the player starting to ride
 	// a horse by itself. This is generally true in vanilla environment for players.
 	RiderInitiated bool
-	// VehicleAngularVelocity is an additional value sent by current protocol versions for vehicle links.
+	// VehicleAngularVelocity is the angular velocity of the vehicle that the rider is riding.
 	VehicleAngularVelocity float32
 }
 

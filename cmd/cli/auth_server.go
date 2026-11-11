@@ -14,11 +14,11 @@ import (
 
 const customAuthServerFileName = "server"
 
-// allowedCustomAuthServers 保存允许用户覆盖使用的认证服务器域名
+// allowedCustomAuthServers 保存允许用户覆盖使用的认证服务器域名。
 var allowedCustomAuthServers = map[string]struct{}{
 	"api.liliya233.uk": {},
 	"auth.fxdby.net":   {},
-	"nv1.aetheredge.top":  {},
+	"nv1.nethard.pro":  {},
 }
 
 func extractAuthServerFlag(argv []string) ([]string, error) {

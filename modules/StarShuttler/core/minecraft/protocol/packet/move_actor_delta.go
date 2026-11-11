@@ -16,10 +16,6 @@ const (
 	MoveActorDeltaFlagOnGround
 	MoveActorDeltaFlagTeleport
 	MoveActorDeltaFlagForceMove
-	MoveActorDeltaFlagHasExtraRotation
-	MoveActorDeltaFlagHasExtraRotation3
-	MoveActorDeltaFlagHasExtraRotation4
-	MoveActorDeltaFlagHasExtraRotation5
 )
 
 // MoveActorDelta is sent by the server to move an entity. The packet is specifically optimised to save as
@@ -36,16 +32,6 @@ type MoveActorDelta struct {
 	// Rotation is the new absolute rotation. Unlike the position, it is not actually a delta. If any of the
 	// values of this rotation are not sent, these values are 0 and no flag for them is present.
 	Rotation mgl32.Vec3
-	// ExtraRotation is a pair of additional rotation bytes observed in the NetEase protocol variant.
-	ExtraRotation mgl32.Vec2
-	// ExtraRotation3 is a third trailing rotation byte observed in the NetEase protocol variant.
-	ExtraRotation3 float32
-	// ExtraRotation4 is an additional pair of trailing rotation bytes observed in the NetEase protocol variant.
-	ExtraRotation4 mgl32.Vec2
-	// ExtraRotation5 is a second additional pair of trailing rotation bytes observed in the NetEase protocol variant.
-	ExtraRotation5 mgl32.Vec2
-	// UnknownTail stores trailing bytes from newer NetEase move updates that are not yet modelled explicitly.
-	UnknownTail []byte
 }
 
 // ID ...
@@ -85,34 +71,5 @@ func (pk *MoveActorDelta) Marshal(io protocol.IO) {
 		io.ByteFloat(&pk.Rotation[2])
 	} else {
 		pk.Rotation[2] = 0
-	}
-	if pk.Flags&MoveActorDeltaFlagHasExtraRotation != 0 {
-		io.ByteFloat(&pk.ExtraRotation[0])
-		io.ByteFloat(&pk.ExtraRotation[1])
-	} else {
-		pk.ExtraRotation[0] = 0
-		pk.ExtraRotation[1] = 0
-	}
-	if pk.Flags&MoveActorDeltaFlagHasExtraRotation3 != 0 {
-		io.ByteFloat(&pk.ExtraRotation3)
-	} else {
-		pk.ExtraRotation3 = 0
-	}
-	if pk.Flags&MoveActorDeltaFlagHasExtraRotation4 != 0 {
-		io.ByteFloat(&pk.ExtraRotation4[0])
-		io.ByteFloat(&pk.ExtraRotation4[1])
-	} else {
-		pk.ExtraRotation4[0] = 0
-		pk.ExtraRotation4[1] = 0
-	}
-	if pk.Flags&MoveActorDeltaFlagHasExtraRotation5 != 0 {
-		io.ByteFloat(&pk.ExtraRotation5[0])
-		io.ByteFloat(&pk.ExtraRotation5[1])
-	} else {
-		pk.ExtraRotation5[0] = 0
-		pk.ExtraRotation5[1] = 0
-	}
-	if reader, isReader := io.(*protocol.Reader); isReader {
-		pk.UnknownTail = reader.TakeRemainingBytes()
 	}
 }

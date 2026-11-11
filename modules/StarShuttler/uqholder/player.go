@@ -3,11 +3,11 @@ package uqholder
 import (
 	"time"
 
+	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
+	"github.com/xingbaiawa/StarShuttler/uqholder/defines"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/google/uuid"
 	"github.com/vmihailenco/msgpack/v5"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
-	"github.com/xingbaiawa/StarShuttler/uqholder/defines"
 )
 
 func init() {

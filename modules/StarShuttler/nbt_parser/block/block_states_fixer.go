@@ -47,8 +47,6 @@ func DeepCopyAndFixStates(blockType uint8, blockName string, blockStates map[str
 	case mapping.SupportNBTBlockTypeBed:
 		result["head_piece_bit"] = byte(0)
 		result["occupied_bit"] = byte(0)
-	case mapping.SupportNBTBlockTypeShelf:
-		result["powered_bit"] = byte(0)
 	}
 
 	return result

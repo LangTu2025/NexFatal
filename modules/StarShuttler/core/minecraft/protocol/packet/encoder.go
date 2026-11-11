@@ -15,10 +15,9 @@ import (
 type Encoder struct {
 	w io.Writer
 
-	writeHeader        bool
-	writeCompressionID bool
-	compression        Compression
-	encrypt            *encrypt
+	writeHeader bool
+	compression Compression
+	encrypt     *encrypt
 }
 
 // NewEncoder returns a new Encoder for the io.Writer passed. Each final packet produced by the Encoder is
@@ -30,10 +29,9 @@ func NewEncoder(w io.Writer) *Encoder {
 	}
 }
 
+// NewEncoderWithoutHeader returns a new Encoder that omits the outer packet header byte.
 func NewEncoderWithoutHeader(w io.Writer) *Encoder {
-	return &Encoder{
-		w: w,
-	}
+	return &Encoder{w: w}
 }
 
 // EnableEncryption enables encryption for the Encoder using the secret key bytes passed. Each packet sent
@@ -45,16 +43,37 @@ func (encoder *Encoder) EnableEncryption(keyBytes [32]byte) {
 	encoder.encrypt = newEncrypt(keyBytes[:], stream)
 }
 
-// EnableCompression enables compression for the Encoder.
-func (encoder *Encoder) EnableCompression(compression Compression) {
-	encoder.compression = compression
+// setCompression sets underlying compression by compressID.
+// If compression is not set, the init a new one and save it.
+// If compressID is unknown or compressID changed, then return non-nil error.
+func (encoder *Encoder) setCompression(compressID uint16) error {
+	// Get compress func
+	compressFunc, found := CompressFuncByID(compressID)
+	if !found {
+		return fmt.Errorf("setCompression: unknown compression algorithm %d", compressID)
+	}
+	// If compression is nil, then set and return
+	if encoder.compression == nil {
+		encoder.compression = compressFunc()
+		return nil
+	}
+	// Check compress ID
+	if compressID != encoder.compression.EncodeCompression() {
+		return fmt.Errorf(
+			"setCompression: attempt to use another compression algorithm (origin = %d, current = %d)",
+			encoder.compression.EncodeCompression(), compressID,
+		)
+	}
+	// Return
+	return nil
 }
 
-// EnableCompressionWithID enables the target compression envelope for a
-// dedicated connection. NetEase compression does not carry this byte.
-func (encoder *Encoder) EnableCompressionWithID(compression Compression, writeID bool) {
-	encoder.compression = compression
-	encoder.writeCompressionID = writeID
+// EnableCompression enables compression for the Encoder.
+func (encoder *Encoder) EnableCompression(compressID uint16) {
+	_ = encoder.setCompression(compressID)
+	if encoder.compression == nil {
+		encoder.compression = DefaultCompression()
+	}
 }
 
 // Encode encodes the packets passed. It writes all of them as a single packet which is  compressed and
@@ -71,27 +90,28 @@ func (encoder *Encoder) Encode(packets [][]byte) error {
 	for _, packet := range packets {
 		// Each packet is prefixed with a varuint32 specifying the length of the packet.
 		if err := writeVaruint32(buf, uint32(len(packet)), l); err != nil {
-			return fmt.Errorf("error writing varuint32 length: %v", err)
+			return fmt.Errorf("encode batch: write packet length: %w", err)
 		}
 		if _, err := buf.Write(packet); err != nil {
-			return fmt.Errorf("error writing packet payload: %v", err)
+			return fmt.Errorf("encode batch: write packet payload: %w", err)
 		}
 	}
 
 	data := buf.Bytes()
+	prepend := []byte{header}
 	if encoder.compression != nil {
 		var err error
+		if encoder.compression.EncodeCompression() != CompressionAlgorithmNetEase {
+			prepend = append(prepend, byte(encoder.compression.EncodeCompression()))
+		}
 		data, err = encoder.compression.Compress(data)
 		if err != nil {
-			return fmt.Errorf("error compressing packet: %v", err)
-		}
-		if encoder.writeCompressionID && encoder.compression.EncodeCompression() != CompressionAlgorithmNetEase {
-			data = append([]byte{byte(encoder.compression.EncodeCompression())}, data...)
+			return fmt.Errorf("compress batch: %w", err)
 		}
 	}
 
 	if encoder.writeHeader {
-		data = append([]byte{header}, data...)
+		data = append(prepend, data...)
 	}
 	if encoder.encrypt != nil {
 		// If the encryption session is not nil, encryption is enabled, meaning we should encrypt the
@@ -99,7 +119,7 @@ func (encoder *Encoder) Encode(packets [][]byte) error {
 		data = encoder.encrypt.encrypt(data)
 	}
 	if _, err := encoder.w.Write(data); err != nil {
-		return fmt.Errorf("error writing compressed packet to io.Writer: %v", err)
+		return fmt.Errorf("write batch: %w", err)
 	}
 	return nil
 }
@@ -107,12 +127,7 @@ func (encoder *Encoder) Encode(packets [][]byte) error {
 // writeVaruint32 writes a uint32 to the destination buffer passed with a size of 1-5 bytes. It uses byte
 // slice b in order to prevent allocations.
 func writeVaruint32(dst io.Writer, x uint32, b []byte) error {
-	b[4] = 0
-	b[3] = 0
-	b[2] = 0
-	b[1] = 0
-	b[0] = 0
-
+	clear(b[:5])
 	i := 0
 	for x >= 0x80 {
 		b[i] = byte(x) | 0x80

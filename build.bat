@@ -1,6 +1,7 @@
 @echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
+cd /d "%~dp0"
 
 set "APP_NAME=NexFatal"
 set "MODULE_PATH=github.com/LangTu2025/NexFatal"
@@ -45,13 +46,12 @@ echo 输出目录: %DIST_DIR%
 echo.
 
 if defined CHECK_ONLY (
-    echo 检查完成，未执行编译命令
+    echo 检查完成，未执行编译命令。
     call :maybe_pause
     exit /b 0
 )
 
-if exist "%DIST_DIR%" rmdir /s /q "%DIST_DIR%"
-mkdir "%DIST_DIR%" 2>nul
+if not exist "%DIST_DIR%" mkdir "%DIST_DIR%"
 if errorlevel 1 (
     echo 错误: 无法创建输出目录 %DIST_DIR%
     call :maybe_pause
@@ -71,7 +71,7 @@ call :build_target 7 7 darwin arm64 ""
 echo.
 echo =========================================
 if !FAILED! equ 0 (
-    echo 编译完成，全部目标成功
+    echo 编译完成，全部目标成功。
 ) else (
     echo 编译完成，失败目标数: !FAILED!
 )

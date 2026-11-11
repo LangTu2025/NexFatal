@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/xingbaiawa/g79client"
+	"github.com/Yeah114/g79client"
 )
 
 func main() {
@@ -17,13 +17,13 @@ func main() {
 	}
 
 	// 认证
-	if err := client.G79AuthenticateWithCookie(cookie); err != nil {
+	if err := client.X19AuthenticateWithCookie(cookie); err != nil {
 		log.Fatalf("认证失败: %v", err)
 	}
 
 	roomID := "4619956744566574402"
 
-	serverAddress, err := client.GetPeGameServerAddress(roomID, nil)
+	serverAddress, err := client.GetPeGameServerAddress(roomID)
 	if err != nil {
 		log.Fatalf("获取服务器地址失败: %v", err)
 	}

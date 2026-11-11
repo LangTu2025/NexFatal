@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/xingbaiawa/g79client/example/login"
+	"github.com/Yeah114/g79client/example/login"
 )
 
 func main() {
@@ -15,7 +15,7 @@ func main() {
 
 	targetUID := "2719712857"
 
-	searchResp, err := client.GetOtherUserDetail(targetUID, false, false)
+	searchResp, err := client.GetOtherUserDetail(targetUID, false)
 	if err != nil {
 		fmt.Printf("搜索玩家失败: %v\n", err)
 		return

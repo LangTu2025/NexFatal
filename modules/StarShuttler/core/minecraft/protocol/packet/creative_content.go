@@ -1,8 +1,6 @@
 package packet
 
-import (
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
-)
+import "github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 
 // CreativeContent is a packet sent by the server to set the creative inventory's content for a player.
 // Introduced in 1.16, this packet replaces the previous method - sending an InventoryContent packet with

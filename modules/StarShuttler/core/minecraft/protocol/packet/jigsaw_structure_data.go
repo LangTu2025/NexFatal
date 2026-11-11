@@ -4,7 +4,8 @@ import "github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 
 // JigsawStructureData is sent by the server to let the client know all the rules for jigsaw structures.
 type JigsawStructureData struct {
-	// StructureData is a network NBT serialised compound of all the jigsaw structure rules defined on the server.
+	// StructureData is a network NBT serialised compound of all the jigsaw structure rules defined
+	// on the server.
 	StructureData []byte
 }
 

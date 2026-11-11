@@ -243,7 +243,18 @@ func parseBundleIDFromCompletedUsingItem(completed *packet.CompletedUsingItem) p
 	if completed.UseMethod != -1 {
 		return protocol.Optional[uint32]{}
 	}
-	return protocol.Optional[uint32]{}
+	if completed.Item.Stack.NBTData == nil {
+		return protocol.Optional[uint32]{}
+	}
+	value, ok := completed.Item.Stack.NBTData["bundle_id"]
+	if !ok {
+		return protocol.Optional[uint32]{}
+	}
+	bundleID, ok := parseBundleID(value)
+	if !ok || bundleID < 0 {
+		return protocol.Optional[uint32]{}
+	}
+	return protocol.Option(uint32(bundleID))
 }
 
 func parseBundleID(value any) (int32, bool) {

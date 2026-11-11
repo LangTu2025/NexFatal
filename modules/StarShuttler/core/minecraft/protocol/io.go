@@ -3,9 +3,10 @@ package protocol
 import (
 	"image/color"
 
+	"github.com/xingbaiawa/StarShuttler/core/minecraft/nbt"
+
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/google/uuid"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/nbt"
 )
 
 // IO represents a packet IO direction. Implementations of this interface are Reader and Writer. Reader reads
@@ -20,18 +21,15 @@ type IO interface {
 	Uint64(x *uint64)
 	Int64(x *int64)
 	Float32(x *float32)
-	Float64(x *float64)
 	Uint8(x *uint8)
 	Int8(x *int8)
 	Bool(x *bool)
 	Varint64(x *int64)
 	Varuint64(x *uint64)
-	Varint16(x *int16)
-	Varuint16(x *uint16)
 	Varint32(x *int32)
 	Varuint32(x *uint32)
+	Varuint16(x *uint16)
 	String(x *string)
-	StringConst(x string)
 	StringUTF(x *string)
 	ByteSlice(x *[]byte)
 	Vec3(x *mgl32.Vec3)
@@ -40,18 +38,15 @@ type IO interface {
 	UBlockPos(x *BlockPos)
 	ChunkPos(x *ChunkPos)
 	SubChunkPos(x *SubChunkPos)
-	USubChunkPos(x *SubChunkPos)
 	SoundPos(x *mgl32.Vec3)
-	USoundPos(x *mgl32.Vec3)
 	ByteFloat(x *float32)
 	Bytes(p *[]byte)
-	NBTWithLength(m *map[string]any)
-	EnchantList(x *[]Enchant)
-	ItemList(x *[]ItemWithSlot)
-	NBTItem(m *Item)
-	PistonAttachedBlocks(m *[]int32)
 	NBT(m *map[string]any, encoding nbt.Encoding)
 	NBTList(m *[]any, encoding nbt.Encoding)
+	NBTWithLength(x *map[string]any)
+	NBTItem(x *ItemStack)
+	ItemList(x *[]ItemWithSlot)
+	PistonAttachedBlocks(x *[]int32)
 	UUID(x *uuid.UUID)
 	RGB(x *color.RGBA)
 	RGBA(x *color.RGBA)
@@ -66,21 +61,24 @@ type IO interface {
 	MaterialReducer(x *MaterialReducer)
 	Recipe(x *Recipe)
 	EventType(x *Event)
-	EventOrdinal(x *Event)
 	TransactionDataType(x *InventoryTransactionData)
 	PlayerInventoryAction(x *UseItemTransactionData)
 	GameRule(x *GameRule)
-	GameRuleLegacy(x *GameRule)
-	PackSetting(x *PackSetting)
 	AbilityValue(x *any)
-	CompressedBiomeDefinitions(x *map[string]any)
-	MsgPack(x *any)
-	NeteasePixels(x *[]color.RGBA)
 	Bitset(x *Bitset, size int)
+	Varint16(x *int16)
 
 	ShieldID() int32
 	UnknownEnumOption(value any, enum string)
 	InvalidValue(value any, forField, reason string)
+
+	/*
+		PhoenixBuilder specific func.
+		Author: Liliya233, CMA2041PT, Happy2018new
+
+		Netease's Python MsgPack
+	*/
+	MsgPack(x *any)
 }
 
 // Marshaler is a type that can be written to or read from an IO.
@@ -123,20 +121,6 @@ func SliceVarint32Length[T any, S ~*[]T, A PtrMarshaler[T]](r IO, x S) {
 	SliceOfLen[T, S, A](r, uint32(count), x)
 }
 
-// SliceVaruint32Length reads/writes a slice of T with a varuint32 prefix.
-func SliceVaruint32Length[T any, S ~*[]T, A PtrMarshaler[T]](r IO, x S) {
-	count := uint32(len(*x))
-	r.Varuint32(&count)
-	SliceOfLen[T, S, A](r, count, x)
-}
-
-// SliceVarint16Length reads/writes a slice of T with a varint16 prefix.
-func SliceVarint16Length[T any, S ~*[]T, A PtrMarshaler[T]](r IO, x S) {
-	count := int16(len(*x))
-	r.Varint16(&count)
-	SliceOfLen[T, S, A](r, uint32(count), x)
-}
-
 // FuncSliceUint16Length reads/writes a slice of T using function f with a uint16 length prefix.
 func FuncSliceUint16Length[T any, S ~*[]T](r IO, x S, f func(*T)) {
 	count := uint16(len(*x))
@@ -149,13 +133,6 @@ func FuncSliceUint32Length[T any, S ~*[]T](r IO, x S, f func(*T)) {
 	count := uint32(len(*x))
 	r.Uint32(&count)
 	FuncSliceOfLen(r, count, x, f)
-}
-
-// FuncSliceVarint16Length reads/writes a slice of T using function f with a varint16 length prefix.
-func FuncSliceVarint16Length[T any, S ~*[]T](r IO, x S, f func(*T)) {
-	count := int16(len(*x))
-	r.Varint16(&count)
-	FuncSliceOfLen(r, uint32(count), x, f)
 }
 
 // FuncSliceVarint32Length reads/writes a slice of T using function f with a varint32 length prefix.
@@ -276,75 +253,5 @@ func OptionalMarshaler[T any, A PtrMarshaler[T]](r IO, x *Optional[T]) {
 	r.Bool(&x.set)
 	if x.set {
 		A(&x.val).Marshal(r)
-	}
-}
-
-// NBTOptionalFunc reads/writes a NBT optional field.
-func NBTOptionalFunc[T any](r IO, x *T, makeVal func() *T, presentWhen bool, rw func(*T)) {
-	var present bool
-	if _, isReader := r.(*Reader); isReader {
-		r.Bool(&present)
-		if present == presentWhen {
-			rw(makeVal())
-		}
-		return
-	}
-
-	present = x != nil
-	if !presentWhen {
-		present = !present
-	}
-	r.Bool(&present)
-	if x != nil {
-		rw(x)
-	}
-}
-
-// NBTOptionalMarshaler reads/writes an optional NBT marshaler field.
-func NBTOptionalMarshaler[T any, A PtrMarshaler[T]](r IO, x *T, makeVal func() *T, presentWhen bool) {
-	NBTOptionalFunc(r, x, makeVal, presentWhen, func(v *T) {
-		A(v).Marshal(r)
-	})
-}
-
-// NBTSliceVarint16Length reads/writes a []any NBT slice with varint16 length.
-func NBTSliceVarint16Length[T any](r IO, x *[]any, _ *[]T) {
-	if _, isReader := r.(*Reader); isReader {
-		newVal := make([]T, 0)
-		FuncSliceVarint16Length(r, &newVal, func(v *T) {
-			any(v).(Marshaler).Marshal(r)
-		})
-		*x = make([]any, len(newVal))
-		for i, v := range newVal {
-			(*x)[i] = v
-		}
-		return
-	}
-
-	newVal := make([]T, len(*x))
-	for i, v := range *x {
-		newVal[i] = v.(T)
-	}
-	FuncSliceVarint16Length(r, &newVal, func(v *T) {
-		any(v).(Marshaler).Marshal(r)
-	})
-}
-
-// NBTOptionalSliceVarint16Length reads/writes an optional []any NBT slice with varint16 length.
-func NBTOptionalSliceVarint16Length[T any](r IO, x *[]any, _ *[]T) {
-	var present bool
-	if _, isReader := r.(*Reader); isReader {
-		r.Bool(&present)
-		if !present {
-			*x = nil
-			return
-		}
-		NBTSliceVarint16Length(r, x, &[]T{})
-		return
-	}
-	present = x != nil && *x != nil
-	r.Bool(&present)
-	if present {
-		NBTSliceVarint16Length(r, x, &[]T{})
 	}
 }

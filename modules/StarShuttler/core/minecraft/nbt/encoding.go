@@ -32,28 +32,28 @@ var (
 	// sent over network in the Bedrock Edition protocol.
 	NetworkLittleEndian networkLittleEndian
 
-	// NetworkBigEndian is a version of BigEndian where the name of the root compound tag is omitted.
-	// It is primarily used for network NBT on Java Edition.
-	NetworkBigEndian networkBigEndian
-
 	// LittleEndian is the fixed size little endian implementation of NBT. It is the format typically used for
 	// writing Minecraft (Bedrock Edition) world saves.
 	LittleEndian littleEndian
+
+	// NetworkBigEndian is a version of BigEndian introduced in 1.20.2 where the name of the root compound tag is
+	// not written. Similarly to BigEndian, it is only used on Minecraft Java Edition and generally used for NBT
+	// sent over the network.
+	NetworkBigEndian networkBigEndian
 
 	// BigEndian is the fixed size big endian implementation of NBT. It is the original implementation, and is
 	// used only on Minecraft Java Edition.
 	BigEndian bigEndian
 
 	_ Encoding = NetworkLittleEndian
-	_ Encoding = NetworkBigEndian
 	_ Encoding = LittleEndian
+	_ Encoding = NetworkBigEndian
 	_ Encoding = BigEndian
 )
 
 const maxStringSize = math.MaxInt16
 
 type networkLittleEndian struct{ littleEndian }
-type networkBigEndian struct{ bigEndian }
 
 // WriteInt32 ...
 func (networkLittleEndian) WriteInt32(w *offsetWriter, x int32) error {
@@ -94,7 +94,8 @@ func (networkLittleEndian) WriteInt64(w *offsetWriter, x int64) error {
 // WriteString ...
 func (networkLittleEndian) WriteString(w *offsetWriter, x string) error {
 	/*
-		Netease specific.
+		PhoenixBuilder specific changes.
+		Author: Happy2018new
 
 		if len(x) > maxStringSize {
 			return InvalidStringError{Off: w.off, N: uint(len(x)), Err: errStringTooLong}
@@ -164,7 +165,8 @@ func (e networkLittleEndian) String(r *offsetReader) (string, error) {
 		return "", err
 	}
 	/*
-		Netease specific.
+		PhoenixBuilder specific changes.
+		Author: Happy2018new
 
 		if length > maxStringSize {
 			return "", InvalidStringError{N: uint(length), Off: r.off, Err: errStringTooLong}
@@ -224,3 +226,5 @@ func (e networkLittleEndian) Int64Slice(r *offsetReader) ([]int64, error) {
 	}
 	return m, nil
 }
+
+type networkBigEndian struct{ bigEndian }

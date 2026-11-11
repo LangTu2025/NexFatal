@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pterm/pterm"
 	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
 	"github.com/LangTu2025/NexFatal/defines"
 	"github.com/LangTu2025/NexFatal/utils"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	"github.com/pterm/pterm"
 )
 
 // LastServerConfig 记录下一次交互运行可复用的服务器配置。
@@ -73,6 +73,7 @@ func ensureAuthToken(cfg defines.ControlConfig) (defines.ControlConfig, error) {
 }
 
 func collectServerConfig() (defines.ControlConfig, error) {
+	ui.Section("新建服务器配置", "选择连接类型并填写服务器或房间信息")
 	targetKind := selectImportTargetKind()
 	cfg, err := inputImportTargetConfig(targetKind)
 	if err != nil {
@@ -274,17 +275,19 @@ func saveServerConfig(config defines.ControlConfig, fileName string) error {
 		return err
 	}
 
-	if !strings.HasSuffix(fileName, ".json") {
-		fileName += ".json"
+	configPath, err := utils.ProfilePath(configDir, fileName)
+	if err != nil {
+		return err
 	}
-
-	configPath := filepath.Join(configDir, fileName)
+	if _, err := os.Stat(configPath); err == nil && !ui.ConfirmInfoWithDefault("同名配置已存在，是否覆盖", false) {
+		return fmt.Errorf("未覆盖已有配置")
+	}
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err
 	}
 
-	return os.WriteFile(configPath, data, 0644)
+	return os.WriteFile(configPath, data, 0600)
 }
 
 func saveLastServerConfig(config defines.ControlConfig, configFile string) error {
@@ -302,10 +305,11 @@ func saveLastServerConfig(config defines.ControlConfig, configFile string) error
 		return err
 	}
 
-	return os.WriteFile(lastConfigPath, data, 0644)
+	return os.WriteFile(lastConfigPath, data, 0600)
 }
 
 func manageServerConfigs() {
+	ui.Page("服务器配置", "管理常用连接；输入 /back 返回首页")
 	storagePath := utils.GetStoragePath()
 	configDir := filepath.Join(storagePath, "server_configs")
 	os.MkdirAll(configDir, 0755)
@@ -325,7 +329,7 @@ func manageServerConfigs() {
 		}
 
 		if len(configFiles) == 0 {
-			ui.Info("没有找到已保存的配置文件")
+			ui.Empty("还没有服务器配置", "创建配置后，下次可直接选择连接目标")
 			if ui.ConfirmInfoWithDefault("是否创建新配置", true) {
 				collectServerConfig()
 			}
@@ -368,9 +372,11 @@ func editServerProfile(configPath string) {
 	}
 
 	for {
-		ui.Info(fmt.Sprintf("配置: %s", configName))
-		fmt.Printf("  服务器号: %s\n", config.RentalServerCode)
-		fmt.Printf("  密码: %s\n", redactPassword(config.RentalServerPasscode))
+		ui.Summary(configName, []ui.Field{
+			{Label: "连接类型", Value: serverKindText(config.ServerKind)},
+			{Label: "服务器 / 房间号", Value: config.RentalServerCode},
+			{Label: "密码", Value: redactPassword(config.RentalServerPasscode)},
+		})
 
 		options := []string{
 			"修改服务器号",
@@ -387,15 +393,19 @@ func editServerProfile(configPath string) {
 			config.RentalServerCode = strings.TrimSpace(ui.InputInfo("请输入新的服务器号: "))
 			if config.RentalServerCode != "" {
 				config.Normalize()
-				data, _ := json.MarshalIndent(config, "", "  ")
-				os.WriteFile(configPath, data, 0644)
-				ui.Info("配置已保存")
+				if err := writeProfile(configPath, config); err != nil {
+					ui.Error("保存配置失败: " + err.Error())
+				} else {
+					ui.Info("配置已保存")
+				}
 			}
 		case 1:
 			config.RentalServerPasscode = ui.Password("请输入新的密码: ")
-			data, _ := json.MarshalIndent(config, "", "  ")
-			os.WriteFile(configPath, data, 0644)
-			ui.Info("配置已保存")
+			if err := writeProfile(configPath, config); err != nil {
+				ui.Error("保存配置失败: " + err.Error())
+			} else {
+				ui.Info("配置已保存")
+			}
 		case 2:
 			if renameServerConfig(configPath) {
 				return
@@ -414,10 +424,7 @@ func redactPassword(password string) string {
 	if len(password) == 0 {
 		return "[空]"
 	}
-	if len(password) <= 4 {
-		return strings.Repeat("*", len(password))
-	}
-	return password[:2] + strings.Repeat("*", len(password)-4) + password[len(password)-2:]
+	return "********"
 }
 
 func renameServerConfig(configPath string) bool {
@@ -429,7 +436,15 @@ func renameServerConfig(configPath string) bool {
 		return false
 	}
 
-	newConfigPath := filepath.Join(filepath.Dir(configPath), newName+".json")
+	newConfigPath, err := utils.ProfilePath(filepath.Dir(configPath), newName)
+	if err != nil {
+		ui.Error(err.Error())
+		return false
+	}
+	if _, err := os.Stat(newConfigPath); err == nil {
+		ui.Warn("同名配置已存在，请使用其他名称")
+		return false
+	}
 	if err := os.Rename(configPath, newConfigPath); err != nil {
 		ui.Error(fmt.Sprintf("重命名失败: %v", err))
 		return false

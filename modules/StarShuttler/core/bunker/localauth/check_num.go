@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	g79 "github.com/xingbaiawa/g79client"
-	"github.com/xingbaiawa/unmcpk"
+	g79 "github.com/Yeah114/g79client"
+	"github.com/Yeah114/unmcpk"
 )
 
 func TransferCheckNum(

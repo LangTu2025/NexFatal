@@ -6,8 +6,8 @@ import (
 	"os"
 	"strconv"
 
-	x19sdk "github.com/xingbaiawa/g79client/account/x19/sdk"
-	examplecookie "github.com/xingbaiawa/g79client/example/cookie"
+	x19sdk "github.com/Yeah114/g79client/account/x19/sdk"
+	examplecookie "github.com/Yeah114/g79client/example/cookie"
 )
 
 func main() {
@@ -76,7 +76,7 @@ func parseHostID(raw string) (int, error) {
 		return 0, err
 	}
 	if hostID <= 0 {
-		return 0, fmt.Errorf("parseHostID: Host ID must be greater than 0")
+		return 0, fmt.Errorf("hostid 必须大于 0")
 	}
 	return hostID, nil
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	wsdefine "github.com/Yeah114/WaterStructure/define"
 	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
 	"github.com/LangTu2025/NexFatal/constants"
 	"github.com/LangTu2025/NexFatal/defines"
@@ -17,7 +18,6 @@ import (
 	"github.com/LangTu2025/NexFatal/utils/command_upgrader"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
 	safehttp "github.com/LangTu2025/NexFatal/utils/safe_http"
-	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
 	"github.com/xingbaiawa/StarShuttler/client"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
@@ -32,7 +32,7 @@ import (
 	flowersutils "github.com/xingbaiawa/StarShuttler/utils"
 )
 
-// Control 封装一次任务运行需要使用的游戏连接和 NBT 操作台状态
+// Control 封装一次任务运行需要使用的游戏连接和 NBT 操作台状态。
 type Control struct {
 	Config    defines.ControlConfig
 	Client    *client.Client
@@ -47,7 +47,7 @@ type Control struct {
 var ErrOperatorTimeout = errors.New("机器人未在规定时间内获得管理员权限")
 var authUnknownErrorDetailPattern = regexp.MustCompile(`Unknown error \(status=\d+,\s*body=.*\)`)
 
-const defaultAdvertisementUserCenter = "https://user.aurelrune.com"
+const defaultAdvertisementUserCenter = "https://user.novabuilder.pro"
 
 type builderAdvertisementResponse struct {
 	Success bool     `json:"Success"`
@@ -55,28 +55,28 @@ type builderAdvertisementResponse struct {
 	Data    []string `json:"Data"`
 }
 
-// IsOperatorTimeout 判断错误是否为等待管理员权限超时
+// IsOperatorTimeout 判断错误是否为等待管理员权限超时。
 func IsOperatorTimeout(err error) bool {
 	return errors.Is(err, ErrOperatorTimeout)
 }
 
-// IsCanceled 判断错误是否来自上下文取消
+// IsCanceled 判断错误是否来自上下文取消。
 func IsCanceled(err error) bool {
 	return errors.Is(err, context.Canceled)
 }
 
-// NewControl 根据服务器配置创建游戏控制器
+// NewControl 根据服务器配置创建游戏控制器。
 func NewControl(cfg defines.ControlConfig) *Control {
 	return &Control{Config: cfg}
 }
 
-// GetTaskID 返回下一个任务 ID
+// GetTaskID 返回下一个任务 ID。
 func (c *Control) GetTaskID() int {
 	c.taskID++
 	return c.taskID
 }
 
-// EnsureConnected 确保机器人已经连接到目标服务器
+// EnsureConnected 确保机器人已经连接到目标服务器。
 func (c *Control) EnsureConnected(ctx context.Context) error {
 	if c.Client == nil {
 		if err := c.connectBot(ctx); err != nil {
@@ -86,7 +86,7 @@ func (c *Control) EnsureConnected(ctx context.Context) error {
 	return nil
 }
 
-// Connect 连接服务器，并把 NBT 操作台定位到指定维度和坐标
+// Connect 连接服务器，并把 NBT 操作台定位到指定维度和坐标。
 func (c *Control) Connect(ctx context.Context, dimensionName string, consoleWorldPos wsdefine.BlockPos) error {
 	if err := c.EnsureConnected(ctx); err != nil {
 		return err
@@ -172,10 +172,6 @@ func (c *Control) isDomainServer() bool {
 		defines.DetectServerKind(c.Config.RentalServerCode) == defines.ServerKindDomain
 }
 
-func (c *Control) IsDomainServer() bool {
-	return c.isDomainServer()
-}
-
 func scrubConnectError(err error) error {
 	if err == nil {
 		return nil
@@ -188,7 +184,7 @@ func scrubConnectError(err error) error {
 	return errors.New(message)
 }
 
-// Close 关闭机器人连接，并尽量踢出机器人释放服务器占用
+// Close 关闭机器人连接，并尽量踢出机器人释放服务器占用。
 func (c *Control) Close() error {
 	if c.Client == nil || c.Client.Conn() == nil {
 		return nil
@@ -202,11 +198,11 @@ func (c *Control) disconnectBot() {
 	if c.API == nil {
 		return
 	}
-	// 踢出机器人，避免任务结束后继续占用连接
+	// 踢出机器人，避免任务结束后继续占用连接。
 	_ = c.API.Commands().SendSettingsCommand("kick @s 任务完成 正常退出", false)
 }
 
-// EnsureOperator 等待机器人获得管理员权限
+// EnsureOperator 等待机器人获得管理员权限。
 func (c *Control) EnsureOperator(ctx context.Context, timeout ...time.Duration) error {
 	if c.API == nil {
 		return loc.Err(loc.KeyControlAPINotInitialized)
@@ -434,7 +430,7 @@ func (c *Control) PlaceSimpleBlockWithResp(dimensionName string, pos protocol.Bl
 	return c.AwaitChanges()
 }
 
-// PlaceNBTBlock 通过操作台制作并放置带 NBT 的方块
+// PlaceNBTBlock 通过操作台制作并放置带 NBT 的方块。
 func (c *Control) PlaceNBTBlock(dimensionName string, pos protocol.BlockPos, blockName string, blockStates map[string]any, blockNBT map[string]any) error {
 	if c.Resources == nil {
 		return loc.Err(loc.KeyControlResourcesNotInitialized)
@@ -488,7 +484,7 @@ func (c *Control) PlaceNBTBlock(dimensionName string, pos protocol.BlockPos, blo
 	return c.loadNBTStructure(dimensionName, structureName, offsetTargetPos(pos, offset))
 }
 
-// PlaceCachedNBTBlock 直接加载已经由操作台缓存过的 NBT 方块结构
+// PlaceCachedNBTBlock 直接加载已经由操作台缓存过的 NBT 方块结构。
 func (c *Control) PlaceCachedNBTBlock(dimensionName string, pos protocol.BlockPos, blockName string, blockStates map[string]any, blockNBT map[string]any) error {
 	if c.Resources == nil {
 		return loc.Err(loc.KeyControlResourcesNotInitialized)
@@ -518,7 +514,7 @@ func (c *Control) cachedNBTStructureName(block nbt_parser_interface.Block) (stri
 	if c.Cache == nil || block == nil {
 		return "", protocol.BlockPos{}, false
 	}
-	// 只有完整命中缓存才直接加载结构；容器类的部分命中可能缺少子物品数据，不能复用
+	// 只有完整命中缓存才直接加载结构；容器类的部分命中可能缺少子物品数据，不能复用。
 	structure, hit, partHit := c.Cache.NBTBlockCache().CheckCache(nbt_hash.CompletelyHashNumber{
 		HashNumber:    nbt_hash.NBTBlockFullHash(block),
 		SetHashNumber: nbt_hash.ContainerSetHash(block),
@@ -530,7 +526,7 @@ func (c *Control) cachedNBTStructureName(block nbt_parser_interface.Block) (stri
 }
 
 func offsetTargetPos(pos protocol.BlockPos, offset protocol.BlockPos) protocol.BlockPos {
-	// 操作台保存的结构可能带负偏移，加载时需要把目标点回退到结构原点；正偏移已经包含在结构内
+	// 操作台保存的结构可能带负偏移，加载时需要把目标点回退到结构原点；正偏移已经包含在结构内。
 	return protocol.BlockPos{
 		pos[0] + negativeOffset(offset[0]),
 		pos[1] + negativeOffset(offset[1]),
@@ -556,7 +552,7 @@ func (c *Control) loadNBTStructure(dimensionName, structureName string, pos prot
 	return c.SendSettingsDimensionCommand(dimensionName, command)
 }
 
-// UpdateCommandBlock 通过命令方块更新包写入命令和方块实体数据
+// UpdateCommandBlock 通过命令方块更新包写入命令和方块实体数据。
 func (c *Control) UpdateCommandBlock(pos protocol.BlockPos, blockName string, blockStates map[string]any, blockNBT map[string]any) error {
 	if c.Resources == nil {
 		return loc.Err(loc.KeyControlResourcesNotInitialized)
@@ -580,8 +576,7 @@ func (c *Control) UpdateCommandBlock(pos protocol.BlockPos, blockName string, bl
 		mode = packet.CommandBlockRepeating
 	}
 
-	command := command_upgrader.UpdateLegacyCommand(commandBlock.NBT.Command)
-	tickDelay := max(commandBlock.NBT.TickDelay, 0)
+	command := command_upgrader.NormalizeCommandBlockCommand(commandBlock.NBT.Command)
 	if err := c.API.SetBlock().SetBlock(pos, commandBlock.BlockName(), commandBlock.BlockStatesString()); err != nil {
 		return loc.Errf(loc.KeyControlWriteCommandBlockFailed, err)
 	}
@@ -596,7 +591,7 @@ func (c *Control) UpdateCommandBlock(pos protocol.BlockPos, blockName string, bl
 		LastOutput:         "",
 		Name:               commandBlock.NBT.CustomName,
 		ShouldTrackOutput:  commandBlock.NBT.TrackOutput == 1,
-		TickDelay:          uint32(tickDelay),
+		TickDelay:          commandBlock.NBT.TickDelay,
 		ExecuteOnFirstTick: commandBlock.NBT.ExecuteOnFirstTick == 1,
 	}); err != nil {
 		return loc.Errf(loc.KeyControlWriteCommandBlockFailed, err)
@@ -604,7 +599,7 @@ func (c *Control) UpdateCommandBlock(pos protocol.BlockPos, blockName string, bl
 	return nil
 }
 
-// Teleport 将机器人传送到指定位置
+// Teleport 将机器人传送到指定位置。
 func (c *Control) Teleport(dimensionName string, pos protocol.BlockPos) error {
 	command := fmt.Sprintf("tp @s %d %d %d", pos[0], pos[1], pos[2])
 	if !c.isLobbyServer() {
@@ -627,25 +622,6 @@ func (c *Control) Teleport(dimensionName string, pos protocol.BlockPos) error {
 	return c.AwaitChanges()
 }
 
-// TeleportWithAICommand teleports the bot through the PyRpc AI command channel.
-func (c *Control) TeleportWithAICommand(pos protocol.BlockPos) error {
-	if c.API == nil {
-		return loc.Err(loc.KeyControlAPINotInitialized)
-	}
-	command := fmt.Sprintf("tp @s %d %d %d", pos[0], pos[1], pos[2])
-	resp, isTimeout, err := c.API.Commands().SendAICommandWithTimeoutDirect(command, true, 5*time.Second)
-	if isTimeout {
-		return loc.Errf(loc.KeyControlTeleportBotFailed, fmt.Errorf("等待传送命令回包超时"))
-	}
-	if err != nil {
-		return loc.Errf(loc.KeyControlTeleportBotFailed, err)
-	}
-	if resp == nil || resp.SuccessCount <= 0 {
-		return loc.Errf(loc.KeyControlTeleportBotFailed, commandOutputFailureText(resp))
-	}
-	return nil
-}
-
 func commandOutputFailureText(resp *packet.CommandOutput) string {
 	if resp == nil {
 		return loc.Text(loc.KeyBuildCommandExecuteFailed)
@@ -658,7 +634,7 @@ func commandOutputFailureText(resp *packet.CommandOutput) string {
 	return loc.Text(loc.KeyBuildCommandExecuteFailed)
 }
 
-// SendWSCommandWithTimeout 以 WebSocket 命令来源发送维度命令，并等待回包
+// SendWSCommandWithTimeout 以 WebSocket 命令来源发送维度命令，并等待回包。
 func (c *Control) SendWSCommandWithTimeout(dimensionName, command string, timeout time.Duration) (*packet.CommandOutput, bool, error) {
 	if c.API == nil {
 		return nil, false, loc.Err(loc.KeyControlAPINotInitialized)
@@ -666,7 +642,7 @@ func (c *Control) SendWSCommandWithTimeout(dimensionName, command string, timeou
 	return c.API.Commands().SendWSCommandWithTimeout(wrapDimensionCommand(dimensionName, command), timeout)
 }
 
-// SendSettingsCommandWithTimeout 发送 SettingsCommand，并等待回包
+// SendSettingsCommandWithTimeout 发送 SettingsCommand，并等待回包。
 func (c *Control) SendSettingsCommandWithTimeout(command string, timeout time.Duration) (*packet.CommandOutput, bool, error) {
 	if c.API == nil {
 		return nil, false, loc.Err(loc.KeyControlAPINotInitialized)
@@ -677,7 +653,7 @@ func (c *Control) SendSettingsCommandWithTimeout(command string, timeout time.Du
 	return c.API.Commands().SendSettingsCommandWithTimeout(strings.TrimSpace(command), false, timeout)
 }
 
-// SendSettingsDimensionCommand 发送带维度包装的 SettingsCommand，并等待更改同步
+// SendSettingsDimensionCommand 发送带维度包装的 SettingsCommand，并等待更改同步。
 func (c *Control) SendSettingsDimensionCommand(dimensionName, command string) error {
 	if c.API == nil {
 		return loc.Err(loc.KeyControlAPINotInitialized)
@@ -692,7 +668,7 @@ func (c *Control) SendSettingsDimensionCommand(dimensionName, command string) er
 	return nil
 }
 
-// SendSettingsDimensionCommandAsync 发送带维度包装的 SettingsCommand，不等待更改同步
+// SendSettingsDimensionCommandAsync 发送带维度包装的 SettingsCommand，不等待更改同步。
 func (c *Control) SendSettingsDimensionCommandAsync(dimensionName, command string) error {
 	if c.API == nil {
 		return loc.Err(loc.KeyControlAPINotInitialized)
@@ -704,7 +680,7 @@ func (c *Control) SendSettingsDimensionCommandAsync(dimensionName, command strin
 	return nil
 }
 
-// SendSettingsCommandAsync 发送 SettingsCommand，不等待更改同步
+// SendSettingsCommandAsync 发送 SettingsCommand，不等待更改同步。
 func (c *Control) SendSettingsCommandAsync(command string) error {
 	if c.API == nil {
 		return loc.Err(loc.KeyControlAPINotInitialized)
@@ -715,7 +691,7 @@ func (c *Control) SendSettingsCommandAsync(command string) error {
 	return nil
 }
 
-// SendRawCommandAsync 发送原始 WebSocket 命令，不包装维度
+// SendRawCommandAsync 发送原始 WebSocket 命令，不包装维度。
 func (c *Control) SendRawCommandAsync(command string) error {
 	if c.API == nil {
 		return loc.Err(loc.KeyControlAPINotInitialized)
@@ -726,7 +702,7 @@ func (c *Control) SendRawCommandAsync(command string) error {
 	return nil
 }
 
-// AwaitChanges 等待服务器处理已经提交的命令更改
+// AwaitChanges 等待服务器处理已经提交的命令更改。
 func (c *Control) AwaitChanges() error {
 	if c.API == nil {
 		return loc.Err(loc.KeyControlAPINotInitialized)
@@ -749,7 +725,7 @@ func (c *Control) positionConsole(dimensionName string, center wsdefine.BlockPos
 	target := protocol.BlockPos{center[0], center[1], center[2]}
 
 	if c.Console == nil {
-		// 首次定位时创建操作台、缓存系统和 NBT 制作器，后续移动时复用同一套状态
+		// 首次定位时创建操作台、缓存系统和 NBT 制作器，后续移动时复用同一套状态。
 		console, err := nbt_console.NewConsole(c.API, dimensionID, target)
 		if err != nil {
 			return loc.Errf(loc.KeyControlInitNBTConsoleFailed, err)
@@ -762,7 +738,7 @@ func (c *Control) positionConsole(dimensionName string, center wsdefine.BlockPos
 	}
 
 	if c.Console.Dimension() == dimensionID && c.Console.Center() == target {
-		// 目标没有变化时不触发操作台搬迁，避免重复还原和重新备份操作台区域
+		// 目标没有变化时不触发操作台搬迁，避免重复还原和重新备份操作台区域。
 		c.Config.ConsoleWorldPos = center
 		return nil
 	}
@@ -774,7 +750,7 @@ func (c *Control) positionConsole(dimensionName string, center wsdefine.BlockPos
 	return nil
 }
 
-// MoveConsoleTo 将 NBT 操作台移动到指定维度和中心坐标
+// MoveConsoleTo 将 NBT 操作台移动到指定维度和中心坐标。
 func (c *Control) MoveConsoleTo(dimensionName string, center wsdefine.BlockPos) error {
 	if err := c.positionConsole(dimensionName, center); err != nil {
 		return err
@@ -782,7 +758,7 @@ func (c *Control) MoveConsoleTo(dimensionName string, center wsdefine.BlockPos) 
 	return nil
 }
 
-// RestoreConsoleArea 还原当前操作台区域备份，并释放操作台状态
+// RestoreConsoleArea 还原当前操作台区域备份，并释放操作台状态。
 func (c *Control) RestoreConsoleArea() error {
 	if c.Console == nil {
 		return nil

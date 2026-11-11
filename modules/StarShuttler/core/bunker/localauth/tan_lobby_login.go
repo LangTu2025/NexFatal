@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/xingbaiawa/g79client"
-	"github.com/xingbaiawa/g79client/utils"
+	"github.com/Yeah114/g79client"
+	"github.com/Yeah114/g79client/utils"
 )
 
 func TanLobbyLogin(ctx context.Context, cli *g79client.Client, p TanLobbyLoginParams) (TanLobbyLoginResult, error) {

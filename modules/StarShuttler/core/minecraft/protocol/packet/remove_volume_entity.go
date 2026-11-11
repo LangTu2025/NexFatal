@@ -6,9 +6,8 @@ import (
 
 // RemoveVolumeEntity indicates a volume entity to be removed from server to client.
 type RemoveVolumeEntity struct {
-	// EntityRuntimeID ...
-	// Netease
-	EntityRuntimeID uint32
+	// EntityRuntimeID ..
+	EntityRuntimeID uint64
 	// Dimension ...
 	Dimension int32
 }
@@ -19,6 +18,6 @@ func (*RemoveVolumeEntity) ID() uint32 {
 }
 
 func (pk *RemoveVolumeEntity) Marshal(io protocol.IO) {
-	io.Varuint32(&pk.EntityRuntimeID) // For Netease
+	io.Uint64(&pk.EntityRuntimeID)
 	io.Varint32(&pk.Dimension)
 }

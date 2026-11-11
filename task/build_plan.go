@@ -3,10 +3,10 @@ package task
 import (
 	"context"
 
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
 	bwo_chunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
-	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
-	wsstructure "github.com/xingbaiawa/LycorisFlow/structure"
+	wsdefine "github.com/Yeah114/WaterStructure/define"
+	wsstructure "github.com/Yeah114/WaterStructure/structure"
+	loc "github.com/LangTu2025/NexFatal/utils/localization"
 )
 
 type simpleCommandPlan struct {
@@ -94,7 +94,7 @@ func cloneSimpleCommandPlan(plan simpleCommandPlan) simpleCommandPlan {
 
 func cloneClassifiedNBTPlacementTasks(tasks classifiedNBTPlacementTasks) classifiedNBTPlacementTasks {
 	return classifiedNBTPlacementTasks{
-		directBlocks:    append([]nbtPlacementTask(nil), tasks.directBlocks...),
+		commandBlocks:   append([]nbtPlacementTask(nil), tasks.commandBlocks...),
 		regularBlocks:   append([]nbtPlacementTask(nil), tasks.regularBlocks...),
 		lateBlocks:      append([]nbtPlacementTask(nil), tasks.lateBlocks...),
 		containerBlocks: append([]nbtPlacementTask(nil), tasks.containerBlocks...),
@@ -135,24 +135,15 @@ func (b *BuildTask) readRegionPlan(ctx context.Context, reader wsstructure.Struc
 	if err != nil {
 		return plan, err
 	}
-	commandBlockNBTs := chunkNBTs
-	if b.Config.VerifyCommandBlocks && !b.Config.ImportNBT {
-		commandBlockNBTs, err = reader.GetChunksNBT(region.ChunkList)
-		if err != nil {
-			return plan, loc.Errf(loc.KeyBuildReadNBTFailed, err)
-		}
-		commandBlockNBTs = filterCommandBlockNBTs(chunks, commandBlockNBTs)
-	}
-	plan.commands, err = makeSimpleCommandPlan(ctx, region, chunks, buildOrigin, chunkNBTs, b.Config.ImportNBT, b.Config.AutoPlaceLight, b.Config.LightSpacing)
-	if err != nil {
-		return plan, err
-	}
+	plan.commands = makeSimpleCommandPlan(region, chunks, buildOrigin, chunkNBTs, b.Config.ImportNBT, b.Config.AutoPlaceLight, b.Config.LightSpacing)
 
-	tasks, err := b.collectNBTTasksFromChunks(ctx, region.ChunkList, chunks, commandBlockNBTs)
-	if err != nil {
-		return plan, err
+	if b.Config.ImportNBT {
+		tasks, err := b.collectNBTTasksFromChunks(ctx, region.ChunkList, chunks, chunkNBTs)
+		if err != nil {
+			return plan, err
+		}
+		plan.nbtTasks = tasks
+		plan.hasNBT = true
 	}
-	plan.nbtTasks = tasks
-	plan.hasNBT = b.Config.ImportNBT || len(tasks.directBlocks) > 0
 	return plan, nil
 }

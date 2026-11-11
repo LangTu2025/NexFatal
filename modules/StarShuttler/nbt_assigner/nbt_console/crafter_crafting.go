@@ -180,7 +180,7 @@ func (c *Console) CraftByCrafter(
 
 	targetPos := protocol.BlockPos{crafterPos[0], crafterPos[1] + 1, crafterPos[2]}
 	dimensionName := utils.DimensionNameByID(c.dimension)
-	err = api.Commands().SendAICommand(
+	err = api.Commands().SendSettingsCommand(
 		fmt.Sprintf("execute in %s run tp %d %d %d", dimensionName, targetPos[0], targetPos[1], targetPos[2]),
 		true,
 	)

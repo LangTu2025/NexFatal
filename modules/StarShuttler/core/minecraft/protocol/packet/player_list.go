@@ -21,16 +21,6 @@ type PlayerList struct {
 	// Entries is a list of all player list entries that should be added/removed from the player list,
 	// depending on the ActionType set.
 	Entries []protocol.PlayerListEntry
-	// Netease
-	Unknown1 []protocol.NeteaseUnknownPlayerListEntry
-	// Netease
-	Unknown2 []protocol.NeteaseUnknownPlayerListEntry
-	// Netease
-	Unknown3 []string
-	// Netease: launcher levels (1 - 50), such as "Diamond V", "Bedrock III"..
-	GrowthLevels []uint32
-	// Netease
-	Unknown4 []bool
 }
 
 // ID ...
@@ -49,14 +39,8 @@ func (pk *PlayerList) Marshal(io protocol.IO) {
 		io.UnknownEnumOption(pk.ActionType, "player list action type")
 	}
 	if pk.ActionType == PlayerListActionAdd {
-		len := len(pk.Entries)
-		for i := 0; i < len; i++ {
+		for i := 0; i < len(pk.Entries); i++ {
 			io.Bool(&pk.Entries[i].Skin.Trusted)
 		}
-		protocol.SliceOfLen(io, uint32(len), &pk.Unknown1)
-		protocol.SliceOfLen(io, uint32(len), &pk.Unknown2)
-		protocol.FuncSliceOfLen(io, uint32(len), &pk.Unknown3, io.String)
-		protocol.FuncSliceOfLen(io, uint32(len), &pk.GrowthLevels, io.Uint32)
-		protocol.FuncSliceOfLen(io, uint32(len), &pk.Unknown4, io.Bool)
 	}
 }

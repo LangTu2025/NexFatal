@@ -11,11 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-jose/go-jose/v3"
-	"github.com/go-jose/go-jose/v3/jwt"
-	josev4 "github.com/go-jose/go-jose/v4"
-	jwtv4 "github.com/go-jose/go-jose/v4/jwt"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
+	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/jwt"
 )
 
 // chain holds a chain with claims, each with their own headers, payloads and signatures. Each claim holds
@@ -28,52 +25,48 @@ type certificate struct {
 
 // request is the outer encapsulation of the request. It holds a chain and a ClientData object.
 type request struct {
-	// Certificate holds the client certificate chain.
+	// Certificate holds the client certificate chain. The chain holds several claims that the server may verify in order to
+	// make sure that the client is logged into XBOX Live.
 	Certificate certificate `json:"Certificate"`
 	// AuthenticationType is the authentication type of the request.
 	AuthenticationType uint8 `json:"AuthenticationType"`
-	// Token is reserved by the newer request format. It is usually an empty string.
+	// Token is an empty string, it's unclear what's used for.
 	Token string `json:"Token"`
-	// Chain is kept for legacy auth-server responses / old request decoding.
-	Chain chain `json:"chain,omitempty"`
 	// RawToken holds the raw token that follows the JWT chain, holding the ClientData.
 	RawToken string `json:"-"`
-}
-
-func (r *request) normalizeLegacy() {
-	if len(r.Certificate.Chain) == 0 && len(r.Chain) != 0 {
-		r.Certificate = certificate{Chain: r.Chain}
-	}
-}
-
-func (r *request) authTypeOrDefault() uint8 {
-	if r.AuthenticationType == 0 {
-		return 2
-	}
-	return r.AuthenticationType
+	// Legacy specifies whether to use the legacy format of the request or not.
+	Legacy bool `json:"-"`
 }
 
 func (r *request) MarshalJSON() ([]byte, error) {
-	certBytes, err := json.Marshal(r.Certificate)
+	if r.Legacy {
+		return json.Marshal(r.Certificate)
+	}
+
+	cert, err := json.Marshal(r.Certificate)
 	if err != nil {
 		return nil, err
 	}
 
-	type wireRequest struct {
-		Certificate        string `json:"Certificate"`
-		AuthenticationType uint8  `json:"AuthenticationType"`
-		Token              string `json:"Token"`
-	}
-	return json.Marshal(wireRequest{
-		Certificate:        string(certBytes),
-		AuthenticationType: r.AuthenticationType,
-		Token:              r.Token,
+	type Alias request
+	return json.Marshal(&struct {
+		Certificate string `json:"Certificate"`
+		Alias
+	}{
+		Certificate: string(cert),
+		Alias:       (Alias)(*r),
 	})
 }
 
 func init() {
-	// Netease public key
+	/*
+		PhoenixBuilder specific changes.
+		Author: Liliya233, Happy2018new
+	*/
+	// noinspection SpellCheckingInspection
+	// const mojangPublicKey = `MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAECRXueJeTDqNRRgJi/vlRufByu/2G0i2Ebt6YMar5QX/R0DIIyrJMcUpruK4QveTfJSTp3Shlq4Gk34cD/4GUWwkv0DVuzeuB+tXija7HBxii03NHDbPAD0AKnLr2wdAp`
 	const mojangPublicKey = `MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEEsmU+IF/XeAF3yiqJ7Ko36btx6JtdB26wV9Eyw4AYR/nmesznkfXxwQ4B0NkSnGIZccbb2f3nFUYughKSoAcNHx+lQm8F9h9RwhrNgeN907z06LUA2AqWcwqasxyaU0E`
+
 	data, _ := base64.StdEncoding.DecodeString(mojangPublicKey)
 	publicKey, _ := x509.ParsePKIXPublicKey(data)
 	mojangKey = publicKey.(*ecdsa.PublicKey)
@@ -106,7 +99,7 @@ func Parse(request []byte) (IdentityData, ClientData, AuthResult, error) {
 	if err != nil {
 		return iData, cData, res, fmt.Errorf("parse login request: %w", err)
 	}
-	tok, err := jwt.ParseSigned(req.Certificate.Chain[0])
+	tok, err := jwt.ParseSigned(req.Certificate.Chain[0], []jose.SignatureAlgorithm{jose.ES384})
 	if err != nil {
 		return iData, cData, res, fmt.Errorf("parse token 0: %w", err)
 	}
@@ -120,6 +113,12 @@ func Parse(request []byte) (IdentityData, ClientData, AuthResult, error) {
 
 	var identityClaims identityClaims
 	var authenticated bool
+
+	/*
+		PhoenixBuilder specific changes.
+		Author: LNSSPsd
+	*/
+	// t, iss := time.Now(), "Mojang"
 	t, iss := time.Now(), "NetEase"
 
 	switch len(req.Certificate.Chain) {
@@ -158,17 +157,13 @@ func Parse(request []byte) (IdentityData, ClientData, AuthResult, error) {
 		if authenticated != (identityClaims.ExtraData.XUID != "") {
 			return iData, cData, res, fmt.Errorf("identity data must have an XUID when logged into XBOX Live only")
 		}
-		// Netease: title ID is missing
-		// if authenticated != (identityClaims.ExtraData.TitleID != "") {
-		// 	return iData, cData, res, fmt.Errorf("identity data must have a title ID when logged into XBOX Live only")
-		// }
 	default:
 		return iData, cData, res, fmt.Errorf("unexpected login chain length %v", len(req.Certificate.Chain))
 	}
 	if err := parseFullClaim(req.RawToken, key, &cData); err != nil {
 		return iData, cData, res, fmt.Errorf("parse client data: %w", err)
 	}
-	if strings.Count(cData.ServerAddress, ":") > 1 {
+	if strings.Count(cData.ServerAddress, ":") > 1 && cData.ServerAddress[0] != '[' {
 		// IPv6: We can't net.ResolveUDPAddr this directly, because Mojang does
 		// not always put [] around the IP if it isn't added by the player in
 		// the External Server adding screen. We'll have to do this manually:
@@ -193,16 +188,19 @@ func parseLoginRequest(requestData []byte) (*request, error) {
 	}
 	var rawLength int32
 	if err := binary.Read(buf, binary.LittleEndian, &rawLength); err != nil {
-		return nil, fmt.Errorf("error reading raw token length: %v", err)
+		return nil, fmt.Errorf("read raw token length: %w", err)
 	}
-	return &request{Certificate: certificate{Chain: chain}, RawToken: string(buf.Next(int(rawLength)))}, nil
+	return &request{
+		Certificate: certificate{Chain: chain},
+		RawToken:    string(buf.Next(int(rawLength))),
+	}, nil
 }
 
 // parseFullClaim parses and verifies a full claim using the ecdsa.PublicKey passed. The key passed is updated
 // if the claim holds an identityPublicKey field.
 // The value v passed is decoded into when reading the claims.
 func parseFullClaim(claim string, key *ecdsa.PublicKey, v any) error {
-	tok, err := jwt.ParseSigned(claim)
+	tok, err := jwt.ParseSigned(claim, []jose.SignatureAlgorithm{jose.ES384})
 	if err != nil {
 		return fmt.Errorf("error parsing signed token: %w", err)
 	}
@@ -232,87 +230,18 @@ func parseAsKey(k any, pub *ecdsa.PublicKey) error {
 // Encode encodes a login request using the encoded login chain passed and the client data. The request's
 // client data token is signed using the private key passed. It must be the same as the one used to get the
 // login chain.
-func Encode(loginChain string, data ClientData, key *ecdsa.PrivateKey) []byte {
-	return encodeWithOptions(loginChain, data, key, defaultLoginOuterMode, true)
-}
-
-// EncodeNeteaseRentalServer matches the non-legacy server login while
-// retaining the complete ClientData field set used by rental servers.
-func EncodeNeteaseRentalServer(loginChain string, data ClientData, key *ecdsa.PrivateKey) []byte {
-	return encodeWithOptionsAndClientData(loginChain, data, key, defaultLoginOuterMode, false, false, true)
-}
-
-// EncodeWithMode encodes a login request with an explicit outer envelope mode.
-func EncodeWithMode(loginChain string, data ClientData, key *ecdsa.PrivateKey, mode string) []byte {
-	return encodeWithOptions(loginChain, data, key, mode, true)
-}
-
-// EncodeNeteaseDomain matches the legacy=false login envelope and
-// NetEase skin field names for mountain targets.
-func EncodeNeteaseDomain(loginChain string, data ClientData, key *ecdsa.PrivateKey) []byte {
-	// The mountain path uses the original legacy=false request encoder:
-	// legacy JSON outer envelope, the reference ClientData field set and the
-	// original go-jose serialization path. Keep this entry point isolated so
-	// lobby, rental-server and local-login encoders retain their own wire format.
-	return encodeWithOptionsAndClientData(loginChain, data, key, "legacy", false, true, false)
-}
-
-func encodeWithOptions(loginChain string, data ClientData, key *ecdsa.PrivateKey, mode string, preserveWrappedMetadata bool) []byte {
-	return encodeWithOptionsAndClientData(loginChain, data, key, mode, preserveWrappedMetadata, false, false)
-}
-
-func encodeWithOptionsAndClientData(loginChain string, data ClientData, key *ecdsa.PrivateKey, mode string, preserveWrappedMetadata, referenceWire, useJoseV4 bool) []byte {
-	// We first decode the login chain we actually got.
-	request := &request{}
-	var wrapped struct {
-		Certificate        string `json:"Certificate"`
-		AuthenticationType uint8  `json:"AuthenticationType"`
-		Token              string `json:"Token"`
-		Chain              chain  `json:"chain"`
-	}
-	if err := json.Unmarshal([]byte(loginChain), &wrapped); err == nil {
-		if preserveWrappedMetadata {
-			request.AuthenticationType = wrapped.AuthenticationType
-			request.Token = wrapped.Token
-		}
-		if wrapped.Certificate != "" {
-			var cert certificate
-			if err := json.Unmarshal([]byte(wrapped.Certificate), &cert); err == nil {
-				request.Certificate = cert
-			}
-		} else if len(wrapped.Chain) != 0 {
-			request.Certificate = certificate{Chain: wrapped.Chain}
-		}
-	}
-	if len(request.Certificate.Chain) == 0 {
-		var legacyCert certificate
-		if err := json.Unmarshal([]byte(loginChain), &legacyCert); err == nil {
-			request.Certificate = legacyCert
-		}
-	}
-	if len(request.Certificate.Chain) == 0 {
-		panic("invalid login chain: empty certificate chain")
-	}
+func Encode(loginChain string, data ClientData, key *ecdsa.PrivateKey, legacy bool) []byte {
+	// We first decode the login chain we actually got in a new certificate.
+	cert := &certificate{}
+	_ = json.Unmarshal([]byte(loginChain), &cert)
 
 	// We parse the header of the first claim it has in the chain, which will soon be the second claim.
 	keyData := MarshalPublicKey(&key.PublicKey)
-	tok, _ := jwt.ParseSigned(request.Certificate.Chain[0])
+	tok, _ := jwt.ParseSigned(cert.Chain[0], []jose.SignatureAlgorithm{jose.ES384})
 
 	//lint:ignore S1005 Double assignment is done explicitly to prevent panics.
 	x5uData, _ := tok.Headers[0].ExtraHeaders["x5u"]
 	x5u, _ := x5uData.(string)
-	if useJoseV4 {
-		if referenceWire {
-			firstJWT, rawToken := encodeReferenceJWTs(x5u, key, data)
-			request.Certificate.Chain = append(chain{firstJWT}, request.Certificate.Chain...)
-			request.RawToken = rawToken
-			return encodeRequestWithMode(request, mode)
-		}
-		firstJWT, rawToken := encodeRentalServerJWTs(x5u, key, data)
-		request.Certificate.Chain = append(chain{firstJWT}, request.Certificate.Chain...)
-		request.RawToken = rawToken
-		return encodeRequestWithMode(request, mode)
-	}
 	claims := jwt.Claims{
 		Expiry:    jwt.NewNumericDate(time.Now().Add(time.Hour * 6)),
 		NotBefore: jwt.NewNumericDate(time.Now().Add(-time.Hour * 6)),
@@ -325,183 +254,27 @@ func encodeWithOptionsAndClientData(loginChain string, data ClientData, key *ecd
 		Claims:               claims,
 		IdentityPublicKey:    x5u,
 		CertificateAuthority: true,
-	}).CompactSerialize()
-
-	// We add our own claim at the start of the chain.
-	request.Certificate.Chain = append(chain{firstJWT}, request.Certificate.Chain...)
-	// The mountain path signs its reduced ClientData shape, including
-	// SkinID for the NetEase skin item field. Other routes keep the shared
-	// ClientData representation.
-	var rawClientData any = data
-	if referenceWire {
-		rawClientData = newReferenceClientData(data)
-	}
-	request.RawToken, _ = jwt.Signed(signer).Claims(rawClientData).CompactSerialize()
-
-	return encodeRequestWithMode(request, mode)
-}
-
-// encodeReferenceJWTs keeps the target go-jose/v4 serialization isolated from
-// the existing v3 encoders used by the other login routes.
-func encodeReferenceJWTs(x5u string, key *ecdsa.PrivateKey, data ClientData) (string, string) {
-	return encodeV4JWTs(x5u, key, newReferenceClientData(data))
-}
-
-func encodeRentalServerJWTs(x5u string, key *ecdsa.PrivateKey, data ClientData) (string, string) {
-	return encodeV4JWTs(x5u, key, data)
-}
-
-func encodeV4JWTs(x5u string, key *ecdsa.PrivateKey, data any) (string, string) {
-	keyData := MarshalPublicKey(&key.PublicKey)
-	claims := jwtv4.Claims{
-		Expiry:    jwtv4.NewNumericDate(time.Now().Add(time.Hour * 6)),
-		NotBefore: jwtv4.NewNumericDate(time.Now().Add(-time.Hour * 6)),
-	}
-	signer, _ := josev4.NewSigner(josev4.SigningKey{Key: key, Algorithm: josev4.ES384}, &josev4.SignerOptions{
-		ExtraHeaders: map[josev4.HeaderKey]any{"x5u": keyData},
-	})
-	firstJWT, _ := jwtv4.Signed(signer).Claims(struct {
-		jwtv4.Claims
-		IdentityPublicKey    string `json:"identityPublicKey"`
-		CertificateAuthority bool   `json:"certificateAuthority,omitempty"`
-	}{
-		Claims:               claims,
-		IdentityPublicKey:    x5u,
-		CertificateAuthority: true,
 	}).Serialize()
-	rawToken, _ := jwtv4.Signed(signer).Claims(data).Serialize()
-	return firstJWT, rawToken
-}
 
-// referenceClientData is the exact ClientData field set used by target logins.
-// Keep it separate from ClientData so newer protocol fields are never added to
-// DomainGame or LobbyGame login JWTs by accident.
-type referenceClientData struct {
-	AnimatedImageData                []SkinAnimation          `json:"AnimatedImageData"`
-	CapeData                         string                   `json:"CapeData"`
-	CapeID                           string                   `json:"CapeId"`
-	CapeImageHeight                  int                      `json:"CapeImageHeight"`
-	CapeImageWidth                   int                      `json:"CapeImageWidth"`
-	CapeOnClassicSkin                bool                     `json:"CapeOnClassicSkin"`
-	ClientRandomID                   int64                    `json:"ClientRandomId"`
-	CurrentInputMode                 int                      `json:"CurrentInputMode"`
-	DefaultInputMode                 int                      `json:"DefaultInputMode"`
-	DeviceModel                      string                   `json:"DeviceModel"`
-	DeviceOS                         protocol.DeviceOS        `json:"DeviceOS"`
-	DeviceID                         string                   `json:"DeviceId"`
-	GameVersion                      string                   `json:"GameVersion"`
-	GUIScale                         int                      `json:"GuiScale"`
-	IsEditorMode                     bool                     `json:"IsEditorMode"`
-	LanguageCode                     string                   `json:"LanguageCode"`
-	PersonaSkin                      bool                     `json:"PersonaSkin"`
-	PlatformOfflineID                string                   `json:"PlatformOfflineId"`
-	PlatformOnlineID                 string                   `json:"PlatformOnlineId"`
-	PlatformUserID                   string                   `json:"PlatformUserId,omitempty"`
-	PremiumSkin                      bool                     `json:"PremiumSkin"`
-	SelfSignedID                     string                   `json:"SelfSignedId"`
-	ServerAddress                    string                   `json:"ServerAddress"`
-	SkinAnimationData                string                   `json:"SkinAnimationData"`
-	SkinData                         string                   `json:"SkinData"`
-	SkinGeometry                     string                   `json:"SkinGeometryData"`
-	SkinGeometryVersion              string                   `json:"SkinGeometryDataEngineVersion"`
-	SkinID                           string                   `json:"SkinId"`
-	PlayFabID                        string                   `json:"PlayFabId"`
-	SkinImageHeight                  int                      `json:"SkinImageHeight"`
-	SkinImageWidth                   int                      `json:"SkinImageWidth"`
-	SkinResourcePatch                string                   `json:"SkinResourcePatch"`
-	SkinColour                       string                   `json:"SkinColor"`
-	ArmSize                          string                   `json:"ArmSize"`
-	PersonaPieces                    []PersonaPiece           `json:"PersonaPieces"`
-	PieceTintColours                 []PersonaPieceTintColour `json:"PieceTintColors"`
-	ThirdPartyName                   string                   `json:"ThirdPartyName"`
-	ThirdPartyNameOnly               *bool                    `json:"ThirdPartyNameOnly,omitempty"`
-	UIProfile                        int                      `json:"UIProfile"`
-	TrustedSkin                      bool                     `json:"TrustedSkin"`
-	OverrideSkin                     bool                     `json:"OverrideSkin"`
-	CompatibleWithClientSideChunkGen bool                     `json:"CompatibleWithClientSideChunkGen"`
-	MaxViewDistance                  int                      `json:"MaxViewDistance"`
-	MemoryTier                       int                      `json:"MemoryTier"`
-	PlatformType                     int                      `json:"PlatformType"`
-	GraphicsMode                     int                      `json:"GraphicsMode"`
-	SkinItemID                       string                   `json:"SkinID"`
-	GrowthLevel                      int                      `json:"GrowthLevel"`
-}
-
-func newReferenceClientData(data ClientData) referenceClientData {
-	return referenceClientData{
-		AnimatedImageData:                data.AnimatedImageData,
-		CapeData:                         data.CapeData,
-		CapeID:                           data.CapeID,
-		CapeImageHeight:                  data.CapeImageHeight,
-		CapeImageWidth:                   data.CapeImageWidth,
-		CapeOnClassicSkin:                data.CapeOnClassicSkin,
-		ClientRandomID:                   data.ClientRandomID,
-		CurrentInputMode:                 data.CurrentInputMode,
-		DefaultInputMode:                 data.DefaultInputMode,
-		DeviceModel:                      data.DeviceModel,
-		DeviceOS:                         data.DeviceOS,
-		DeviceID:                         data.DeviceID,
-		GameVersion:                      data.GameVersion,
-		GUIScale:                         data.GUIScale,
-		IsEditorMode:                     data.IsEditorMode,
-		LanguageCode:                     data.LanguageCode,
-		PersonaSkin:                      data.PersonaSkin,
-		PlatformOfflineID:                data.PlatformOfflineID,
-		PlatformOnlineID:                 data.PlatformOnlineID,
-		PlatformUserID:                   data.PlatformUserID,
-		PremiumSkin:                      data.PremiumSkin,
-		SelfSignedID:                     data.SelfSignedID,
-		ServerAddress:                    data.ServerAddress,
-		SkinAnimationData:                data.SkinAnimationData,
-		SkinData:                         data.SkinData,
-		SkinGeometry:                     data.SkinGeometry,
-		SkinGeometryVersion:              data.SkinGeometryVersion,
-		SkinID:                           data.SkinID,
-		PlayFabID:                        data.PlayFabID,
-		SkinImageHeight:                  data.SkinImageHeight,
-		SkinImageWidth:                   data.SkinImageWidth,
-		SkinResourcePatch:                data.SkinResourcePatch,
-		SkinColour:                       data.SkinColour,
-		ArmSize:                          data.ArmSize,
-		PersonaPieces:                    data.PersonaPieces,
-		PieceTintColours:                 data.PieceTintColours,
-		ThirdPartyName:                   data.ThirdPartyName,
-		ThirdPartyNameOnly:               data.ThirdPartyNameOnly,
-		UIProfile:                        data.UIProfile,
-		TrustedSkin:                      data.TrustedSkin,
-		OverrideSkin:                     data.OverrideSkin,
-		CompatibleWithClientSideChunkGen: data.CompatibleWithClientSideChunkGen,
-		MaxViewDistance:                  data.MaxViewDistance,
-		MemoryTier:                       data.MemoryTier,
-		PlatformType:                     data.PlatformType,
-		GraphicsMode:                     data.GraphicsMode,
-		SkinItemID:                       data.SkinItemID,
-		GrowthLevel:                      data.GrowthLevel,
+	req := &request{
+		Certificate: certificate{
+			// We add our own claim at the start of the chain.
+			Chain: append(chain{firstJWT}, cert.Chain...),
+		},
+		Legacy: legacy,
 	}
+	// We create another token this time, which is signed the same as the claim we just inserted in the chain,
+	// just now it contains client data.
+	req.RawToken, _ = jwt.Signed(signer).Claims(data).Serialize()
+
+	return encodeRequest(req)
 }
 
 // encodeRequest encodes the request passed to a byte slice which is suitable for setting to the Connection
 // Request field in a Login packet.
 func encodeRequest(req *request) []byte {
-	return encodeRequestWithMode(req, defaultLoginOuterMode)
-}
+	chainBytes, _ := json.Marshal(req)
 
-func encodeRequestWithMode(req *request, mode string) []byte {
-	var chainBytes []byte
-	switch mode {
-	case "legacy":
-		chainBytes, _ = json.Marshal(req)
-	case "modern_string_auth2":
-		chainBytes = encodeModernStringOuter(req, 2)
-	case "modern_string_auth0":
-		chainBytes = encodeModernStringOuter(req, req.AuthenticationType)
-	case "modern_object_auth2":
-		chainBytes = encodeModernObjectOuter(req, 2)
-	case "modern_object_auth0":
-		chainBytes = encodeModernObjectOuter(req, 0)
-	default:
-		chainBytes, _ = json.Marshal(req)
-	}
 	buf := bytes.NewBuffer(nil)
 	_ = binary.Write(buf, binary.LittleEndian, int32(len(chainBytes)))
 	_, _ = buf.WriteString(string(chainBytes))
@@ -511,68 +284,11 @@ func encodeRequestWithMode(req *request, mode string) []byte {
 	return buf.Bytes()
 }
 
-const defaultLoginOuterMode = "modern_string_auth0"
-
-// LocalOnlineLoginOuterMode is the login envelope used by PE local-multiplayer rooms.
-const LocalOnlineLoginOuterMode = "modern_string_auth2"
-
-func encodeModernStringOuter(req *request, authType uint8) []byte {
-	certObj := struct {
-		Chain chain `json:"chain"`
-	}{Chain: req.Certificate.Chain}
-	certBytes, _ := json.Marshal(certObj)
-	outer := struct {
-		Certificate        string `json:"Certificate"`
-		AuthenticationType uint8  `json:"AuthenticationType"`
-		Token              string `json:"Token"`
-	}{
-		Certificate:        string(certBytes),
-		AuthenticationType: authType,
-		Token:              req.Token,
-	}
-	if outer.Token == "" {
-		outer.Token = ""
-	}
-	b, _ := json.Marshal(outer)
-	return b
-}
-
-func encodeModernObjectOuter(req *request, authType uint8) []byte {
-	certObj := struct {
-		Chain chain `json:"chain"`
-	}{Chain: req.Certificate.Chain}
-	outer := struct {
-		Certificate        any    `json:"Certificate"`
-		AuthenticationType uint8  `json:"AuthenticationType"`
-		Token              string `json:"Token"`
-	}{
-		Certificate:        certObj,
-		AuthenticationType: authType,
-		Token:              req.Token,
-	}
-	if outer.Token == "" {
-		outer.Token = ""
-	}
-	b, _ := json.Marshal(outer)
-	return b
-}
-
 // EncodeOffline creates a login request using the identity data and client data passed. The private key
 // passed will be used to self sign the JWTs.
 // Unlike Encode, EncodeOffline does not have a token signed by the Mojang key. It consists of only one JWT
 // which holds the identity data of the player.
-func EncodeOffline(identityData IdentityData, data ClientData, key *ecdsa.PrivateKey) []byte {
-	return encodeOfflineWithMode(identityData, data, key, defaultLoginOuterMode)
-}
-
-// EncodeOfflineWithMode creates an offline login request with an explicit outer envelope.
-// The mode is selected by the caller so local multiplayer can use its own format without
-// changing rental-server or lobby login behavior.
-func EncodeOfflineWithMode(identityData IdentityData, data ClientData, key *ecdsa.PrivateKey, mode string) []byte {
-	return encodeOfflineWithMode(identityData, data, key, mode)
-}
-
-func encodeOfflineWithMode(identityData IdentityData, data ClientData, key *ecdsa.PrivateKey, mode string) []byte {
+func EncodeOffline(identityData IdentityData, data ClientData, key *ecdsa.PrivateKey, legacy bool) []byte {
 	keyData := MarshalPublicKey(&key.PublicKey)
 	claims := jwt.Claims{
 		Expiry:    jwt.NewNumericDate(time.Now().Add(time.Hour * 6)),
@@ -586,44 +302,61 @@ func encodeOfflineWithMode(identityData IdentityData, data ClientData, key *ecds
 		Claims:            claims,
 		ExtraData:         identityData,
 		IdentityPublicKey: keyData,
-	}).CompactSerialize()
+	}).Serialize()
 
-	request := &request{Certificate: certificate{Chain: chain{firstJWT}}}
+	req := &request{
+		Certificate: certificate{
+			Chain: chain{firstJWT},
+		},
+		AuthenticationType: 2,
+		Legacy:             legacy,
+	}
 	// We create another token this time, which is signed the same as the claim we just inserted in the chain,
 	// just now it contains client data.
-	request.RawToken, _ = jwt.Signed(signer).Claims(data).CompactSerialize()
+	req.RawToken, _ = jwt.Signed(signer).Claims(data).Serialize()
 
-	return encodeRequestWithMode(request, mode)
+	return encodeRequest(req)
 }
 
 // decodeChain reads a certificate chain from the buffer passed and returns each claim found in the chain.
 func decodeChain(buf *bytes.Buffer) (chain, error) {
 	var chainLength int32
 	if err := binary.Read(buf, binary.LittleEndian, &chainLength); err != nil {
-		return nil, fmt.Errorf("error reading chain length: %v", err)
+		return nil, fmt.Errorf("read chain length: %w", err)
+	}
+	if chainLength <= 0 {
+		return nil, fmt.Errorf("invalid chain length: %d", chainLength)
 	}
 	chainData := buf.Next(int(chainLength))
 
-	request := &request{}
-	if err := json.Unmarshal(chainData, request); err == nil {
-		request.normalizeLegacy()
+	req := struct {
+		AuthenticationType uint8  `json:"AuthenticationType"`
+		Certificate        string `json:"Certificate"`
+		Chain              chain  `json:"chain"`
+	}{}
+	if err := json.Unmarshal(chainData, &req); err != nil {
+		return nil, fmt.Errorf("decode chain JSON: %w", err)
 	}
-	if len(request.Certificate.Chain) == 0 {
-		var wrapped struct {
-			Certificate string `json:"Certificate"`
-		}
-		if err := json.Unmarshal(chainData, &wrapped); err == nil && wrapped.Certificate != "" {
-			var cert certificate
-			if err := json.Unmarshal([]byte(wrapped.Certificate), &cert); err == nil {
-				request.Certificate = cert
-			}
-		}
+
+	var ch chain
+	if req.Certificate != "" {
+		cert := &certificate{}
+		_ = json.Unmarshal([]byte(req.Certificate), &cert)
+		ch = cert.Chain
+	} else {
+		ch = req.Chain
 	}
+
 	// First check if the chain actually has any elements in it.
-	if len(request.Certificate.Chain) == 0 {
-		return nil, fmt.Errorf("connection request had no claims in the chain")
+	if len(ch) == 0 {
+		return nil, fmt.Errorf("decode chain: no elements")
 	}
-	return request.Certificate.Chain, nil
+
+	// Then check if the authentication type is guest mode.
+	if req.AuthenticationType == 1 {
+		return nil, fmt.Errorf("guest authentication is not supported")
+	}
+	return ch, nil
 }
 
 // identityClaims holds the claims for the last token in the chain, which contains the IdentityData of the
@@ -660,15 +393,15 @@ type identityPublicKeyClaims struct {
 func ParsePublicKey(b64Data string, key *ecdsa.PublicKey) error {
 	data, err := base64.StdEncoding.DecodeString(b64Data)
 	if err != nil {
-		return fmt.Errorf("error base64 decoding public key data: %v", err)
+		return fmt.Errorf("decode public key data: %w", err)
 	}
 	publicKey, err := x509.ParsePKIXPublicKey(data)
 	if err != nil {
-		return fmt.Errorf("error parsing public key: %v", err)
+		return fmt.Errorf("parse public key: %w", err)
 	}
 	ecdsaKey, ok := publicKey.(*ecdsa.PublicKey)
 	if !ok {
-		return fmt.Errorf("expected ECDSA public key, but got %v", key)
+		return fmt.Errorf("expected ECDSA public key, got %v", key)
 	}
 	*key = *ecdsaKey
 	return nil

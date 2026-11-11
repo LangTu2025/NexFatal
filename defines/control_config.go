@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"strings"
 
-	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
+	wsdefine "github.com/Yeah114/WaterStructure/define"
 	"github.com/LangTu2025/NexFatal/constants"
 )
 
 var defaultAuthServerAddress = constants.UserCenterURL
 
-// ControlConfig 保存连接目标服务器所需的配置
+// ControlConfig 保存连接目标服务器所需的配置。
 type ControlConfig struct {
 	AuthServerAddress          string            `json:"-"`
 	AuthServerToken            string            `json:"-"`
@@ -32,29 +32,29 @@ type controlConfigJSON struct {
 }
 
 const (
-	// ServerKindRental 表示租赁服
+	// ServerKindRental 表示租赁服。
 	ServerKindRental = "rental"
-	// ServerKindDomain 表示山头
+	// ServerKindDomain 表示山头。
 	ServerKindDomain = "domain"
-	// ServerKindTanLobby 表示本地联机
+	// ServerKindTanLobby 表示本地联机。
 	ServerKindTanLobby = "tan_lobby"
-	// ServerKindLobby 表示联机大厅
+	// ServerKindLobby 表示联机大厅。
 	ServerKindLobby = "lobby"
 )
 
-// NewControlConfig 创建带默认值的控制配置
+// NewControlConfig 创建带默认值的控制配置。
 func NewControlConfig() *ControlConfig {
 	cfg := &ControlConfig{}
 	cfg.Normalize()
 	return cfg
 }
 
-// DefaultAuthServerAddress 返回当前默认认证服务器地址
+// DefaultAuthServerAddress 返回当前默认认证服务器地址。
 func DefaultAuthServerAddress() string {
 	return defaultAuthServerAddress
 }
 
-// SetDefaultAuthServerAddress 设置默认认证服务器地址
+// SetDefaultAuthServerAddress 设置默认认证服务器地址。
 func SetDefaultAuthServerAddress(addr string) {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
@@ -64,7 +64,7 @@ func SetDefaultAuthServerAddress(addr string) {
 	defaultAuthServerAddress = addr
 }
 
-// Normalize 规范化服务器地址、服务器类型、服务器号和密码
+// Normalize 规范化服务器地址、服务器类型、服务器号和密码。
 func (c *ControlConfig) Normalize() {
 	c.AuthServerAddress = strings.TrimSpace(c.AuthServerAddress)
 	if c.AuthServerAddress == "" {
@@ -81,7 +81,7 @@ func (c *ControlConfig) Normalize() {
 	c.ServerKind = DetectServerKind(c.RentalServerCode)
 }
 
-// DetectServerKind 根据服务器号前缀或形态推断服务器类型
+// DetectServerKind 根据服务器号前缀或形态推断服务器类型。
 func DetectServerKind(serverCode string) string {
 	normalized := fixServerColon(serverCode)
 	prefix, _, ok := strings.Cut(normalized, ":")
@@ -202,12 +202,12 @@ func (c *ControlConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// FromJSON 从 JSON 字符串恢复控制配置
+// FromJSON 从 JSON 字符串恢复控制配置。
 func (c *ControlConfig) FromJSON(str string) error {
 	return json.Unmarshal([]byte(str), c)
 }
 
-// ToJSON 将控制配置序列化为 JSON 字符串
+// ToJSON 将控制配置序列化为 JSON 字符串。
 func (c *ControlConfig) ToJSON() (string, error) {
 	c.Normalize()
 	bs, err := json.Marshal(c)

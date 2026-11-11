@@ -5,111 +5,115 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 )
 
-var errNull = errors.New("null object")
+var ErrNull = errors.New("null object")
 
-var pycHeader = []byte{0x3, 0xF3, 0xD, 0xA, 0, 0, 0, 0}
+var PycHeader = []byte{0x3, 0xF3, 0xD, 0xA, 0, 0, 0, 0}
 
-type repairState struct {
-	internedStrings [][]byte
-	depth           int
-}
-
-// 将网易 marshal 数据修复为标准 Python 2 pyc 数据
-func RepairPYC(data []byte, removeProtectionCode bool) ([]byte, error) {
-	state := repairState{}
-	if !removeProtectionCode {
-		state.depth = 1000
-	}
-
+func PycRepairer(data []byte, strip bool) ([]byte, error) {
 	var result bytes.Buffer
-	result.Write(pycHeader)
 
-	err := state.repairMarshal(bytes.NewReader(data), &result)
+	if !strip {
+		depth = 1000
+	} else {
+		depth = 0
+	}
+
+	strings = make([][]byte, 0)
+
+	result.Write(PycHeader)
+
+	readBuffer := bytes.NewReader(data)
+
+	err := RepairMarshal(readBuffer, &result)
 	if err != nil {
-		return nil, fmt.Errorf("RepairPYC: %v", err)
+		return nil, err
 	}
+	//println(readBuffer.Len(), "/", readBuffer.Size())
+	// err = RepairMarshal(readBuffer, &result)
 
-	return result.Bytes(), nil
+	return result.Bytes(), err
 }
 
-// 修复一个网易 marshal 对象
+var strings = make([][]byte, 0)
+var depth = 0
+
 func RepairMarshal(reader *bytes.Reader, writer *bytes.Buffer) error {
-	state := repairState{}
-	if err := state.repairMarshal(reader, writer); err != nil {
-		return fmt.Errorf("RepairMarshal: %v", err)
-	}
-	return nil
-}
-
-func (r *repairState) repairMarshal(reader *bytes.Reader, writer *bytes.Buffer) error {
 	tagType, err := reader.ReadByte()
 	if err != nil {
 		return err
 	}
-	offset := reader.Size() - int64(reader.Len()) - 1
 
 	skip := true
 	switch tagType {
-	case TypeNetEaseString0:
-		writer.WriteByte(TypeString)
-		err = r.repairNetEaseString0(reader, writer, false)
-	case TypeNetEaseUnicode0:
-		writer.WriteByte(TypeUnicode)
-		err = r.repairNetEaseString0(reader, writer, false)
-	case TypeNetEaseInterned0:
-		writer.WriteByte(TypeString)
-		err = r.repairNetEaseString0(reader, writer, true)
-	case TypeNetEaseInterned1:
-		writer.WriteByte(TypeString)
-		err = r.repairNetEaseString1(reader, writer, true)
-	case TypeNetEaseUnicode1:
-		writer.WriteByte(TypeUnicode)
-		err = r.repairNetEaseString1(reader, writer, false)
-	case TypeNetEaseString1:
-		writer.WriteByte(TypeString)
-		err = r.repairNetEaseString1(reader, writer, false)
-	case TypeNetEaseInterned2:
-		writer.WriteByte(TypeString)
-		err = r.repairNetEaseString2(reader, writer, true)
-	case TypeNetEaseUnicode2:
-		writer.WriteByte(TypeUnicode)
-		err = r.repairNetEaseString2(reader, writer, false)
-	case TypeNetEaseString2:
-		writer.WriteByte(TypeString)
-		err = r.repairNetEaseString2(reader, writer, false)
-	case TypeNetEaseCode0:
-		r.depth++
-		writer.WriteByte(TypeCode)
-		err = r.repairNetEaseCode0(reader, writer)
-		r.depth--
-	case TypeNetEaseCode1:
-		r.depth++
-		writer.WriteByte(TypeCode)
-		err = r.repairNetEaseCode1(reader, writer)
-		r.depth--
-	case TypeNetEaseCode2:
-		r.depth++
-		writer.WriteByte(TypeCode)
-		err = r.repairNetEaseCode2(reader, writer)
-		r.depth--
-	case TypeInterned:
-		writer.WriteByte(TypeString)
-		err = r.copyStringInterned(reader, writer)
-	case TypeStringReference:
-		writer.WriteByte(TypeString)
+	case TYPE_NETEASE_STRING_0:
+		//println("type: netease string v0")
+		writer.WriteByte(TYPE_STRING)
+		err = repairNetEaseString0(reader, writer, true)
+	case TYPE_NETEASE_UNICODE_0:
+		//println("type: netease unicode v0")
+		writer.WriteByte(TYPE_UNICODE)
+		err = repairNetEaseString0(reader, writer, true)
+	case TYPE_NETEASE_INTERNED_0:
+		//println("type: netease interned v0")
+		writer.WriteByte(TYPE_STRING)
+		err = repairNetEaseString0(reader, writer, false)
+	case TYPE_NETEASE_INTERNED_1:
+		//println("type: netease interned v1")
+		writer.WriteByte(TYPE_STRING)
+		err = repairNetEaseString1(reader, writer, false)
+	case TYPE_NETEASE_UNICODE_1:
+		//println("type: netease unicode v1")
+		writer.WriteByte(TYPE_UNICODE)
+		err = repairNetEaseString1(reader, writer, true)
+	case TYPE_NETEASE_STRING_1:
+		//println("type: netease string v1")
+		writer.WriteByte(TYPE_STRING)
+		err = repairNetEaseString1(reader, writer, true)
+	case TYPE_NETEASE_INTERNED_2:
+		//println("type: netease interned v2")
+		writer.WriteByte(TYPE_STRING)
+		err = repairNetEaseString2(reader, writer, false)
+	case TYPE_NETEASE_UNICODE_2:
+		//println("type: netease unicode v2")
+		writer.WriteByte(TYPE_UNICODE)
+		err = repairNetEaseString2(reader, writer, true)
+	case TYPE_NETEASE_STRING_2:
+		//println("type: netease string v2")
+		writer.WriteByte(TYPE_STRING)
+		err = repairNetEaseString2(reader, writer, true)
+	case TYPE_NETEASE_CODE_0:
+		depth++
+		//println("type: netease code v0")
+		writer.WriteByte(TYPE_CODE)
+		err = repairNetEaseCode0(reader, writer)
+		depth--
+	case TYPE_NETEASE_CODE_1:
+		depth++
+		//println("type: netease code v1")
+		writer.WriteByte(TYPE_CODE)
+		err = repairNetEaseCode1(reader, writer)
+		depth--
+	case TYPE_NETEASE_CODE_2:
+		depth++
+		//println("type: netease code v2")
+		writer.WriteByte(TYPE_CODE)
+		err = repairNetEaseCode2(reader, writer)
+		depth--
+	case TYPE_INTERNED:
+		//println("type: string interned")
+		writer.WriteByte(TYPE_STRING)
+		err = copyStringInterned(reader, writer)
+	case TYPE_STRINGREF:
+		writer.WriteByte(TYPE_STRING)
 		var n int32
 		err := binary.Read(reader, binary.LittleEndian, &n)
 		if err != nil {
 			return err
 		}
 
-		if n < 0 || int(n) >= len(r.internedStrings) {
-			return fmt.Errorf("repairMarshal: String reference out of range: %d", n)
-		}
-		str := r.internedStrings[n]
+		str := strings[n]
 		err = binary.Write(writer, binary.LittleEndian, int32(len(str)))
 		if err != nil {
 			return err
@@ -120,56 +124,79 @@ func (r *repairState) repairMarshal(reader *bytes.Reader, writer *bytes.Buffer) 
 	}
 	if err != nil {
 		return err
-	}
-	if skip {
+	} else if skip {
 		return nil
 	}
 
 	writer.WriteByte(tagType)
 
 	switch tagType {
-	// 以下类型没有附加数据
-	case TypeNull:
-		err = errNull
-	case TypeNone:
-	case TypeStopIteration:
-	case TypeEllipsis:
-	case TypeFalse:
-	case TypeTrue:
-	// 以下类型包含附加数据
-	case TypeInt:
+	// theres no extra data for these types below
+	// i just print out the exact type for debug purpose
+	case TYPE_NULL:
+		//println("type: null")
+		// err = ErrNull
+	case TYPE_NONE:
+		//println("type: none")
+		// err = ErrNull
+	case TYPE_STOPITER:
+		//println("type: stopiter")
+	case TYPE_ELLIPSIS:
+		//println("type: ellipsis")
+	case TYPE_FALSE:
+		//println("type: bool false")
+	case TYPE_TRUE:
+		//println("type: bool true")
+	// these types below contrails extra data
+	case TYPE_INT:
+		//println("type: int32")
 		err = copyBytes(reader, writer, 4)
-	case TypeInt64:
+	case TYPE_INT64:
+		//println("type: int64")
 		err = copyBytes(reader, writer, 8)
-	case TypeLong:
+	case TYPE_LONG:
+		//println("type: long")
 		err = copyPyLong(reader, writer)
-	case TypeFloat:
+	case TYPE_FLOAT:
+		//println("type: float")
 		err = copyFloat(reader, writer)
-	case TypeBinaryFloat:
+	case TYPE_BINARY_FLOAT:
+		//println("type: binary float")
 		err = copyBytes(reader, writer, 8)
-	case TypeComplex:
+	case TYPE_COMPLEX:
+		//println("type: complex")
 		err = copyFloat(reader, writer)
 		if err != nil {
 			return err
 		}
 		err = copyFloat(reader, writer)
-	case TypeBinaryComplex:
+	case TYPE_BINARY_COMPLEX:
+		//println("type: binary complex")
 		err = copyBytes(reader, writer, 16)
-	case TypeUnicode:
+	case TYPE_UNICODE:
 		fallthrough
-	case TypeString:
+	case TYPE_STRING:
+		//println("type: string")
 		err = copyString(reader, writer)
-	case TypeTuple:
+	// case TYPE_STRINGREF:
+	// 	println("type: string reference")
+	// 	err = copyBytes(reader, writer, 4)
+	// reader.Read([]byte{0x00, 0x00, 0x00, 0x00})
+	// writer.Write([]byte{0x00, 0x00, 0x00, 0x00})
+	case TYPE_TUPLE:
 		fallthrough
-	case TypeSet:
+	case TYPE_SET:
 		fallthrough
-	case TypeFrozenSet:
+	case TYPE_FROZENSET:
 		fallthrough
-	case TypeList:
-		err = r.copyList(reader, writer)
-	case TypeDictionary:
-		err = r.copyDict(reader, writer)
-	case TypeCode:
+	case TYPE_LIST:
+		//println("type: list-liked", tagType)
+		err = copyList(reader, writer)
+	case TYPE_DICT:
+		//println("type: dict")
+		err = copyDict(reader, writer)
+	case TYPE_CODE:
+		//println("type: code")
 		err = copyBytes(reader, writer, 4*4)
 		if err != nil {
 			return err
@@ -179,7 +206,7 @@ func (r *repairState) repairMarshal(reader *bytes.Reader, writer *bytes.Buffer) 
 			return err
 		}
 		for i := 0; i < 7; i++ {
-			err = r.repairMarshal(reader, writer)
+			err = RepairMarshal(reader, writer)
 			if err != nil {
 				return err
 			}
@@ -188,24 +215,21 @@ func (r *repairState) repairMarshal(reader *bytes.Reader, writer *bytes.Buffer) 
 		if err != nil {
 			return err
 		}
-		err = r.repairMarshal(reader, writer)
+		err = RepairMarshal(reader, writer)
 	default:
-		err = fmt.Errorf("repairMarshal: Unknown type: %x at marshal offset 0x%x", tagType, offset)
+		err = fmt.Errorf("unknown type: %x", tagType)
 	}
 	return err
 }
 
 func copyBytes(reader *bytes.Reader, writer *bytes.Buffer, size int32) error {
-	if size < 0 {
-		return fmt.Errorf("copyBytes: Negative size %d", size)
-	}
 	if size == 0 {
 		return nil
 	}
 
 	data := make([]byte, size)
 
-	_, err := io.ReadFull(reader, data)
+	_, err := reader.Read(data)
 	if err != nil {
 		return err
 	}
@@ -242,14 +266,11 @@ func copyString(reader *bytes.Reader, writer *bytes.Buffer) error {
 	return copyBytes(reader, writer, n)
 }
 
-func (r *repairState) copyStringInterned(reader *bytes.Reader, writer *bytes.Buffer) error {
+func copyStringInterned(reader *bytes.Reader, writer *bytes.Buffer) error {
 	var n int32
 	err := binary.Read(reader, binary.LittleEndian, &n)
 	if err != nil {
 		return err
-	}
-	if n < 0 {
-		return fmt.Errorf("copyStringInterned: Negative string length %d", n)
 	}
 
 	err = binary.Write(writer, binary.LittleEndian, n)
@@ -259,7 +280,7 @@ func (r *repairState) copyStringInterned(reader *bytes.Reader, writer *bytes.Buf
 
 	data := make([]byte, n)
 
-	_, err = io.ReadFull(reader, data)
+	_, err = reader.Read(data)
 	if err != nil {
 		return err
 	}
@@ -269,19 +290,16 @@ func (r *repairState) copyStringInterned(reader *bytes.Reader, writer *bytes.Buf
 		return err
 	}
 
-	r.internedStrings = append(r.internedStrings, data)
+	strings = append(strings, data)
 
 	return nil
 }
 
-func (r *repairState) copyList(reader *bytes.Reader, writer *bytes.Buffer) error {
+func copyList(reader *bytes.Reader, writer *bytes.Buffer) error {
 	var n int32
 	err := binary.Read(reader, binary.LittleEndian, &n)
 	if err != nil {
 		return err
-	}
-	if n < 0 {
-		return fmt.Errorf("copyList: Negative item count %d", n)
 	}
 
 	err = binary.Write(writer, binary.LittleEndian, n)
@@ -290,8 +308,8 @@ func (r *repairState) copyList(reader *bytes.Reader, writer *bytes.Buffer) error
 	}
 
 	for i := int32(0); i < n; i++ {
-		err = r.repairMarshal(reader, writer)
-		if err != nil && !errors.Is(err, errNull) {
+		err = RepairMarshal(reader, writer)
+		if err != nil && !errors.Is(err, ErrNull) {
 			return err
 		}
 	}
@@ -299,18 +317,17 @@ func (r *repairState) copyList(reader *bytes.Reader, writer *bytes.Buffer) error
 	return nil
 }
 
-func (r *repairState) copyDict(reader *bytes.Reader, writer *bytes.Buffer) error {
-	// 读取到空对象键为止
+func copyDict(reader *bytes.Reader, writer *bytes.Buffer) error {
+	// read until key is null object
 	for {
-		err := r.repairMarshal(reader, writer)
-		if errors.Is(err, errNull) {
+		err := RepairMarshal(reader, writer)
+		if errors.Is(err, ErrNull) {
 			break
-		}
-		if err != nil {
+		} else if err != nil {
 			return err
 		}
-		err = r.repairMarshal(reader, writer)
-		if err != nil && !errors.Is(err, errNull) {
+		err = RepairMarshal(reader, writer)
+		if err != nil && !errors.Is(err, ErrNull) {
 			return err
 		}
 	}
@@ -333,33 +350,57 @@ func copyPyLong(reader *bytes.Reader, writer *bytes.Buffer) error {
 		return nil
 	}
 
-	const maxLongDigit = 32767
+	const PyLongMarshalRatio = 15
+	const PyLongMarshalBase = 32767
+	const PyLongMarshalShift = 2
 
-	digitCount := int64(n)
-	if digitCount < 0 {
-		digitCount = -digitCount
-	}
-	if digitCount > int64(reader.Len()/2) {
-		return io.ErrUnexpectedEOF
+	size := 1 + (absInt32(n)-1)/PyLongMarshalRatio
+	shortsInTopDigit := 1 + (absInt32(n)-1)%PyLongMarshalRatio
+
+	if n < 0 {
+		size = -size
 	}
 
-	for index := int64(0); index < digitCount; index++ {
-		var digit int16
-		err = binary.Read(reader, binary.LittleEndian, &digit)
+	var d int32
+	for i := int32(0); i < size-1; i++ {
+		d = 0
+		for j := range PyLongMarshalRatio {
+			var md int16
+			err = binary.Read(reader, binary.LittleEndian, &md)
+			if err != nil {
+				return err
+			}
+			err = binary.Write(writer, binary.LittleEndian, md)
+			if err != nil {
+				return err
+			}
+
+			if md < 0 || md > PyLongMarshalBase {
+				return errors.New("bad marshal data (digit out of range in long)")
+			}
+			d += int32(md) << (j * PyLongMarshalShift)
+		}
+	}
+	d = 0
+	for j := int32(0); j < shortsInTopDigit; j++ {
+		var md int16
+		err = binary.Read(reader, binary.LittleEndian, &md)
 		if err != nil {
 			return err
 		}
-		err = binary.Write(writer, binary.LittleEndian, digit)
+		err = binary.Write(writer, binary.LittleEndian, md)
 		if err != nil {
 			return err
 		}
 
-		if digit < 0 || digit > maxLongDigit {
-			return errors.New("copyPyLong: Bad marshal data (digit out of range in long)")
+		if md < 0 || md > PyLongMarshalBase {
+			return errors.New("bad marshal data (digit out of range in long)")
 		}
-		if digit == 0 && index == digitCount-1 {
-			return errors.New("copyPyLong: Bad marshal data (unnormalized long data)")
+
+		if md == 0 && j == shortsInTopDigit-1 {
+			return errors.New("bad marshal data (unnormalized long data)")
 		}
+		d += int32(md) << (j * PyLongMarshalShift)
 	}
 
 	return nil

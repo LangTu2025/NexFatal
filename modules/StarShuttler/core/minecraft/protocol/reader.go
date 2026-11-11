@@ -11,10 +11,17 @@ import (
 	"math/bits"
 	"unsafe"
 
+	"github.com/xingbaiawa/StarShuttler/core/minecraft/nbt"
+
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/google/uuid"
+
+	// PhoenixBuilder specific changes.
+	// Changes Maker: Liliya233
+	// Committed by Happy2018new.
+	//
+	// A Python library which named "msgpack"
 	"github.com/ugorji/go/codec"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/nbt"
 )
 
 // Reader implements reading operations for reading types from Minecraft packets. Each Packet implementation
@@ -35,33 +42,6 @@ func NewReader(r interface {
 	io.ByteReader
 }, shieldID int32, enableLimits bool) *Reader {
 	return &Reader{r: r, shieldID: shieldID, limitsEnabled: enableLimits}
-}
-
-// PeekBytes returns up to n unread bytes without advancing the reader when the underlying source supports it.
-func (r *Reader) PeekBytes(n int) []byte {
-	if p, ok := r.r.(interface{ Bytes() []byte }); ok {
-		b := p.Bytes()
-		if len(b) < n {
-			n = len(b)
-		}
-		return b[:n]
-	}
-	return nil
-}
-
-// TakeRemainingBytes consumes and returns all unread bytes from the underlying reader.
-func (r *Reader) TakeRemainingBytes() []byte {
-	if p, ok := r.r.(interface {
-		Len() int
-		Next(int) []byte
-	}); ok {
-		return append([]byte(nil), p.Next(p.Len())...)
-	}
-	data, err := io.ReadAll(r.r)
-	if err != nil {
-		r.panic(err)
-	}
-	return data
 }
 
 // Uint8 reads a uint8 from the underlying buffer.
@@ -157,7 +137,7 @@ func (r *Reader) BlockPos(x *BlockPos) {
 	r.Varint32(&x[2])
 }
 
-// UBlockPos reads three varint32s, with Y encoded as an unsigned varint32.
+// UBlockPos reads three varint32s, one unsigned for the y, into a BlockPos from the underlying buffer.
 func (r *Reader) UBlockPos(x *BlockPos) {
 	r.Varint32(&x[0])
 	var y uint32
@@ -179,24 +159,8 @@ func (r *Reader) SubChunkPos(x *SubChunkPos) {
 	r.Varint32(&x[2])
 }
 
-// USubChunkPos reads a sub-chunk position with Y encoded as an unsigned varint32.
-func (r *Reader) USubChunkPos(x *SubChunkPos) {
-	r.Varint32(&x[0])
-	var y uint32
-	r.Varuint32(&y)
-	x[1] = int32(y)
-	r.Varint32(&x[2])
-}
-
 // SoundPos reads an mgl32.Vec3 that serves as a position for a sound.
 func (r *Reader) SoundPos(x *mgl32.Vec3) {
-	var b BlockPos
-	r.BlockPos(&b)
-	*x = mgl32.Vec3{float32(b[0]) / 8, float32(b[1]) / 8, float32(b[2]) / 8}
-}
-
-// USoundPos reads a sound position using the NetEase/PhoenixBuilder unsigned block position flavour.
-func (r *Reader) USoundPos(x *mgl32.Vec3) {
 	var b BlockPos
 	r.UBlockPos(&b)
 	*x = mgl32.Vec3{float32(b[0]) / 8, float32(b[1]) / 8, float32(b[2]) / 8}
@@ -270,11 +234,6 @@ func (r *Reader) VarRGBA(x *color.RGBA) {
 	}
 }
 
-// NeteasePixels reads a pixel slice in the same format as the legacy NetEase map packet flavour.
-func (r *Reader) NeteasePixels(x *[]color.RGBA) {
-	FuncSlice(r, x, r.VarRGBA)
-}
-
 // Bytes reads the leftover bytes into a byte slice.
 func (r *Reader) Bytes(p *[]byte) {
 	var err error
@@ -284,26 +243,12 @@ func (r *Reader) Bytes(p *[]byte) {
 	}
 }
 
-// NBTWithLength reads a length-prefixed NBT compound.
-func (r *Reader) NBTWithLength(m *map[string]any) {
-	var length int32
-	r.Varint32(&length)
-	if length == 0 {
-		*m = nil
-		return
-	}
-	data := make([]byte, length)
-	r.Bytes(&data)
-	if err := nbt.UnmarshalEncoding(data, m, nbt.NetworkLittleEndian); err != nil {
-		r.panic(err)
-	}
-}
-
 // NBT reads a compound tag into a map from the underlying buffer.
 func (r *Reader) NBT(m *map[string]any, encoding nbt.Encoding) {
 	dec := nbt.NewDecoderWithEncoding(r.r, encoding)
 	dec.AllowZero = true
 
+	*m = make(map[string]any)
 	if err := dec.Decode(m); err != nil {
 		r.panic(err)
 	}
@@ -318,20 +263,19 @@ func (r *Reader) NBTList(m *[]any, encoding nbt.Encoding) {
 
 // UUID reads a uuid.UUID from the underlying buffer.
 func (r *Reader) UUID(x *uuid.UUID) {
-	var b [16]byte
-	if _, err := io.ReadFull(r.r, b[:]); err != nil {
+	b := make([]byte, 16)
+	if _, err := r.r.Read(b); err != nil {
 		r.panic(err)
 	}
 
 	// The UUIDs we read are Little Endian, but the uuid library is based on Big Endian UUIDs, so we need to
-	// reverse the bytes of the two int64s the UUID is composed of.
-	for i, j := 0, 7; i < j; i, j = i+1, j-1 {
-		b[i], b[j] = b[j], b[i]
+	// reverse the two int64s the UUID is composed of, then reverse their bytes too.
+	b = append(b[8:], b[:8]...)
+	var arr [16]byte
+	for i, j := 0, 15; i < j; i, j = i+1, j-1 {
+		arr[i], arr[j] = b[j], b[i]
 	}
-	for i, j := 8, 15; i < j; i, j = i+1, j-1 {
-		b[i], b[j] = b[j], b[i]
-	}
-	*x = b
+	*x = arr
 }
 
 // PlayerInventoryAction reads a PlayerInventoryAction.
@@ -343,7 +287,14 @@ func (r *Reader) PlayerInventoryAction(x *UseItemTransactionData) {
 	Slice(r, &x.Actions)
 	r.Varuint32(&x.ActionType)
 	r.Varuint32(&x.TriggerType)
+
+	// PhoenixBuilder specific changes.
+	// Author: Happy2018new
+	//
+	// This is a mistake of upstream.
 	r.UBlockPos(&x.BlockPosition)
+	// r.BlockPos(&x.BlockPosition)
+
 	r.Varint32(&x.BlockFace)
 	r.Varint32(&x.HotBarSlot)
 	r.ItemInstance(&x.HeldItem)
@@ -366,63 +317,22 @@ func (r *Reader) GameRule(x *GameRule) {
 		r.Bool(&v)
 		x.Value = v
 	case 2:
-		var v uint32
-		r.Uint32(&v)
-		x.Value = v
+		// PhoenixBuilder specific changes.
+		// Author: Happy2018new, CoozillaX
+		var v int32
+		r.Varint32(&v)
+		x.Value = uint32(v)
+		/*
+			var v uint32
+			r.Varuint32(&v)
+			x.Value = v
+		*/
 	case 3:
 		var v float32
 		r.Float32(&v)
 		x.Value = v
 	default:
 		r.UnknownEnumOption(t, "game rule type")
-	}
-}
-
-// GameRuleLegacy reads a legacy GameRule x from the Reader.
-func (r *Reader) GameRuleLegacy(x *GameRule) {
-	r.String(&x.Name)
-	r.Bool(&x.CanBeModifiedByPlayer)
-	var t uint32
-	r.Varuint32(&t)
-
-	switch t {
-	case 1:
-		var v bool
-		r.Bool(&v)
-		x.Value = v
-	case 2:
-		var v uint32
-		r.Varuint32(&v)
-		x.Value = v
-	case 3:
-		var v float32
-		r.Float32(&v)
-		x.Value = v
-	default:
-		r.UnknownEnumOption(t, "game rule type")
-	}
-}
-
-// PackSetting reads a PackSetting from the reader.
-func (r *Reader) PackSetting(x *PackSetting) {
-	r.String(&x.Name)
-	var t uint32
-	r.Varuint32(&t)
-	switch t {
-	case PackSettingTypeFloat:
-		var v float32
-		r.Float32(&v)
-		x.Value = v
-	case PackSettingTypeBool:
-		var v bool
-		r.Bool(&v)
-		x.Value = v
-	case PackSettingTypeString:
-		var v string
-		r.String(&v)
-		x.Value = v
-	default:
-		r.UnknownEnumOption(t, "pack setting")
 	}
 }
 
@@ -509,13 +419,28 @@ func (r *Reader) ItemDescriptorCount(i *ItemDescriptorCount) {
 // ItemInstance reads an ItemInstance i from the underlying buffer.
 func (r *Reader) ItemInstance(i *ItemInstance) {
 	x := &i.Stack
+	x.NBTData = make(map[string]any)
 	r.Varint32(&x.NetworkID)
-	if x.NetworkID == 0 || x.NetworkID == -1 {
-		// The item was air, so there is no more data we should read for the item instance. After all, air
-		// items aren't really anything.
-		x.MetadataValue, x.Count, x.BlockRuntimeID, i.StackNetworkID = 0, 0, 0, 0
-		x.NBTData, x.CanBePlacedOn, x.CanBreak = nil, nil, nil
-		return
+
+	// PhoenixBuilder specific changes.
+	// Author: Happy2018new
+	{
+		switch x.NetworkID {
+		case 0, -1:
+			// The item was air, so there is no more data we should read for the item instance. After all, air
+			// items aren't really anything.
+			// 当 x.NetworkID 为 -1 时代表当前槽位的物品未更改，因此无需解析后续数据，直接跳过即可。
+			x.MetadataValue, x.Count, x.CanBePlacedOn, x.CanBreak = 0, 0, nil, nil
+			return
+		}
+		/*
+			if x.NetworkID == 0 {
+				// The item was air, so there is no more data we should read for the item instance. After all, air
+				// items aren't really anything.
+				x.MetadataValue, x.Count, x.CanBePlacedOn, x.CanBreak = 0, 0, nil, nil
+				return
+			}
+		*/
 	}
 
 	r.Uint16(&x.Count)
@@ -526,8 +451,6 @@ func (r *Reader) ItemInstance(i *ItemInstance) {
 
 	if hasNetID {
 		r.Varint32(&i.StackNetworkID)
-	} else {
-		i.StackNetworkID = 0
 	}
 
 	r.Varint32(&x.BlockRuntimeID)
@@ -554,8 +477,6 @@ func (r *Reader) ItemInstance(i *ItemInstance) {
 		}
 	} else if length > 0 {
 		bufReader.NBT(&x.NBTData, nbt.LittleEndian)
-	} else {
-		x.NBTData = nil
 	}
 
 	FuncSliceUint32Length(bufReader, &x.CanBePlacedOn, bufReader.StringUTF)
@@ -569,12 +490,12 @@ func (r *Reader) ItemInstance(i *ItemInstance) {
 
 // Item reads an ItemStack x from the underlying buffer.
 func (r *Reader) Item(x *ItemStack) {
+	x.NBTData = make(map[string]any)
 	r.Varint32(&x.NetworkID)
-	if x.NetworkID == 0 || x.NetworkID == -1 {
+	if x.NetworkID == 0 {
 		// The item was air, so there is no more data we should read for the item instance. After all, air
 		// items aren't really anything.
-		x.MetadataValue, x.Count, x.BlockRuntimeID = 0, 0, 0
-		x.NBTData, x.CanBePlacedOn, x.CanBreak = nil, nil, nil
+		x.MetadataValue, x.Count, x.CanBePlacedOn, x.CanBreak = 0, 0, nil, nil
 		return
 	}
 
@@ -604,8 +525,6 @@ func (r *Reader) Item(x *ItemStack) {
 		}
 	} else if length > 0 {
 		bufReader.NBT(&x.NBTData, nbt.LittleEndian)
-	} else {
-		x.NBTData = nil
 	}
 
 	FuncSliceUint32Length(bufReader, &x.CanBePlacedOn, bufReader.StringUTF)
@@ -656,32 +575,6 @@ func (r *Reader) EventType(x *Event) {
 	}
 }
 
-// EventOrdinal reads an Event's ordinal from the reader.
-func (r *Reader) EventOrdinal(x *Event) {
-	var ordinal uint32
-	if !lookupEventOrdinal(*x, &ordinal) {
-		r.UnknownEnumOption(*x, "event packet event ordinal")
-		return
-	}
-	r.Varuint32(&ordinal)
-}
-
-// StringConst reads a string and checks it against the expected constant.
-func (r *Reader) StringConst(expected string) {
-	var length uint32
-	r.Varuint32(&length)
-	if length != uint32(len(expected)) {
-		r.panicf("expected string with a length of %x, got %v", len(expected), length)
-	}
-	data := make([]byte, len(expected))
-	if _, err := io.ReadFull(r.r, data); err != nil {
-		r.panic(err)
-	}
-	if string(data) != expected {
-		r.panicf("expected string to be %q, got %q", expected, data)
-	}
-}
-
 // TransactionDataType reads an InventoryTransactionData type from the reader.
 func (r *Reader) TransactionDataType(x *InventoryTransactionData) {
 	var transactionType uint32
@@ -707,68 +600,6 @@ func (r *Reader) AbilityValue(x *any) {
 	}
 }
 
-// CompressedBiomeDefinitions reads the legacy compressed biome dictionary format used by the NetEase fork.
-func (r *Reader) CompressedBiomeDefinitions(x *map[string]any) {
-	var length uint32
-	header := make([]byte, 10)
-	r.Varuint32(&length)
-	if _, err := r.r.Read(header); err != nil {
-		r.panic(err)
-	}
-	if !bytes.Equal(header, []byte("COMPRESSED")) {
-		r.InvalidValue(header, "compression header", fmt.Sprintf("must be COMPRESSED (%v)", []byte("COMPRESSED")))
-		return
-	}
-
-	var dictLength uint16
-	var entryLength uint8
-	r.Uint16(&dictLength)
-	dictionary := make([][]byte, dictLength)
-	for i := 0; i < int(dictLength); i++ {
-		r.Uint8(&entryLength)
-		dictionary[i] = make([]byte, int(entryLength))
-		if _, err := r.r.Read(dictionary[i]); err != nil {
-			r.panic(err)
-		}
-	}
-
-	var decompressed []byte
-	var dictIndex int16
-	for {
-		key, err := r.r.ReadByte()
-		if err != nil {
-			break
-		}
-		if key != 0xff {
-			decompressed = append(decompressed, key)
-			continue
-		}
-
-		r.Int16(&dictIndex)
-		if dictIndex >= 0 && int(dictIndex) < len(dictionary) {
-			decompressed = append(decompressed, dictionary[dictIndex]...)
-			continue
-		}
-		decompressed = append(decompressed, key)
-	}
-	if err := nbt.Unmarshal(decompressed, x); err != nil {
-		r.panic(err)
-	}
-}
-
-// MsgPack reads a NetEase/Python style msgpack payload.
-func (r *Reader) MsgPack(x *any) {
-	var payload []byte
-	var handle codec.MsgpackHandle
-
-	r.ByteSlice(&payload)
-	handle.RawToString = true
-	if err := codec.NewDecoderBytes(payload, &handle).Decode(x); err != nil {
-		r.panic(fmt.Errorf("(r *Reader) MsgPack: %v", err))
-	}
-}
-
-// Bitset reads a Bitset from the reader.
 func (r *Reader) Bitset(x *Bitset, size int) {
 	*x = NewBitset(size)
 	for i := 0; i < size; i += 7 {
@@ -789,6 +620,29 @@ func (r *Reader) Bitset(x *Bitset, size int) {
 	r.panic(errBitsetOverflow)
 }
 
+// PhoenixBuilder specific func.
+// Author: Liliya233, CMA2041PT, Happy2018new
+//
+// Netease's Python MsgPack
+func (r *Reader) MsgPack(x *any) {
+	var (
+		payload        []byte              // string (this struct is seems like json but not completely is)
+		msgPackHandler codec.MsgpackHandle // processer
+		err            error
+	)
+	// prepare
+	r.ByteSlice(&payload)
+	msgPackHandler.RawToString = true
+	codec.NewDecoderBytes(payload, &msgPackHandler).Decode(x)
+	// read and decode payload
+	value := (*x).([]any)
+	*x, err = FormatSliceInMsgpack(value)
+	if err != nil {
+		panic(fmt.Sprintf("(r *Reader) MsgPack: %v", err))
+	}
+	// convert and format payload
+}
+
 // SliceLimit checks if the value passed is lower than the limit passed. If
 // not, the Reader panics.
 func (r *Reader) SliceLimit(value uint32, max uint32) {
@@ -804,7 +658,7 @@ func (r *Reader) ShieldID() int32 {
 
 // UnknownEnumOption panics with an unknown enum option error.
 func (r *Reader) UnknownEnumOption(value any, enum string) {
-	r.panicf("unknown value '%#v' for enum type '%v'", value, enum)
+	r.panicf("unknown value '%v' for enum type '%v'", value, enum)
 }
 
 // InvalidValue panics with an error indicating that the value passed is not valid for a specific field.
@@ -848,45 +702,6 @@ func (r *Reader) Varuint64(x *uint64) {
 		}
 
 		v |= uint64(b&0x7f) << i
-		if b&0x80 == 0 {
-			*x = v
-			return
-		}
-	}
-	r.panic(errVarIntOverflow)
-}
-
-// Varint16 reads up to 3 bytes from the underlying buffer into an int16.
-func (r *Reader) Varint16(x *int16) {
-	var ux uint16
-	for i := 0; i < 21; i += 7 {
-		b, err := r.r.ReadByte()
-		if err != nil {
-			r.panic(err)
-		}
-
-		ux |= uint16(b&0x7f) << i
-		if b&0x80 == 0 {
-			*x = int16(ux >> 1)
-			if ux&1 != 0 {
-				*x = ^*x
-			}
-			return
-		}
-	}
-	r.panic(errVarIntOverflow)
-}
-
-// Varuint16 reads up to 3 bytes from the underlying buffer into a uint16.
-func (r *Reader) Varuint16(x *uint16) {
-	var v uint16
-	for i := 0; i < 21; i += 7 {
-		b, err := r.r.ReadByte()
-		if err != nil {
-			r.panic(err)
-		}
-
-		v |= uint16(b&0x7f) << i
 		if b&0x80 == 0 {
 			*x = v
 			return

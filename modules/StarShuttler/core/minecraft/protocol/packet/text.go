@@ -1,8 +1,6 @@
 package packet
 
 import (
-	"strings"
-
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 )
 
@@ -19,12 +17,6 @@ const (
 	TextTypeObjectWhisper
 	TextTypeObject
 	TextTypeObjectAnnouncement
-)
-
-const (
-	textCategoryMessageOnly = iota
-	textCategoryAuthoredMessage
-	textCategoryMessageWithParameters
 )
 
 // Text is sent by the client to the server to send chat messages, and by the server to the client to forward
@@ -62,8 +54,8 @@ type Text struct {
 	// Author: Liliya233, Happy2018new
 	//
 	// The following fields are NetEase specific.
-	NeteaseExtraData []string
-	Unknown2         string
+	Unknown1 []string
+	Unknown2 string
 }
 
 // ID ...
@@ -72,37 +64,8 @@ func (*Text) ID() uint32 {
 }
 
 func (pk *Text) Marshal(io protocol.IO) {
-	io.Bool(&pk.NeedsTranslation)
-
-	var categoryType uint8
-	switch pk.TextType {
-	case TextTypeRaw, TextTypeTip, TextTypeSystem, TextTypeObjectWhisper, TextTypeObjectAnnouncement, TextTypeObject:
-		categoryType = textCategoryMessageOnly
-	case TextTypeChat, TextTypeWhisper, TextTypeAnnouncement:
-		categoryType = textCategoryAuthoredMessage
-	default:
-		categoryType = textCategoryMessageWithParameters
-	}
-	io.Uint8(&categoryType)
-	switch categoryType {
-	case textCategoryMessageOnly:
-		textStringConst(io, "raw")
-		textStringConst(io, "tip")
-		textStringConst(io, "systemMessage")
-		textStringConst(io, "textObjectWhisper")
-		textStringConst(io, "textObjectAnnouncement")
-		textStringConst(io, "textObject")
-	case textCategoryAuthoredMessage:
-		textStringConst(io, "chat")
-		textStringConst(io, "whisper")
-		textStringConst(io, "announcement")
-	default:
-		textStringConst(io, "translate")
-		textStringConst(io, "popup")
-		textStringConst(io, "jukeboxPopup")
-	}
-
 	io.Uint8(&pk.TextType)
+	io.Bool(&pk.NeedsTranslation)
 	switch pk.TextType {
 	case TextTypeChat, TextTypeWhisper, TextTypeAnnouncement:
 		io.String(&pk.SourceName)
@@ -113,6 +76,9 @@ func (pk *Text) Marshal(io protocol.IO) {
 		io.String(&pk.Message)
 		protocol.FuncSlice(io, &pk.Parameters, io.String)
 	}
+	io.String(&pk.XUID)
+	io.String(&pk.PlatformChatID)
+	io.String(&pk.FilteredMessage)
 
 	// PhoenixBuilder specific changes.
 	// Author: Liliya233, Happy2018new
@@ -121,30 +87,9 @@ func (pk *Text) Marshal(io protocol.IO) {
 	{
 		switch pk.TextType {
 		case TextTypeChat:
-			protocol.FuncSlice(io, &pk.NeteaseExtraData, io.String)
+			protocol.FuncSlice(io, &pk.Unknown1, io.String)
 		case TextTypePopup:
 			io.String(&pk.Unknown2)
 		}
-	}
-
-	io.String(&pk.XUID)
-	io.String(&pk.PlatformChatID)
-	filteredMessage := protocol.Optional[string]{}
-	if pk.FilteredMessage != "" {
-		filteredMessage = protocol.Option(pk.FilteredMessage)
-	}
-	protocol.OptionalFunc(io, &filteredMessage, io.String)
-	if value, present := filteredMessage.Value(); present {
-		pk.FilteredMessage = value
-	} else {
-		pk.FilteredMessage = ""
-	}
-}
-
-func textStringConst(io protocol.IO, expected string) {
-	value := expected
-	io.String(&value)
-	if !strings.EqualFold(value, expected) {
-		io.InvalidValue(value, "text category string", "unexpected value")
 	}
 }

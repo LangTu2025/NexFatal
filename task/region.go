@@ -4,7 +4,7 @@ import (
 	"sort"
 
 	bwo_chunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
-	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
+	wsdefine "github.com/Yeah114/WaterStructure/define"
 )
 
 type regionKey [2]int

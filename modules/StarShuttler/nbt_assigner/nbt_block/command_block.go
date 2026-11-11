@@ -55,7 +55,7 @@ func (c *CommandBlock) Make() error {
 		Command:            c.data.NBT.Command,
 		Name:               c.data.NBT.CustomName,
 		ShouldTrackOutput:  c.data.NBT.TrackOutput == 1,
-		TickDelay:          uint32(c.data.NBT.TickDelay),
+		TickDelay:          c.data.NBT.TickDelay,
 		ExecuteOnFirstTick: c.data.NBT.ExecuteOnFirstTick == 1,
 	})
 	if err != nil {

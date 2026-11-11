@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/pterm/pterm"
 	"github.com/xingbaiawa/StarShuttler/client"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/nbt"
 	"github.com/xingbaiawa/StarShuttler/game_control/game_interface"
@@ -18,6 +17,7 @@ import (
 	"github.com/xingbaiawa/StarShuttler/std_server/define"
 	log "github.com/xingbaiawa/StarShuttler/std_server/log/src"
 	"github.com/xingbaiawa/StarShuttler/utils"
+	"github.com/pterm/pterm"
 )
 
 var (

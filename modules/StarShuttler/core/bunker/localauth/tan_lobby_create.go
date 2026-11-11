@@ -7,8 +7,8 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/xingbaiawa/g79client"
-	"github.com/xingbaiawa/g79client/utils"
+	"github.com/Yeah114/g79client"
+	"github.com/Yeah114/g79client/utils"
 )
 
 // TanLobbyCreate sets up transfer information required to host a tan lobby room.

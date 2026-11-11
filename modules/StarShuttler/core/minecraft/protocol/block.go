@@ -35,10 +35,7 @@ type BlockChangeEntry struct {
 
 // Marshal encodes/decodes a BlockChangeEntry.
 func (x *BlockChangeEntry) Marshal(r IO) {
-	// TODO: need to test
-	// r.BlockPos(&x.BlockPos)
-	r.UBlockPos(&x.BlockPos) // for Netease
-
+	r.UBlockPos(&x.BlockPos)
 	r.Varuint32(&x.BlockRuntimeID)
 	r.Varuint32(&x.Flags)
 	r.Varuint64(&x.SyncedUpdateEntityUniqueID)

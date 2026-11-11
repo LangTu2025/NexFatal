@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xingbaiawa/g79client/account/com4399"
+	"github.com/Yeah114/g79client/account/com4399"
 )
 
 func main() {
@@ -71,7 +71,7 @@ func registerWithCaptcha(ctx context.Context, client *com4399.WebRegisterClient,
 		}
 		if captchaErr.CaptchaURL != "" {
 			if saveErr := client.SaveCaptchaImage(ctx, captchaErr.CaptchaURL, path); saveErr != nil {
-				return nil, fmt.Errorf("registerWithCaptcha: %v; failed to save captcha: %v", err, saveErr)
+				return nil, fmt.Errorf("%w; 保存验证码失败: %v", err, saveErr)
 			}
 			fmt.Printf("检测到验证码，图片已保存: %s\n", path)
 		}
@@ -80,7 +80,7 @@ func registerWithCaptcha(ctx context.Context, client *com4399.WebRegisterClient,
 			return nil, err
 		}
 	}
-	return nil, fmt.Errorf("registerWithCaptcha: Too many captcha attempts")
+	return nil, fmt.Errorf("验证码重试次数过多")
 }
 
 func readLine(reader *bufio.Reader, prompt string) string {

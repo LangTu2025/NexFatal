@@ -1,16 +1,9 @@
 package protocol
 
 import (
-	"github.com/google/uuid"
-)
+	"math"
 
-const (
-	CommandPermissionLevelAny = iota
-	CommandPermissionLevelGameDirectors
-	CommandPermissionLevelAdmin
-	CommandPermissionLevelHost
-	CommandPermissionLevelOwner
-	CommandPermissionLevelInternal
+	"github.com/google/uuid"
 )
 
 // Command holds the data that a command requires to be shown to a player client-side. The command is shown in
@@ -33,21 +26,19 @@ type Command struct {
 	AliasesOffset uint32
 	// ChainedSubcommandOffsets is a slice of offsets that all point to a different ChainedSubcommand from the
 	// ChainedSubcommands slice in the AvailableCommands packet.
-	ChainedSubcommandOffsets []uint32
+	ChainedSubcommandOffsets []uint16
 	// Overloads is a list of command overloads that specify the ways in which a command may be executed. The
 	// overloads may be completely different.
 	Overloads []CommandOverload
 }
 
 func (c *Command) Marshal(r IO) {
-	permission := commandPermissionToString(c.PermissionLevel)
 	r.String(&c.Name)
 	r.String(&c.Description)
 	r.Uint16(&c.Flags)
-	r.String(&permission)
-	commandPermissionFromString(r, &c.PermissionLevel, permission)
+	r.Uint8(&c.PermissionLevel)
 	r.Uint32(&c.AliasesOffset)
-	FuncSlice(r, &c.ChainedSubcommandOffsets, r.Uint32)
+	FuncSlice(r, &c.ChainedSubcommandOffsets, r.Uint16)
 	Slice(r, &c.Overloads)
 }
 
@@ -83,15 +74,15 @@ const (
 	CommandArgTypeWildcardTarget  = 10
 	CommandArgTypeFilepath        = 17
 	CommandArgTypeIntegerRange    = 23
-	CommandArgTypeEquipmentSlots  = 43
-	CommandArgTypeString          = 44
-	CommandArgTypeBlockPosition   = 52
-	CommandArgTypePosition        = 53
-	CommandArgTypeMessage         = 55
-	CommandArgTypeRawText         = 58
-	CommandArgTypeJSON            = 62
-	CommandArgTypeBlockStates     = 71
-	CommandArgTypeCommand         = 74
+	CommandArgTypeEquipmentSlots  = 47
+	CommandArgTypeString          = 56
+	CommandArgTypeBlockPosition   = 64
+	CommandArgTypePosition        = 65
+	CommandArgTypeMessage         = 67
+	CommandArgTypeRawText         = 70
+	CommandArgTypeJSON            = 74
+	CommandArgTypeBlockStates     = 83
+	CommandArgTypeCommand         = 86
 )
 
 const (
@@ -142,7 +133,7 @@ type CommandEnum struct {
 	Type string
 	// ValueIndices holds a list of indices that point to the EnumValues slice in the
 	// AvailableCommandsPacket. These represent the options of the enum.
-	ValueIndices []uint32
+	ValueIndices []uint
 }
 
 // CommandEnumContext holds context required for encoding command enums.
@@ -153,7 +144,27 @@ type CommandEnumContext struct {
 // Marshal encodes/decodes a CommandEnum.
 func (ctx CommandEnumContext) Marshal(r IO, x *CommandEnum) {
 	r.String(&x.Type)
-	FuncSlice(r, &x.ValueIndices, r.Uint32)
+	FuncIOSlice(r, &x.ValueIndices, ctx.enumOption)
+}
+
+// enumOption writes/reads a command enum option as a byte/uint16/uint32,
+// depending on the amount of enum values.
+func (ctx CommandEnumContext) enumOption(r IO, opt *uint) {
+	n := len(ctx.EnumValues)
+	switch {
+	case n <= math.MaxUint8:
+		val := byte(*opt)
+		r.Uint8(&val)
+		*opt = uint(val)
+	case n <= math.MaxUint16:
+		val := uint16(*opt)
+		r.Uint16(&val)
+		*opt = uint(val)
+	default:
+		val := uint32(*opt)
+		r.Uint32(&val)
+		*opt = uint(val)
+	}
 }
 
 // ChainedSubcommand represents a subcommand that can have chained commands, such as /execute which allows you to run
@@ -174,15 +185,15 @@ func (x *ChainedSubcommand) Marshal(r IO) {
 type ChainedSubcommandValue struct {
 	// Index is the index of the argument in the ChainedSubcommandValues slice from the AvailableCommands packet. This is
 	// then used to set the type specified by the Value field below.
-	Index uint32
+	Index uint16
 	// Value is a combination of the flags above and specified the type of argument. Unlike regular parameter types,
 	// this should NOT contain any of the special flags (valid, enum, suffixed or soft enum) but only the basic types.
-	Value uint32
+	Value uint16
 }
 
 func (x *ChainedSubcommandValue) Marshal(r IO) {
-	r.Varuint32(&x.Index)
-	r.Varuint32(&x.Value)
+	r.Uint16(&x.Index)
+	r.Uint16(&x.Value)
 }
 
 // DynamicEnum is an enum variant that can have its options changed during runtime,
@@ -256,8 +267,7 @@ type CommandOrigin struct {
 	// depending on what part of the client actually called the command. The command may be issued by a
 	// websocket server, for example.
 	Origin uint32
-	// UUID is the UUID of the command called. This UUID is a bit odd as it is not specified by the server. It
-	// is not clear what exactly this UUID is meant to identify, but it is unique for each command called.
+	// UUID is a unique identifier for every instantiation of a command.
 	UUID uuid.UUID
 	// RequestID is an ID that identifies the request of the client. The server should send a CommandOrigin
 	// with the same request ID to ensure it can be matched with the request by the caller of the command.
@@ -272,17 +282,12 @@ type CommandOrigin struct {
 
 // CommandOriginData reads/writes a CommandOrigin x using IO r.
 func CommandOriginData(r IO, x *CommandOrigin) {
-	CommandOriginDataString(r, x)
-}
-
-// CommandOriginDataString reads/writes the string-encoded command origin used by 1.21.130.
-func CommandOriginDataString(r IO, x *CommandOrigin) {
-	origin := commandOriginToString(x.Origin)
-	r.String(&origin)
+	r.Varuint32(&x.Origin)
 	r.UUID(&x.UUID)
 	r.String(&x.RequestID)
-	r.Int64(&x.PlayerUniqueID)
-	commandOriginFromString(r, &x.Origin, origin)
+	if x.Origin == CommandOriginDevConsole || x.Origin == CommandOriginTest {
+		r.Varint64(&x.PlayerUniqueID)
+	}
 }
 
 // CommandOutputMessage represents a message sent by a command that holds the output of one of the commands
@@ -304,123 +309,7 @@ type CommandOutputMessage struct {
 
 // Marshal encodes/decodes a CommandOutputMessage.
 func (x *CommandOutputMessage) Marshal(r IO) {
-	r.String(&x.Message)
 	r.Bool(&x.Success)
+	r.String(&x.Message)
 	FuncSlice(r, &x.Parameters, r.String)
-}
-
-func commandOriginToString(origin uint32) string {
-	switch origin {
-	case CommandOriginPlayer:
-		return "player"
-	case CommandOriginBlock:
-		return "commandblock"
-	case CommandOriginMinecartBlock:
-		return "minecartcommandblock"
-	case CommandOriginDevConsole:
-		return "devconsole"
-	case CommandOriginTest:
-		return "test"
-	case CommandOriginAutomationPlayer:
-		return "automationplayer"
-	case CommandOriginClientAutomation:
-		return "clientautomation"
-	case CommandOriginDedicatedServer:
-		return "dedicatedserver"
-	case CommandOriginEntity:
-		return "entity"
-	case CommandOriginVirtual:
-		return "virtual"
-	case CommandOriginGameArgument:
-		return "gameargument"
-	case CommandOriginEntityServer:
-		return "entityserver"
-	case CommandOriginPrecompiled:
-		return "precompiled"
-	case CommandOriginGameDirectorEntityServer:
-		return "gamedirectorentityserver"
-	case CommandOriginScript:
-		return "scripting"
-	case CommandOriginExecutor:
-		return "executecontext"
-	default:
-		return "unknown"
-	}
-}
-
-func commandOriginFromString(r IO, origin *uint32, value string) {
-	switch value {
-	case "player":
-		*origin = CommandOriginPlayer
-	case "commandblock":
-		*origin = CommandOriginBlock
-	case "minecartcommandblock":
-		*origin = CommandOriginMinecartBlock
-	case "devconsole":
-		*origin = CommandOriginDevConsole
-	case "test":
-		*origin = CommandOriginTest
-	case "automationplayer":
-		*origin = CommandOriginAutomationPlayer
-	case "clientautomation":
-		*origin = CommandOriginClientAutomation
-	case "dedicatedserver":
-		*origin = CommandOriginDedicatedServer
-	case "entity":
-		*origin = CommandOriginEntity
-	case "virtual":
-		*origin = CommandOriginVirtual
-	case "gameargument":
-		*origin = CommandOriginGameArgument
-	case "entityserver":
-		*origin = CommandOriginEntityServer
-	case "precompiled":
-		*origin = CommandOriginPrecompiled
-	case "gamedirectorentityserver":
-		*origin = CommandOriginGameDirectorEntityServer
-	case "scripting":
-		*origin = CommandOriginScript
-	case "executecontext":
-		*origin = CommandOriginExecutor
-	default:
-		r.InvalidValue(value, "origin", "unknown origin")
-	}
-}
-
-func commandPermissionToString(level byte) string {
-	switch level {
-	case CommandPermissionLevelAny:
-		return "any"
-	case CommandPermissionLevelGameDirectors:
-		return "gamedirectors"
-	case CommandPermissionLevelAdmin:
-		return "admin"
-	case CommandPermissionLevelHost:
-		return "host"
-	case CommandPermissionLevelOwner:
-		return "owner"
-	case CommandPermissionLevelInternal:
-		return "internal"
-	default:
-		return "unknown"
-	}
-}
-
-func commandPermissionFromString(r IO, level *byte, value string) {
-	switch value {
-	case "any":
-		*level = CommandPermissionLevelAny
-	case "gamedirectors":
-		*level = CommandPermissionLevelGameDirectors
-	case "admin":
-		*level = CommandPermissionLevelAdmin
-	case "host":
-		*level = CommandPermissionLevelHost
-	case "owner":
-		*level = CommandPermissionLevelOwner
-	case "internal":
-		*level = CommandPermissionLevelInternal
-	default:
-		r.InvalidValue(value, "permissionLevel", "unknown permission level")
-	}
 }

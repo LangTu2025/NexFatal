@@ -21,6 +21,7 @@ type taskGroupEntry struct {
 }
 
 func manageTaskGroups(ctx context.Context) {
+	ui.Page("任务组", "保存导入与导出任务，按组执行；输入 /back 返回首页")
 	storagePath := utils.GetStoragePath()
 	tasksDir := filepath.Join(storagePath, "tasks")
 	os.MkdirAll(tasksDir, 0755)
@@ -45,7 +46,7 @@ func manageTaskGroups(ctx context.Context) {
 		options[len(taskFiles)+1] = "返回"
 
 		if len(taskFiles) == 0 {
-			ui.Info("没有找到已保存的任务组")
+			ui.Empty("还没有任务组", "创建一个任务组，保存常用的建筑和导出设置")
 			options = []string{"创建新任务组", "返回"}
 		}
 
@@ -68,7 +69,7 @@ func manageTaskGroups(ctx context.Context) {
 }
 
 func collectTaskGroup() {
-	fmt.Println("\n=== 创建新任务组 ===")
+	ui.Section("创建新任务组", "选择导入、导出或混合任务")
 
 	options := []string{
 		"创建导入任务组",
@@ -114,7 +115,9 @@ func collectTaskGroup() {
 
 	if ui.ConfirmInfoWithDefault("是否保存此任务组", true) {
 		entries := taskEntriesFromConfigs(buildTasks, exportTasks)
-		saveTaskGroupFile(entries)
+		if err := saveTaskGroupFile(entries); err != nil {
+			ui.Error(fmt.Sprintf("保存任务组失败: %v", err))
+		}
 	}
 }
 
@@ -250,7 +253,8 @@ func runSavedTaskGroup(ctx context.Context, taskFilePath string, entries []taskG
 
 func editTaskEntries(taskFilePath string, entries *[]taskGroupEntry) {
 	if len(*entries) == 0 {
-		ui.Info("任务组为空")
+		ui.Empty("任务组为空", "可以添加导入或导出任务")
+		addTaskGroupEntry(taskFilePath, entries)
 		return
 	}
 
@@ -277,15 +281,20 @@ func editTaskEntries(taskFilePath string, entries *[]taskGroupEntry) {
 
 	if index >= 0 && index < len(*entries) {
 		if ui.ConfirmInfoWithDefault(fmt.Sprintf("确认删除任务: %s", selected), false) {
-			*entries = append((*entries)[:index], (*entries)[index+1:]...)
-			data, _ := json.MarshalIndent(*entries, "", "  ")
-			os.WriteFile(taskFilePath, data, 0644)
+			updated := append([]taskGroupEntry{}, (*entries)[:index]...)
+			updated = append(updated, (*entries)[index+1:]...)
+			if err := writeProfile(taskFilePath, updated); err != nil {
+				ui.Error("保存任务组失败: " + err.Error())
+				return
+			}
+			*entries = updated
 			ui.Info("任务已删除")
 		}
 	}
 }
 
 func addTaskGroupEntry(taskFilePath string, entries *[]taskGroupEntry) {
+	updated := append([]taskGroupEntry{}, (*entries)...)
 	options := []string{
 		"添加导入任务",
 		"添加导出任务",
@@ -303,7 +312,7 @@ func addTaskGroupEntry(taskFilePath string, entries *[]taskGroupEntry) {
 		}
 		for _, task := range buildTasks {
 			taskData, _ := json.Marshal(&task)
-			*entries = append(*entries, taskGroupEntry{Type: "build", Data: json.RawMessage(taskData)})
+			updated = append(updated, taskGroupEntry{Type: "build", Data: json.RawMessage(taskData)})
 		}
 	case 1:
 		exportTasks, err := collectExportTasks()
@@ -313,14 +322,17 @@ func addTaskGroupEntry(taskFilePath string, entries *[]taskGroupEntry) {
 		}
 		for _, task := range exportTasks {
 			taskData, _ := json.Marshal(&task)
-			*entries = append(*entries, taskGroupEntry{Type: "export", Data: json.RawMessage(taskData)})
+			updated = append(updated, taskGroupEntry{Type: "export", Data: json.RawMessage(taskData)})
 		}
 	case 2:
 		return
 	}
 
-	data, _ := json.MarshalIndent(*entries, "", "  ")
-	os.WriteFile(taskFilePath, data, 0644)
+	if err := writeProfile(taskFilePath, updated); err != nil {
+		ui.Error("保存任务组失败: " + err.Error())
+		return
+	}
+	*entries = updated
 	ui.Info("任务已添加")
 }
 
@@ -333,7 +345,15 @@ func renameTaskFile(taskFilePath string) {
 		return
 	}
 
-	newFilePath := filepath.Join(filepath.Dir(taskFilePath), newName+".json")
+	newFilePath, err := utils.ProfilePath(filepath.Dir(taskFilePath), newName)
+	if err != nil {
+		ui.Error(err.Error())
+		return
+	}
+	if _, err := os.Stat(newFilePath); err == nil {
+		ui.Warn("同名任务组已存在，请使用其他名称")
+		return
+	}
 	if err := os.Rename(taskFilePath, newFilePath); err != nil {
 		ui.Error(fmt.Sprintf("重命名失败: %v", err))
 	} else {
@@ -358,13 +378,20 @@ func deleteTaskFile(taskFilePath string) bool {
 func saveTaskGroupFile(entries []taskGroupEntry) error {
 	storagePath := utils.GetStoragePath()
 	tasksDir := filepath.Join(storagePath, "tasks")
-	os.MkdirAll(tasksDir, 0755)
+	if err := os.MkdirAll(tasksDir, 0755); err != nil {
+		return err
+	}
 
 	defaultName := time.Now().Format("2006-01-02_15-04-05")
 	groupName := ui.InputInfoWithDefault("请输入任务组名称", defaultName)
 
-	fileName := groupName + ".json"
-	taskPath := filepath.Join(tasksDir, fileName)
+	taskPath, err := utils.ProfilePath(tasksDir, groupName)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(taskPath); err == nil && !ui.ConfirmInfoWithDefault("同名任务组已存在，是否覆盖", false) {
+		return fmt.Errorf("未覆盖已有任务组")
+	}
 
 	data, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
@@ -375,7 +402,7 @@ func saveTaskGroupFile(entries []taskGroupEntry) error {
 		return err
 	}
 
-	ui.Info(fmt.Sprintf("任务组已保存: %s", fileName))
+	ui.Info(fmt.Sprintf("任务组已保存: %s", filepath.Base(taskPath)))
 	return nil
 }
 

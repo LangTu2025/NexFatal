@@ -133,6 +133,18 @@ func (err InvalidStringError) Error() string {
 	return fmt.Sprintf("nbt: string at offset %v is not valid: %v (len=%v)", err.Off, err.Err, err.N)
 }
 
+const maximumNestingDepth = 512
+
+// MaximumDepthReachedError is returned if the maximum depth of 512 compound/list tags has been reached while
+// reading or writing NBT.
+type MaximumDepthReachedError struct {
+}
+
+// Error ...
+func (err MaximumDepthReachedError) Error() string {
+	return fmt.Sprintf("nbt: maximum nesting depth of %v was reached", maximumNestingDepth)
+}
+
 const maximumNetworkOffset = 4 * 1024 * 1024
 
 // MaximumBytesReadError is returned if the maximum amount of bytes has been read for NetworkLittleEndian
@@ -155,14 +167,4 @@ type InvalidVarintError struct {
 // Error ...
 func (err InvalidVarintError) Error() string {
 	return fmt.Sprintf("nbt: varint did not terminate after %v bytes at offset %v", err.N, err.Off)
-}
-
-const maximumNestingDepth = 512
-
-// MaximumDepthReachedError is returned if the maximum nesting depth for compound/list tags is exceeded.
-type MaximumDepthReachedError struct{}
-
-// Error ...
-func (err MaximumDepthReachedError) Error() string {
-	return fmt.Sprintf("nbt: maximum nesting depth of %v was reached", maximumNestingDepth)
 }

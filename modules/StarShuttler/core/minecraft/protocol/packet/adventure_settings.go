@@ -19,12 +19,12 @@ const (
 )
 
 const (
-	CommandPermissionLevelNormal        = protocol.CommandPermissionLevelAny
-	CommandPermissionLevelGameDirectors = protocol.CommandPermissionLevelGameDirectors
-	CommandPermissionLevelAdmin         = protocol.CommandPermissionLevelAdmin
-	CommandPermissionLevelHost          = protocol.CommandPermissionLevelHost
-	CommandPermissionLevelOwner         = protocol.CommandPermissionLevelOwner
-	CommandPermissionLevelInternal      = protocol.CommandPermissionLevelInternal
+	CommandPermissionLevelNormal = iota
+	CommandPermissionLevelGameDirectors
+	CommandPermissionLevelAdmin
+	CommandPermissionLevelHost
+	CommandPermissionLevelOwner
+	CommandPermissionLevelInternal
 )
 
 const (

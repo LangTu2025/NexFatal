@@ -9,11 +9,6 @@ import (
 type UpdateAbilities struct {
 	// AbilityData represents various data about the abilities of a player, such as ability layers or permissions.
 	AbilityData protocol.AbilityData
-
-	Unknown1 int32
-	// Netease
-	Unknown2 int64
-	// p.s.) 这里实际上也同是瞎蒙的
 }
 
 // ID ...
@@ -23,8 +18,4 @@ func (*UpdateAbilities) ID() uint32 {
 
 func (pk *UpdateAbilities) Marshal(io protocol.IO) {
 	protocol.Single(io, &pk.AbilityData)
-
-	//Netease
-	io.Int32(&pk.Unknown1)
-	io.Int64(&pk.Unknown2)
 }

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/google/uuid"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
+	"github.com/google/uuid"
 )
 
 // CommandRequestCallback 是简单的指令回调维护器

@@ -1,5 +1,0 @@
-{
-  "block_name": "minecraft:bed",
-  "block_states_string": "[\"direction\"=2,\"head_piece_bit\"=false,\"occupied_bit\"=false]",
-  "block_nbt_base64_string": "CgAAAwUAY29sb3IOAAAAAA=="
-}

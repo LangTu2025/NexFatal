@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/pterm/pterm"
 	"github.com/xingbaiawa/StarShuttler/client"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/nbt"
 	"github.com/xingbaiawa/StarShuttler/game_control/game_interface"
@@ -14,6 +13,7 @@ import (
 	"github.com/xingbaiawa/StarShuttler/nbt_assigner"
 	"github.com/xingbaiawa/StarShuttler/nbt_assigner/nbt_cache"
 	"github.com/xingbaiawa/StarShuttler/nbt_assigner/nbt_console"
+	"github.com/pterm/pterm"
 )
 
 var (

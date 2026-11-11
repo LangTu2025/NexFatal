@@ -116,55 +116,6 @@ func (c *Console) initConsole(dimensionID uint8, center protocol.BlockPos, waitC
 		return fmt.Errorf("initConsole: %v", err)
 	}
 
-	// Teleport before backing up so the target chunks are loaded.
-	dimensionName := utils.DimensionNameByID(dimensionID)
-	err = api.Commands().SendAICommand(
-		fmt.Sprintf("execute in %s run tp %d %d %d", dimensionName, center[0], center[1], center[2]),
-		true,
-	)
-	if err != nil {
-		return fmt.Errorf("initConsole: %v", err)
-	}
-
-	if waitCommandResponse {
-		timer := time.NewTimer(DefaultTimeoutInitConsole)
-		defer timer.Stop()
-
-		// A successful temporary backup confirms that the target chunks are ready.
-		for {
-			select {
-			case <-timer.C:
-				return fmt.Errorf("initConsole: Can not teleport to the target area (timeout)")
-			default:
-			}
-
-			uniqueID, err := api.StructureBackup().BackupOffset(
-				protocol.BlockPos{center[0] - 5, center[1], center[2] - 5},
-				protocol.BlockPos{10, 0, 10},
-			)
-			if err != nil {
-				continue
-			}
-
-			resp, err := api.Commands().SendWSCommandWithResp(
-				fmt.Sprintf(
-					`structure delete "%v"`,
-					utils.MakeUUIDSafeString(uniqueID),
-				),
-			)
-			if err != nil {
-				return fmt.Errorf("initConsole: %v", err)
-			}
-			if resp.SuccessCount > 0 {
-				break
-			}
-		}
-	} else {
-		if err := api.Commands().AwaitChangesGeneral(); err != nil {
-			return fmt.Errorf("initConsole: %v", err)
-		}
-	}
-
 	consoleBackup, err := backupConsoleArea(api, dimensionID, center)
 	if err != nil {
 		return fmt.Errorf("initConsole: %v", err)
@@ -192,18 +143,65 @@ func (c *Console) initConsole(dimensionID uint8, center protocol.BlockPos, waitC
 			return fmt.Errorf("initConsole: %v", err)
 		}
 	} else {
-		err := api.Commands().SendAICommand("gamemode 1", true)
+		err := api.Commands().SendSettingsCommand("gamemode 1", true)
 		if err != nil {
 			return fmt.Errorf("initConsole: %v", err)
 		}
 	}
-	err = api.Commands().SendAICommand("clear", true)
+	err = api.Commands().SendSettingsCommand("clear", true)
 	if err != nil {
 		return fmt.Errorf("initConsole: %v", err)
 	}
 	err = api.BotClick().ChangeSelectedHotbarSlot(c.currentHotBar)
 	if err != nil {
 		return fmt.Errorf("initConsole: %v", err)
+	}
+
+	// Teleport to target area
+	dimensionName := utils.DimensionNameByID(dimensionID)
+	err = api.Commands().SendSettingsCommand(
+		fmt.Sprintf("execute in %s run tp %d %d %d", dimensionName, c.center[0], c.center[1], c.center[2]),
+		true,
+	)
+	if err != nil {
+		return fmt.Errorf("initConsole: %v", err)
+	}
+
+	if waitCommandResponse {
+		timer := time.NewTimer(DefaultTimeoutInitConsole)
+		defer timer.Stop()
+
+		// Waiting bot to go to the target area
+		for {
+			select {
+			case <-timer.C:
+				return fmt.Errorf("initConsole: Can not teleport to the target area (timeout)")
+			default:
+			}
+
+			uniqueID, err := api.StructureBackup().BackupOffset(
+				protocol.BlockPos{c.center[0] - 5, c.center[1], c.center[2] - 5},
+				protocol.BlockPos{10, 0, 10},
+			)
+			if err != nil {
+				continue
+			}
+
+			resp, err := api.Commands().SendWSCommandWithResp(
+				fmt.Sprintf(
+					`structure delete "%v"`,
+					utils.MakeUUIDSafeString(uniqueID),
+				),
+			)
+			if err != nil {
+				return fmt.Errorf("initConsole: %v", err)
+			}
+			if resp.SuccessCount > 0 {
+				break
+			}
+		}
+	} else {
+		time.Sleep(time.Second)
 	}
 
 	// Init console blocks
@@ -219,16 +217,14 @@ func (c *Console) initConsole(dimensionID uint8, center protocol.BlockPos, waitC
 				return fmt.Errorf("initConsole: %v", err)
 			}
 		} else {
-			err = api.Commands().SendAICommand(cleanCommand, false)
+			err = api.Commands().SendSettingsCommand(cleanCommand, false)
 			if err != nil {
 				return fmt.Errorf("initConsole: %v", err)
 			}
-			if err = api.Commands().AwaitChangesGeneral(); err != nil {
-				return fmt.Errorf("initConsole: %v", err)
-			}
+			time.Sleep(200 * time.Millisecond)
 		}
 		// Teleport again
-		err = api.Commands().SendAICommand(
+		err = api.Commands().SendSettingsCommand(
 			fmt.Sprintf("execute in %s run tp %d %d %d", dimensionName, c.center[0], c.center[1], c.center[2]),
 			true,
 		)
@@ -246,13 +242,11 @@ func (c *Console) initConsole(dimensionID uint8, center protocol.BlockPos, waitC
 				return fmt.Errorf("initConsole: %v", err)
 			}
 		} else {
-			err = api.Commands().SendAICommand(floorCommand, false)
+			err = api.Commands().SendSettingsCommand(floorCommand, false)
 			if err != nil {
 				return fmt.Errorf("initConsole: %v", err)
 			}
-			if err = api.Commands().AwaitChangesGeneral(); err != nil {
-				return fmt.Errorf("initConsole: %v", err)
-			}
+			time.Sleep(200 * time.Millisecond)
 		}
 	}
 
@@ -279,7 +273,7 @@ func (c *Console) initConsole(dimensionID uint8, center protocol.BlockPos, waitC
 
 func backupConsoleArea(api *game_interface.GameInterface, dimensionID uint8, center protocol.BlockPos) (*ConsoleAreaBackup, error) {
 	dimensionName := utils.DimensionNameByID(dimensionID)
-	if err := api.Commands().SendAICommand(
+	if err := api.Commands().SendSettingsCommand(
 		fmt.Sprintf("execute in %s run tp %d %d %d", dimensionName, center[0], center[1], center[2]),
 		true,
 	); err != nil {
@@ -297,7 +291,7 @@ func backupConsoleArea(api *game_interface.GameInterface, dimensionID uint8, cen
 	return &ConsoleAreaBackup{UniqueID: uniqueID, DimensionID: dimensionID, StartPos: startPos, CenterPos: center}, nil
 }
 
-// RestoreConsoleAreaBackup 恢复创建操作台前备份的操作台区域
+// RestoreConsoleAreaBackup 恢复创建操作台前备份的操作台区域。
 func (c *Console) RestoreConsoleAreaBackup() error {
 	if c == nil || c.consoleAreaBackup == nil {
 		return nil
@@ -310,7 +304,7 @@ func (c *Console) RestoreConsoleAreaBackup() error {
 		center = protocol.BlockPos{backup.StartPos[0] + 5, backup.StartPos[1] + 2, backup.StartPos[2] + 5}
 	}
 	dimensionName := utils.DimensionNameByID(backup.DimensionID)
-	if err := c.api.Commands().SendAICommand(
+	if err := c.api.Commands().SendSettingsCommand(
 		fmt.Sprintf("execute in %s run tp %d %d %d", dimensionName, center[0], center[1], center[2]),
 		true,
 	); err != nil {

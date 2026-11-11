@@ -1,8 +1,9 @@
 package packet
 
 import (
-	"github.com/go-gl/mathgl/mgl32"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
+
+	"github.com/go-gl/mathgl/mgl32"
 )
 
 // noinspection SpellCheckingInspection
@@ -445,7 +446,7 @@ const (
 	SoundEventFrogspawnBreak
 	SoundEventSonicBoom
 	SoundEventSonicCharge
-	SoundeventItemThrown
+	SoundEventItemThrown
 	SoundEventRecord5
 	SoundEventConvertToFrog
 	SoundEventRecordPlaying
@@ -568,23 +569,7 @@ const (
 	SoundEventLeadUnleash
 	SoundEventLeadBreak
 	SoundEventUnsaddle
-	SoundEventEquipCopper
 	SoundEventRecordLavaChicken
-	SoundEventPlaceItem
-	SoundEventSingleItemSwap
-	SoundEventMultiItemSwap
-	SoundEventItemEnchantLunge1
-	SoundEventItemEnchantLunge2
-	SoundEventItemEnchantLunge3
-	SoundEventAttackCritical
-	SoundEventItemSpearAttackHit
-	SoundEventItemSpearAttackMiss
-	SoundEventItemWoodenSpearAttackHit
-	SoundEventItemWoodenSpearAttackMiss
-	SoundEventImitateParched
-	SoundEventImitateCamelHusk
-	SoundEventItemSpearUse
-	SoundEventItemWoodenSpearUse
 )
 
 // LevelSoundEvent is sent by the server to make any kind of built-in sound heard to a player. It is sent to,

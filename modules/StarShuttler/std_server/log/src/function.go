@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/xingbaiawa/StarShuttler/std_server/define"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/xingbaiawa/StarShuttler/std_server/define"
 )
 
 func Root(c *gin.Context) {

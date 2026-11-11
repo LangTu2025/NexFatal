@@ -23,29 +23,29 @@ type CCVoiceSDKConfig struct {
 
 // CCVoiceInfoInnerData data里info内部结构
 type CCVoiceInfoInnerData struct {
-	StreamName       string            `json:"stream_name"`
-	Account          string            `json:"account"`
-	FastReconnection int               `json:"fast_reconnection"`
-	Uid              string            `json:"uid"`
-	GameUid          int64             `json:"game_uid"`
-	StatUrl          CCVoiceSubUrlInfo `json:"stat_url"`
-	HttpKey          string            `json:"httpkey"`
-	QueryUrl         CCVoiceSubUrlInfo `json:"query_url"`
-	ChannelType      string            `json:"channel_type"`
-	Game             int               `json:"game"`
-	CheckUrl         CCVoiceSubUrlInfo `json:"check_url"`
-	SDKConfigs       CCVoiceSDKConfig  `json:"sdk_configs"`
+	StreamName      string            `json:"stream_name"`
+	Account         string            `json:"account"`
+	FastReconnection int              `json:"fast_reconnection"`
+	Uid             string            `json:"uid"`
+	GameUid         int64             `json:"game_uid"`
+	StatUrl         CCVoiceSubUrlInfo `json:"stat_url"`
+	HttpKey         string            `json:"httpkey"`
+	QueryUrl        CCVoiceSubUrlInfo `json:"query_url"`
+	ChannelType     string            `json:"channel_type"`
+	Game            int               `json:"game"`
+	CheckUrl        CCVoiceSubUrlInfo `json:"check_url"`
+	SDKConfigs      CCVoiceSDKConfig  `json:"sdk_configs"`
 }
 
 // CCVoiceDataInnerEntity entity->data 解析后的内层
 type CCVoiceDataInnerEntity struct {
-	Info       string   `json:"info"`
-	StreamName string   `json:"stream_name"`
-	Ts         string   `json:"ts"`
-	Sign       string   `json:"sign"`
-	Eid        int64    `json:"eid"`
-	Streamid   string   `json:"streamid"`
-	Nodes      []string `json:"nodes"`
+	Info      string                  `json:"info"`
+	StreamName string                 `json:"stream_name"`
+	Ts        string                 `json:"ts"`
+	Sign      string                 `json:"sign"`
+	Eid       int64                  `json:"eid"`
+	Streamid  string                 `json:"streamid"`
+	Nodes     []string               `json:"nodes"`
 
 	// 手动二次解析info内嵌json
 	InfoData CCVoiceInfoInnerData `json:"-"`
@@ -55,9 +55,9 @@ type CCVoiceDataInnerEntity struct {
 
 // CCVoiceLoginInfoEntity 最外层 entity
 type CCVoiceLoginInfoEntity struct {
-	ChannelType string `json:"channel_type"`
-	Stream      string `json:"stream"`
-	Data        string `json:"data"`
+	ChannelType string                 `json:"channel_type"`
+	Stream      string                 `json:"stream"`
+	Data        string                 `json:"data"`
 
 	// 手动二次解析data内嵌json
 	DataEntity CCVoiceDataInnerEntity `json:"-"`

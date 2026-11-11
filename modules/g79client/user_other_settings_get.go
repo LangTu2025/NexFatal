@@ -141,7 +141,7 @@ type OtherUserPetSkinInfo struct {
 	BuyNum      Uncertain `json:"buy_num"`
 	CategoryID  Uncertain `json:"category_id"`
 	OnlineTime  string    `json:"online_time"`
-	UpdateTime  string    `json:"update_time"`
+UpdateTime  string    `json:"update_time"`
 	OffsetX     Uncertain `json:"offset_x"`
 	OffsetY     Uncertain `json:"offset_y"`
 	Scale       Uncertain `json:"scale"`

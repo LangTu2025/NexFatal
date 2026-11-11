@@ -5,10 +5,10 @@ import (
 	"errors"
 	"sync"
 
+	link "github.com/Yeah114/g79client/service/link_connection"
 	"github.com/xingbaiawa/StarShuttler/core/bunker/auth"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
-	link "github.com/xingbaiawa/g79client/service/link_connection"
 )
 
 // ------------------------- Config -------------------------
@@ -17,7 +17,6 @@ import (
 type Config struct {
 	AuthServerAddress    string
 	AuthServerToken      string
-	AuthMode             auth.AuthenticationMode
 	RentalServerCode     string
 	RentalServerPasscode string
 	LoginCookieFallback  func(context.Context) (string, error)
@@ -29,7 +28,6 @@ type Config struct {
 type Client struct {
 	connection            *minecraft.Conn
 	authClient            *auth.Client
-	remoteAuthClient      *auth.RemoteClient
 	getCheckNumEverPassed bool
 	cachedPacket          chan packet.Packet
 	skipMCPCheckChallenge bool

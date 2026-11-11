@@ -13,7 +13,7 @@ import (
 
 const (
 	defaultBaseURL   = "https://service.mkey.163.com"
-	defaultUserAgent = "com.netease.x19/840300878 NeteaseMobileGame/a5.16.0 (V2166A;32)"
+	defaultUserAgent = "com.netease.x19/840292836 NeteaseMobileGame/a5.16.0 (V2166A;32)"
 	requestTimeout   = 5 * time.Second
 )
 

@@ -1,67 +1,67 @@
 package main
 
 import (
-	"fmt"
 	"io"
-	"net/http"
 	"os"
+	"fmt"
 	"time"
+	"net/http"
 
-	"github.com/xingbaiawa/unmcpk/hotpatch"
-	"github.com/xingbaiawa/unmcpk/mcpk"
+	"github.com/Yeah114/unmcpk/mcpk"
+	"github.com/Yeah114/unmcpk/hotpatch"
 )
 
-func main() {
-	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-}
-
-func run() error {
-	patchList, err := hotpatch.FetchPatchList()
+func main(){
+	patchList, err := hotpatch.FetchPatchlist()
 	if err != nil {
-		return fmt.Errorf("run: %v", err)
+		panic(err)
 	}
 
-	latestVersion := patchList.Latest()
-	if latestVersion == "" {
-		return fmt.Errorf("run: 没有可用的 Android 热更新版本")
-	}
-	manifest, err := hotpatch.FetchManifest(patchList.URL, latestVersion)
+	manifest, err := hotpatch.FetchManifest(patchList.NewURL, patchList.Android[len(patchList.Android)-1])
 	if err != nil {
-		return fmt.Errorf("run: %v", err)
+		panic(err)
 	}
 
 	assetName := "vanilla.mcp"
 	asset, ok := manifest.Assets[assetName]
 	if !ok {
-		return fmt.Errorf("run: 资源 %s 不存在", assetName)
+		panic(fmt.Errorf("%s does not exist", assetName))
 	}
 
-	assetURL := manifest.BaseURL + asset.PathURL
-	httpClient := &http.Client{
+	url := manifest.BaseUrl + asset.PathUrl
+	file, err := os.OpenFile(assetName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		panic(err)
+	}
+	var httpClient *http.Client = &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
 			Proxy: nil,
 		},
 	}
-	reader, err := hotpatch.NewPartialHTTPReader(assetURL, httpClient)
+	reader, err := hotpatch.NewPartialHttpReader(url, httpClient)
 	if err != nil {
-		return fmt.Errorf("run: %v", err)
+		panic(err)
 	}
 
 	body, err := io.ReadAll(reader)
 	if err != nil {
-		return fmt.Errorf("run: %v", err)
+		panic(err)
 	}
-	if err = os.WriteFile(assetName, body, 0644); err != nil {
-		return fmt.Errorf("run: %v", err)
+
+	_, err = file.Write(body)
+	if err != nil {
+		panic(err)
 	}
 
 	dir := "extracted"
-	if err = mcpk.Unpack(body, dir); err != nil {
-		return fmt.Errorf("run: %v", err)
+	err = os.MkdirAll(dir, 0755)
+	if err != nil {
+		panic(err)
 	}
-	return nil
+
+	err = mcpk.Unpack(body, dir)
+	if err != nil {
+		panic(err)
+	}
 }

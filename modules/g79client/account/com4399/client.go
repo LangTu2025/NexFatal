@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"html"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -25,7 +24,7 @@ const (
 	loginBaseURL      = "https://ptlogin.4399.com"
 	requestTimeout    = 15 * time.Second
 	defaultUserAgent  = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0 Mobile Safari/537.36"
-	oauthSDKVersion   = "3.18.0"
+	oauthSDKVersion   = "3.12.2.503"
 	oauthGameKey      = "115716"
 	oauthCallbackPath = "/openapi/oauth-callback.html?gamekey=44770&game_key=115716"
 )
@@ -214,20 +213,7 @@ func (d *Device) LoginWithPasswordOptions(ctx context.Context, username, passwor
 	}
 	html := string(body)
 	if strings.Contains(html, "验证码") {
-		captchaErr := newNeedCaptchaError(html)
-		// 尝试自动 OCR 识别
-		if needCaptcha, ok := captchaErr.(*NeedCaptchaError); ok && needCaptcha.CaptchaURL != "" {
-			if ocrResult, ocrErr := RecognizeCaptcha(needCaptcha.CaptchaURL); ocrErr == nil {
-				log.Printf("[OCR] 登录验证码自动识别结果: %s", ocrResult)
-				options.Captcha = ocrResult
-				options.CaptchaID = needCaptcha.CaptchaID
-				options.Retry++
-				return d.LoginWithPasswordOptions(ctx, username, password, options)
-			} else {
-				log.Printf("[OCR] 登录验证码自动识别失败: %v", ocrErr)
-			}
-		}
-		return nil, captchaErr
+		return nil, newNeedCaptchaError(html)
 	}
 
 	location := headers.Get("Location")

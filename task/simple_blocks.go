@@ -6,9 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	bwo_block "github.com/TriM-Organization/bedrock-world-operator/block"
 	bwo_chunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
-	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
+	wsdefine "github.com/Yeah114/WaterStructure/define"
 	"github.com/LangTu2025/NexFatal/control"
 	"github.com/LangTu2025/NexFatal/utils/chunk_fill"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
@@ -44,30 +43,52 @@ var lateBlockNames = map[string]struct{}{
 	"orange_tulip": {}, "white_tulip": {}, "pink_tulip": {}, "oxeye_daisy": {}, "cornflower": {}, "lilac": {},
 	"rose_bush": {}, "peony": {}, "sunflower": {}, "chrysanthemum": {}, "wither_rose": {}, "double_plant": {},
 	"brown_mushroom": {}, "red_mushroom": {}, "small_dripleaf_block": {}, "flower_pot": {},
-	"horn_coral": {}, "dead_horn_coral": {}, "seagrass": {}, "snow_layer": {},
+	"horn_coral": {}, "dead_horn_coral": {}, "seagrass": {},
 }
 
-// makeSimpleCommandPlan 按 Lycoris 的顺序生成第二方块层和主方块层命令。
-func makeSimpleCommandPlan(ctx context.Context, region chunkRegion, regionChunks map[wsdefine.ChunkPos]*bwo_chunk.Chunk, buildOrigin wsdefine.BlockPos, chunkNBTs map[wsdefine.ChunkPos]map[wsdefine.BlockPos]map[string]any, specialNBTBlocks bool, autoPlaceLight bool, lightSpacing int) (simpleCommandPlan, error) {
+// makeSimpleCommandPlan 将 setblock/fill 命令拆成基础阶段和延后放置阶段。
+func makeSimpleCommandPlan(region chunkRegion, regionChunks map[wsdefine.ChunkPos]*bwo_chunk.Chunk, buildOrigin wsdefine.BlockPos, chunkNBTs map[wsdefine.ChunkPos]map[wsdefine.BlockPos]map[string]any, specialNBTBlocks bool, autoPlaceLight bool, lightSpacing int) simpleCommandPlan {
 	startPos := regionStartPos(buildOrigin, region)
 	var beds []bedPlacementTask
 	var doors []doorPlacementTask
+	var specialBedPositions map[protocol.BlockPos]struct{}
+	var specialDoorPositions map[protocol.BlockPos]struct{}
 	if specialNBTBlocks {
 		beds = collectBedPlacementTasks(region, regionChunks, chunkNBTs, buildOrigin)
 		doors = collectDoorPlacementTasks(region, regionChunks, buildOrigin)
+		specialBedPositions = bedCommandPositions(beds)
+		specialDoorPositions = doorCommandPositions(doors)
 	}
 
-	secondLayer, err := makeLayerCommandPlan(ctx, regionChunks, startPos, 1, false)
-	if err != nil {
-		return simpleCommandPlan{}, err
+	earlyCommands := make([]string, 0, 1024)
+	lateCommands := make([]string, 0, 256)
+	canCover := func(blockName string) bool {
+		return !latePlacementBlock(blockName)
 	}
-	mainLayer, err := makeLayerCommandPlan(ctx, regionChunks, startPos, 0, false)
-	if err != nil {
-		return simpleCommandPlan{}, err
-	}
-	commands := make([]string, 0, len(secondLayer)+len(mainLayer))
-	commands = append(commands, secondLayer...)
-	commands = append(commands, mainLayer...)
+	chunk_fill.GenerateChunksCommandFuncWithFilterAndCover(regionChunks, startPos, nil, canCover, func(command string) bool {
+		blockCommand := parseBlockCommand(command)
+		// 只有非红床和非默认门需要操作台交互；红床、默认门直接保留 setblock/fill。
+		if specialNBTBlocks && blockCommand.ok {
+			if isBedBlockName(blockCommand.name) && commandTouchesPositions(blockCommand, specialBedPositions) {
+				return true
+			}
+			if isDoorBlockName(blockCommand.name) && commandTouchesPositions(blockCommand, specialDoorPositions) {
+				return true
+			}
+		}
+		// 依赖支撑面的方块放到基础方块之后，减少 torch、rail、sand 等方块掉落或失效。
+		if blockCommand.ok && latePlacementBlock(blockCommand.name) {
+			lateCommands = append(lateCommands, command)
+			return true
+		}
+		earlyCommands = append(earlyCommands, command)
+		return true
+	})
+
+	sortLateCommands(lateCommands)
+	commands := make([]string, 0, len(earlyCommands)+len(lateCommands))
+	commands = append(commands, earlyCommands...)
+	commands = append(commands, lateCommands...)
 	if autoPlaceLight {
 		commands = append(commands, makeLightBlockCommands(regionChunks, buildOrigin, lightSpacing)...)
 	}
@@ -78,92 +99,7 @@ func makeSimpleCommandPlan(ctx context.Context, region chunkRegion, regionChunks
 		beds:     beds,
 		doors:    doors,
 	}
-	return plan, nil
-}
-
-func makeLayerCommandPlan(ctx context.Context, chunks map[wsdefine.ChunkPos]*bwo_chunk.Chunk, startPos wsdefine.BlockPos, layer uint8, coverAir bool) ([]string, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	earlyCommands := make([]string, 0, 1024)
-	lateCommands := make([]string, 0, 256)
-	var generationErr error
-	canCover := func(blockName string) bool {
-		return !latePlacementBlock(blockName)
-	}
-	options := chunk_fill.GenerateOptions{
-		Layer:    layer,
-		CoverAir: coverAir,
-		Continue: func() bool {
-			if err := context.Cause(ctx); err != nil {
-				generationErr = err
-				return false
-			}
-			return true
-		},
-	}
-	if layer == 0 {
-		options.NormalizeRuntimeID = commandBlockFillRuntimeID
-	}
-	chunk_fill.GenerateChunksCommandFuncWithOptions(chunks, startPos, options, nil, canCover, func(command string) bool {
-		if err := context.Cause(ctx); err != nil {
-			generationErr = err
-			return false
-		}
-		parsed := parseBlockCommand(command)
-		if parsed.ok && latePlacementBlock(parsed.name) {
-			lateCommands = append(lateCommands, command)
-			return true
-		}
-		earlyCommands = append(earlyCommands, command)
-		return true
-	})
-	if generationErr != nil {
-		return nil, generationErr
-	}
-
-	sortLateCommands(lateCommands)
-	commands := make([]string, 0, len(earlyCommands)+len(lateCommands))
-	commands = append(commands, earlyCommands...)
-	commands = append(commands, lateCommands...)
-	return commands, nil
-}
-
-// commandBlockFillRuntimeID temporarily normalises command block mode and conditional state.
-// The direct NBT update restores those fields after the fill commands have completed.
-func commandBlockFillRuntimeID(runtimeID uint32) uint32 {
-	blockName, properties, found := bwo_block.RuntimeIDToState(runtimeID)
-	if !found || !isCommandBlock(blockName) {
-		return runtimeID
-	}
-	facing, found := properties["facing_direction"].(int32)
-	if !found {
-		return runtimeID
-	}
-
-	defaultRuntimeID, found := bwo_block.StateToRuntimeID("minecraft:command_block", nil)
-	if !found {
-		return runtimeID
-	}
-	_, normalizedProperties, found := bwo_block.RuntimeIDToState(defaultRuntimeID)
-	if !found {
-		return runtimeID
-	}
-	normalizedProperties["conditional_bit"] = byte(0)
-	normalizedProperties["facing_direction"] = facing
-	normalizedRuntimeID, found := bwo_block.StateToRuntimeID("minecraft:command_block", normalizedProperties)
-	if !found {
-		return runtimeID
-	}
-	normalizedName, checkedProperties, found := bwo_block.RuntimeIDToState(normalizedRuntimeID)
-	checkedFacing, facingFound := checkedProperties["facing_direction"].(int32)
-	checkedConditional, conditionalFound := checkedProperties["conditional_bit"].(byte)
-	if !found || normalizedName != "minecraft:command_block" ||
-		!facingFound || checkedFacing != facing || !conditionalFound || checkedConditional != 0 {
-		return runtimeID
-	}
-	return normalizedRuntimeID
+	return plan
 }
 
 type blockCommand struct {
@@ -358,10 +294,7 @@ func (b *BuildTask) writeSimpleBlockBatch(ctx context.Context, ctrl *game_contro
 	}
 
 	region := chunkRegion{ChunkList: chunkPositions}
-	plan, err := makeSimpleCommandPlan(ctx, region, regionChunks, buildOrigin, chunkNBTs, b.Config.ImportNBT, b.Config.AutoPlaceLight, b.Config.LightSpacing)
-	if err != nil {
-		return err
-	}
+	plan := makeSimpleCommandPlan(region, regionChunks, buildOrigin, chunkNBTs, b.Config.ImportNBT, b.Config.AutoPlaceLight, b.Config.LightSpacing)
 	if err := b.sendSimpleCommandBatch(ctx, ctrl, limiter, nil, plan.commands); err != nil {
 		return err
 	}

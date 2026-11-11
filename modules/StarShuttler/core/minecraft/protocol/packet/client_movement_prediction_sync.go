@@ -1,8 +1,6 @@
 package packet
 
-import (
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
-)
+import "github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 
 // ClientMovementPredictionSync is sent by the client to the server periodically if the client has received
 // movement corrections from the server, containing information about client-predictions that are relevant

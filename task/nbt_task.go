@@ -7,12 +7,11 @@ import (
 
 	bwo_block "github.com/TriM-Organization/bedrock-world-operator/block"
 	bwo_chunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
+	wsdefine "github.com/Yeah114/WaterStructure/define"
+	wsstructure "github.com/Yeah114/WaterStructure/structure"
 	"github.com/schollz/progressbar/v3"
-	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
-	wsstructure "github.com/xingbaiawa/LycorisFlow/structure"
 	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
 	"github.com/LangTu2025/NexFatal/control"
-	"github.com/LangTu2025/NexFatal/utils/command_upgrader"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"go.uber.org/ratelimit"
@@ -26,7 +25,7 @@ type nbtPlacementTask struct {
 }
 
 type classifiedNBTPlacementTasks struct {
-	directBlocks    []nbtPlacementTask
+	commandBlocks   []nbtPlacementTask
 	regularBlocks   []nbtPlacementTask
 	lateBlocks      []nbtPlacementTask
 	containerBlocks []nbtPlacementTask
@@ -55,6 +54,10 @@ func (b *BuildTask) writeNBTBlocksBestEffort(ctx context.Context, ctrl *game_con
 }
 
 func (b *BuildTask) writeNBTBlocksBestEffortWithChunksNBT(ctx context.Context, ctrl *game_control.Control, chunkPositions []wsdefine.ChunkPos, chunks map[wsdefine.ChunkPos]*bwo_chunk.Chunk, chunkNBTs map[wsdefine.ChunkPos]map[wsdefine.BlockPos]map[string]any, limiter ratelimit.Limiter) error {
+	if !b.Config.ImportNBT {
+		return nil
+	}
+
 	// 修补模式不重新制作操作台缓存，只尽量复用已经缓存的结构。
 	// 床和门需要通过交互还原，所以在普通 NBT 写入之前单独处理。
 	beds := collectBedPlacementTasks(chunkRegion{ChunkList: chunkPositions}, chunks, chunkNBTs, b.Config.BuildOrigin())
@@ -64,11 +67,8 @@ func (b *BuildTask) writeNBTBlocksBestEffortWithChunksNBT(ctx context.Context, c
 		return err
 	}
 
-	if _, err := b.writeDirectNBTBestEffort(ctx, ctrl, groupedTasks.directBlocks, limiter); err != nil {
+	if _, err := b.writeCommandBlocksBestEffort(ctx, ctrl, groupedTasks.commandBlocks); err != nil {
 		return err
-	}
-	if !b.Config.ImportNBT {
-		return nil
 	}
 	if err := b.placeBedTasks(ctx, ctrl, limiter, nil, beds); err != nil {
 		return err
@@ -96,54 +96,8 @@ func (b *BuildTask) readChunkNBTsForSpecialBlocks(chunkPositions []wsdefine.Chun
 func (b *BuildTask) collectNBTTasksFromChunks(ctx context.Context, chunkPositions []wsdefine.ChunkPos, chunks map[wsdefine.ChunkPos]*bwo_chunk.Chunk, chunkNBTs map[wsdefine.ChunkPos]map[wsdefine.BlockPos]map[string]any) (classifiedNBTPlacementTasks, error) {
 	groupedTasks := classifiedNBTPlacementTasks{}
 	buildOrigin := b.Config.BuildOrigin()
-	directIndexes := make(map[protocol.BlockPos]int)
-
-	// Lycoris normalises all command block runtime IDs before fill generation. Queue a default
-	// update for every command block so its mode and conditional state are restored even if the
-	// source format does not contain a block actor entry.
 	for _, chunkPos := range chunkPositions {
-		if err := context.Cause(ctx); err != nil {
-			return groupedTasks, loc.Errf(loc.KeyBuildImportCancelled, err)
-		}
-		chunkData := chunks[chunkPos]
-		if chunkData == nil {
-			continue
-		}
-		heightRange := chunkData.Range()
-		for sourceY := heightRange.Min(); sourceY <= heightRange.Max(); sourceY++ {
-			for localX := 0; localX < 16; localX++ {
-				for localZ := 0; localZ < 16; localZ++ {
-					runtimeID := chunkData.Block(uint8(localX), int16(sourceY), uint8(localZ), 0)
-					if runtimeID == bwo_block.AirRuntimeID {
-						continue
-					}
-					blockName, blockStates, found := bwo_block.RuntimeIDToState(runtimeID)
-					if !found {
-						continue
-					}
-					blockName = blockNameWithNamespace(blockName)
-					if !isCommandBlock(blockName) {
-						continue
-					}
-					target := protocol.BlockPos{
-						buildOrigin.X() + chunkPos.X()*16 + int32(localX),
-						buildOrigin.Y() + int32(sourceY-heightRange.Min()),
-						buildOrigin.Z() + chunkPos.Z()*16 + int32(localZ),
-					}
-					directIndexes[target] = len(groupedTasks.directBlocks)
-					groupedTasks.directBlocks = append(groupedTasks.directBlocks, nbtPlacementTask{
-						pos:         target,
-						blockName:   blockName,
-						blockStates: blockStates,
-						nbtData:     defaultCommandBlockData(blockName),
-					})
-				}
-			}
-		}
-	}
-
-	for _, chunkPos := range chunkPositions {
-		if err := context.Cause(ctx); err != nil {
+		if err := ctx.Err(); err != nil {
 			return groupedTasks, loc.Errf(loc.KeyBuildImportCancelled, err)
 		}
 
@@ -159,15 +113,20 @@ func (b *BuildTask) collectNBTTasksFromChunks(ctx context.Context, chunkPosition
 		positions := sortedNBTPositions(blockMap)
 		for _, blockPos := range positions {
 			nbtData := blockMap[blockPos]
-			blockName, blockStates, _, ok := readNBTBlockState(chunkData, blockPos)
+			// 空 NBT 的普通特殊方块由基础方块阶段处理，不计入 NBT 阶段进度。
+			// 床和门由独立流程收集和计数，不受这里过滤影响。
+			if len(nbtData) == 0 {
+				continue
+			}
+			blockName, blockStates, isCommandBlock, ok := readNBTBlockState(chunkData, blockPos)
 			if !ok {
 				continue
 			}
 
-			heightRange := chunkData.Range()
+			localY := int(blockPos.Y()) + 64
 			targetPos := protocol.BlockPos{
 				buildOrigin.X() + chunkPos.X()*16 + blockPos.X(),
-				buildOrigin.Y() + blockPos.Y() - int32(heightRange.Min()),
+				buildOrigin.Y() + int32(localY),
 				buildOrigin.Z() + chunkPos.Z()*16 + blockPos.Z(),
 			}
 
@@ -177,21 +136,13 @@ func (b *BuildTask) collectNBTTasksFromChunks(ctx context.Context, chunkPosition
 				blockStates: blockStates,
 				nbtData:     nbtData,
 			}
-			if isCommandBlock(blockName) {
-				task.nbtData = upgradeCommandBlockNBT(task.nbtData)
-			}
 
+			// 命令方块必须先放置方块再用数据包写入内容；床和门由专门流程制作。
+			// 容器和依赖支撑面的方块延后处理，避免被基础方块阶段覆盖或因支撑缺失失败。
 			switch {
-			case isDirectNBTBlock(blockName):
-				if index, found := directIndexes[targetPos]; found {
-					groupedTasks.directBlocks[index] = mergeDirectNBTTask(groupedTasks.directBlocks[index], task)
-				} else {
-					directIndexes[targetPos] = len(groupedTasks.directBlocks)
-					groupedTasks.directBlocks = append(groupedTasks.directBlocks, task)
-				}
+			case isCommandBlock:
+				groupedTasks.commandBlocks = append(groupedTasks.commandBlocks, task)
 			case isBedBlockName(blockName):
-				continue
-			case len(nbtData) == 0:
 				continue
 			case containerBlock(blockName) && latePlacementBlock(blockName):
 				groupedTasks.lateContainers = append(groupedTasks.lateContainers, task)
@@ -209,46 +160,15 @@ func (b *BuildTask) collectNBTTasksFromChunks(ctx context.Context, chunkPosition
 	sortNBTTasks(groupedTasks.containerBlocks)
 	sortNBTTasks(groupedTasks.lateBlocks)
 	sortNBTTasks(groupedTasks.lateContainers)
+	sortNBTTasks(groupedTasks.commandBlocks)
 
 	return groupedTasks, nil
 }
 
-func mergeDirectNBTTask(base, incoming nbtPlacementTask) nbtPlacementTask {
-	mergedData := make(map[string]any, len(base.nbtData)+len(incoming.nbtData))
-	for key, value := range base.nbtData {
-		mergedData[key] = value
-	}
-	for key, value := range incoming.nbtData {
-		mergedData[key] = value
-	}
-	incoming.nbtData = mergedData
-	return incoming
-}
-
-func upgradeCommandBlockNBT(data map[string]any) map[string]any {
-	for key, value := range data {
-		if !strings.EqualFold(key, "Command") {
-			continue
-		}
-		command, ok := value.(string)
-		if !ok || command == "" {
-			return data
-		}
-		upgraded := command_upgrader.UpdateLegacyCommand(command)
-		if upgraded == command {
-			return data
-		}
-		result := make(map[string]any, len(data))
-		for dataKey, dataValue := range data {
-			result[dataKey] = dataValue
-		}
-		result[key] = upgraded
-		return result
-	}
-	return data
-}
-
 func (b *BuildTask) writePlannedNBTBlocks(ctx context.Context, ctrl *game_control.Control, chunkPositions []wsdefine.ChunkPos, groupedTasks *classifiedNBTPlacementTasks, hasNBT bool, beds []bedPlacementTask, doors []doorPlacementTask, limiter ratelimit.Limiter, progress *buildProgressReporter) error {
+	if !b.Config.ImportNBT {
+		return nil
+	}
 	if groupedTasks == nil {
 		groupedTasks = &classifiedNBTPlacementTasks{}
 	}
@@ -256,16 +176,15 @@ func (b *BuildTask) writePlannedNBTBlocks(ctx context.Context, ctrl *game_contro
 		*groupedTasks = classifiedNBTPlacementTasks{}
 	}
 
-	if progress != nil && len(groupedTasks.directBlocks) > 0 {
-		progress.ResetRegion(len(groupedTasks.directBlocks), progressUnitNBT)
+	// 写入顺序不能随意调整：命令方块先写，床和门通过操作台交互还原，
+	// 最后再处理其他 NBT 方块，避免操作台移动影响命令方块更新包接收。
+	if progress != nil && len(groupedTasks.commandBlocks) > 0 {
+		progress.ResetRegion(len(groupedTasks.commandBlocks), progressUnitCommandBlock)
 	}
-	if _, err := b.writeDirectNBTChecked(ctx, ctrl, groupedTasks.directBlocks, limiter, progress); err != nil {
+	if _, err := b.writeCommandBlocksChecked(ctx, ctrl, groupedTasks.commandBlocks, progress); err != nil {
 		return err
 	}
-	groupedTasks.directBlocks = nil
-	if !b.Config.ImportNBT {
-		return nil
-	}
+	groupedTasks.commandBlocks = nil
 
 	nbtTotal := len(beds) + len(doors) + groupedTasks.regularTaskCount()
 	if nbtTotal > 0 {
@@ -425,7 +344,11 @@ func (b *BuildTask) writeNBTTasks(ctx context.Context, ctrl *game_control.Contro
 
 func sortedNBTPositions(blockMap map[wsdefine.BlockPos]map[string]any) []wsdefine.BlockPos {
 	positions := make([]wsdefine.BlockPos, 0, len(blockMap))
-	for blockPos := range blockMap {
+	for blockPos, nbtData := range blockMap {
+		// 空 NBT 的普通特殊方块由基础方块阶段处理，不需要进入排序队列。
+		if len(nbtData) == 0 {
+			continue
+		}
 		positions = append(positions, blockPos)
 	}
 	sort.Slice(positions, func(i, j int) bool {

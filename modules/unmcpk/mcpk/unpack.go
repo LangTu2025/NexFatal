@@ -10,116 +10,92 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/xingbaiawa/unmcpk/pymarshal"
+	"github.com/Yeah114/unmcpk/pymarshal"
 )
 
+var rotor *RotorObj
 var idRedirect = StringID("redirect.mcs")
 
-func netEaseDynamicKey() string {
-	keyName := "j2h56ogodh3sk"
-	keySalt := "=dziaq;"
-	keyTail := "|`o=5v7!\"-276"
+func init() {
+	asdf_dn := "j2h56ogodh3sk"
+	asdf_dt := "=dziaq;"
+	asdf_df := "|`o=5v7!\"-276"
 
-	return strings.Repeat(keyName, 4) +
-		strings.Repeat(keySalt+keyName+keyTail, 5) +
-		"$@" +
-		strings.Repeat(keySalt, 7) +
-		strings.Repeat(keyTail, 2) +
-		"&]`"
+	asdf_tm := strings.Repeat(asdf_dn, 4) + strings.Repeat(asdf_dt+asdf_dn+asdf_df, 5) + "$@" + strings.Repeat(asdf_dt, 7) + strings.Repeat(asdf_df, 2) + "&]`"
+
+	rotor = NewRotorObj(6, asdf_tm)
 }
 
-/*
-将 MCPK 数据解包到指定目录
-普通 Python 脚本会被修复为 pyc 文件
-当前版本中独立出现的尾随混淆块会被跳过
-*/
-func Unpack(data []byte, outputPath string) error {
-	if strings.TrimSpace(outputPath) == "" {
-		return fmt.Errorf("Unpack: 输出目录为空")
-	}
-	if err := os.MkdirAll(outputPath, 0755); err != nil {
-		return fmt.Errorf("Unpack: %v", err)
-	}
+func Unpack(dat []byte, path string) error {
+	start := binary.LittleEndian.Uint32(dat[0x0c:])
+	middle := binary.LittleEndian.Uint32(dat[0x10:])
+	end := binary.LittleEndian.Uint32(dat[0x14:])
+	//fmt.Printf("%x, %x, %x\n", start, middle, end)
 
-	fileSystem, err := NewMCPKFileSystem(data)
-	if err != nil {
-		return fmt.Errorf("Unpack: %v", err)
-	}
-
-	for _, directory := range fileSystem.directories {
-		for _, file := range directory.Files {
-			decrypted, err := decryptMCPKFile(fileSystem.fileData(file), file.ID)
+	directory_table := dat[start:middle]
+	var dirId, dirOff, dirSize, v1, v2, v3, _ uint32
+	for i := 0; i < len(directory_table); i += 0xc {
+		dirId = binary.LittleEndian.Uint32(directory_table[i:])
+		dirOff = binary.LittleEndian.Uint32(directory_table[i+4:])
+		dirSize = binary.LittleEndian.Uint32(directory_table[i+8:])
+		index_table := dat[middle+dirOff : middle+dirOff+(dirSize*0x10)]
+		for i := 0; i < len(index_table); i += 0x10 {
+			v1 = binary.LittleEndian.Uint32(index_table[i:])
+			v2 = binary.LittleEndian.Uint32(index_table[i+4:])
+			v3 = binary.LittleEndian.Uint32(index_table[i+8:])
+			_ = binary.LittleEndian.Uint32(index_table[i+12:])
+			// if v1 == idRedirect {
+			data, err := decrypt(dat[end+v2:end+v2+v3], v1)
 			if err != nil {
-				return fmt.Errorf(
-					"Unpack: Decrypt dir=%08x file=%08x offset=%08x size=%08x: %v",
-					directory.ID, file.ID, file.Offset, file.Size, err,
-				)
+				return fmt.Errorf("failed to decrypt file %x: %w", v1, err)
 			}
 
-			if isLatestJunkBlob(decrypted) {
-				continue
-			}
+			//println("size:", len(data))
 
-			repaired, err := pymarshal.RepairPYC(decrypted, file.ID != idRedirect)
+			repaired, err := pymarshal.PycRepairer(data, v1 != idRedirect)
 			if err != nil {
-				return fmt.Errorf(
-					"Unpack: Repair dir=%08x file=%08x offset=%08x size=%08x: %v",
-					directory.ID, file.ID, file.Offset, file.Size, err,
-				)
+				return err
 			}
 
-			name := fmt.Sprintf("%x_%x.pyc", directory.ID, file.ID)
-			if err := os.WriteFile(filepath.Join(outputPath, name), repaired, 0644); err != nil {
-				return fmt.Errorf(
-					"Unpack: Write dir=%08x file=%08x offset=%08x size=%08x: %v",
-					directory.ID, file.ID, file.Offset, file.Size, err,
-				)
+			err = os.WriteFile(filepath.Join(path, fmt.Sprintf("%x_%x.pyc", dirId, v1)), repaired, 0777)
+			if err != nil {
+				return err
 			}
+			//fmt.Printf("%x\t%x\t%x\t%x\n", v1, v2, v3, v4)
+			// }
 		}
 	}
 	return nil
 }
 
-// 判断数据是否为当前版本单独列出的尾随混淆块
-func isLatestJunkBlob(data []byte) bool {
-	return len(data) == 132 &&
-		data[0] == pymarshal.TypeNetEaseJunkBlob &&
-		binary.LittleEndian.Uint32(data[len(data)-4:]) == 0xfefffeff
-}
+func decrypt(data []byte, fileId uint32) ([]byte, error) {
+	decrypted := make([]byte, len(data))
+	copy(decrypted, data)
 
-// 解密并解压 MCPK 文件表中的单个条目
-func decryptMCPKFile(data []byte, fileID uint32) ([]byte, error) {
-	decrypted := bytes.Clone(data)
-
-	if fileID == idRedirect {
+	// decrypt
+	if fileId == idRedirect {
 		xorData := []byte("MCPK")
-		if len(decrypted) < len(xorData) {
-			return nil, fmt.Errorf("decryptMCPKFile: Encrypted redirect data is too short")
-		}
 		for i := range xorData {
 			decrypted[i] ^= xorData[i]
 		}
 	} else {
-		rotor := NewRotor(6, netEaseDynamicKey())
-		rotor.Decrypt(decrypted, true)
+		rotor.DRegion(decrypted, true)
 	}
 
+	// unzip
 	var unzipped bytes.Buffer
-	reader, err := zlib.NewReader(bytes.NewReader(decrypted))
+	reader, err := zlib.NewReader(bytes.NewBuffer(decrypted))
 	if err != nil {
-		return nil, fmt.Errorf("decryptMCPKFile: %v", err)
+		return nil, err
 	}
+	defer reader.Close()
 	_, err = io.Copy(&unzipped, reader)
-	if err != nil {
-		_ = reader.Close()
-		return nil, fmt.Errorf("decryptMCPKFile: %v", err)
-	}
-	if err = reader.Close(); err != nil {
-		return nil, fmt.Errorf("decryptMCPKFile: %v", err)
+	if err != nil && err != io.EOF {
+		return nil, err
 	}
 
-	if fileID != idRedirect {
-		decrypted = transformDynamicData(unzipped.Bytes())
+	if fileId != idRedirect {
+		decrypted = reverseData(unzipped.Bytes())
 	} else {
 		decrypted = unzipped.Bytes()
 	}
@@ -127,16 +103,15 @@ func decryptMCPKFile(data []byte, fileID uint32) ([]byte, error) {
 	return decrypted, nil
 }
 
-func transformDynamicData(data []byte) []byte {
-	dataLength := len(data)
+func reverseData(data []byte) []byte {
+	length := len(data)
 
-	for index := 0; index < 130 && index < dataLength; index++ {
-		data[index] ^= 156
+	for i := 0; i < 130 && i < length; i++ {
+		data[i] = data[i] ^ 156
 	}
 
-	for index := 0; index < dataLength/2; index++ {
-		oppositeIndex := dataLength - index - 1
-		data[index], data[oppositeIndex] = data[oppositeIndex], data[index]
+	for i := 0; i < length/2; i++ {
+		data[i], data[length-i-1] = data[length-i-1], data[i]
 	}
 
 	return data

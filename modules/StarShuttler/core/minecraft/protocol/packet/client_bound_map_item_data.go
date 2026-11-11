@@ -98,7 +98,6 @@ func (pk *ClientBoundMapItemData) Marshal(io protocol.IO) {
 		io.Varint32(&pk.Height)
 		io.Varint32(&pk.XOffset)
 		io.Varint32(&pk.YOffset)
-		// Netease
-		io.NeteasePixels(&pk.Pixels)
+		protocol.FuncSlice(io, &pk.Pixels, io.VarRGBA)
 	}
 }

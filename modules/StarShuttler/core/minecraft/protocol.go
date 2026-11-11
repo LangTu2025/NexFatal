@@ -57,10 +57,17 @@ type proto struct{}
 func (proto) ID() int32     { return protocol.CurrentProtocol }
 func (p proto) Ver() string { return protocol.CurrentVersion }
 func (p proto) Packets(listener bool) packet.Pool {
-	if listener {
-		return packet.NewClientPool()
+	// PhoenixBuilder specific changes.
+	// Author: Happy2018new
+	{
+		return packet.ListAllPackets()
+		/*
+			if listener {
+				return packet.NewClientPool()
+			}
+			return packet.NewServerPool()
+		*/
 	}
-	return packet.NewServerPool()
 }
 func (p proto) NewReader(r ByteReader, shieldID int32, enableLimits bool) protocol.IO {
 	return protocol.NewReader(r, shieldID, enableLimits)

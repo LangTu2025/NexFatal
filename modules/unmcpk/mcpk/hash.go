@@ -2,33 +2,44 @@ package mcpk
 
 import "encoding/binary"
 
-// 计算 MCPK 文件表使用的字符串 ID
+// replicates _Z8StringIDPKc
+// https://github.com/elnx/0x9BE74448
 func StringID(input string) uint32 {
 	var eax, ebx, ecx, edx, edi, esi uint32
 	var num uint64
 
 	var v uint32
-	wordCount := (len(input) + 3) / 4
-	buffer := make([]byte, wordCount*4)
-	copy(buffer, input)
-	words := make([]uint32, wordCount+2)
-	for index := 0; index < wordCount; index++ {
-		words[index] = binary.LittleEndian.Uint32(buffer[index*4:])
+	var i int32
+	m := make([]uint32, 0x46)
+	buffer := make([]byte, 0x100)
+
+	for i = 0; i < int32(len(input)); i++ {
+		buffer[i] = input[i]
 	}
 
-	words[wordCount] = 0x9BE74448
-	words[wordCount+1] = 0x66F42C48
+	length := len(input) / 4
+	if len(input)%4 != 0 {
+		length++
+	}
+	for i = 0; i < int32(length); i++ {
+		m[i] = binary.LittleEndian.Uint32(buffer[i*4:])
+	}
+
+	m[i] = 0x9BE74448
+	i++
+	m[i] = 0x66F42C48
+	i++
 
 	v = 0xF4FA8928
 
 	edi = 0x7758B42B
 	esi = 0x37A8470E
 
-	for ecx = 0; ecx < uint32(len(words)); ecx++ {
+	for ecx = 0; ecx < uint32(i); ecx++ {
 		ebx = 0x267B0B11
 		v = (v << 1) | (v >> 0x1F)
 		ebx ^= v
-		eax = words[ecx]
+		eax = m[ecx]
 		esi ^= eax
 		edi ^= eax
 		edx = ebx

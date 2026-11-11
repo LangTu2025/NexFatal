@@ -8,7 +8,7 @@ type EnchantmentOption struct {
 	// Enchantments holds the enchantments that will be applied to the item when this option is clicked.
 	Enchantments ItemEnchantments
 	// Name is a name that will be translated to the 'Standard Galactic Alphabet'
-	// (https://minecraft.gamepedia.com/Enchanting_Table#Standard_Galactic_Alphabet) client-side. The names
+	// (https://minecraft.wiki/w/Enchanting_Table#Standard_Galactic_Alphabet) client-side. The names
 	// generally have no meaning, such as:
 	// 'animal imbue range galvanize '
 	// 'bless inside creature shrink '
@@ -47,8 +47,6 @@ type ItemEnchantments struct {
 	// The first slice holds armour enchantments, the differences between the slice 2 and slice 3 are more
 	// vaguely defined.
 	Enchantments [3][]EnchantmentInstance
-
-	Unknown byte // Netease
 }
 
 // Marshal encodes/decodes an ItemEnchantments.
@@ -57,8 +55,6 @@ func (x *ItemEnchantments) Marshal(r IO) {
 	for i := 0; i < 3; i++ {
 		Slice(r, &x.Enchantments[i])
 	}
-
-	r.Uint8(&x.Unknown) // Netease
 }
 
 // EnchantmentInstance represents a single enchantment instance with the type of the enchantment and its
@@ -66,13 +62,10 @@ func (x *ItemEnchantments) Marshal(r IO) {
 type EnchantmentInstance struct {
 	Type  byte
 	Level byte
-
-	ModEnchant string // Netease
 }
 
 // Marshal encodes/decodes an EnchantmentInstance.
 func (x *EnchantmentInstance) Marshal(r IO) {
 	r.Uint8(&x.Type)
 	r.Uint8(&x.Level)
-	r.String(&x.ModEnchant) // Netease
 }

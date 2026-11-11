@@ -28,7 +28,6 @@ type UpdateBlockSynced struct {
 	// entity transitions from.
 	// Note that for both possible values for TransitionType, the EntityUniqueID should point to the falling
 	// block entity involved.
-	// Netease
 	EntityUniqueID uint64
 	// TransitionType is the type of the transition that happened. It is either BlockToEntityTransition, when
 	// a block placed becomes a falling entity, or EntityToBlockTransition, when a falling entity hits the
@@ -46,6 +45,6 @@ func (pk *UpdateBlockSynced) Marshal(io protocol.IO) {
 	io.Varuint32(&pk.NewBlockRuntimeID)
 	io.Varuint32(&pk.Flags)
 	io.Varuint32(&pk.Layer)
-	io.Varuint64(&pk.EntityUniqueID) // For Netease
+	io.Varuint64(&pk.EntityUniqueID)
 	io.Varuint64(&pk.TransitionType)
 }

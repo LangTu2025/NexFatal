@@ -81,6 +81,7 @@ func resolveAuthToken(currentToken string, persist bool, forcePrompt bool) (stri
 }
 
 func chooseLoginMethod() string {
+	ui.Page("账号登录", "使用用户名和密码登录，或粘贴 API Token；输入 /back 返回首页")
 	index, _ := ui.Select(loc.Text(loc.KeyLoginMethodPrompt), []string{
 		loc.Text(loc.KeyLoginMethodUsername),
 		loc.Text(loc.KeyLoginMethodToken),

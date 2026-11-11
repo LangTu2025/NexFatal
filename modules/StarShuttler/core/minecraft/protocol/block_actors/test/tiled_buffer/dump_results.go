@@ -48,6 +48,24 @@ func NewPool() []BlockNBTWithBuffer {
 			ID:     block_actors.IDMobSpawner,
 			Buffer: []byte{1, 0, 0, 13, 109, 105, 110, 101, 99, 114, 97, 102, 116, 58, 98, 101, 101, 236, 4, 144, 3, 192, 12, 8, 12, 32, 8, 205, 204, 76, 63, 102, 102, 230, 63, 0, 0, 128, 63, 0, 0},
 		},
+		// 刷怪笼
+		{
+			ID:     block_actors.IDSkull,
+			Buffer: []byte{1, 0, 0, 4, 0, 0, 52, 66, 0, 0},
+		},
+		{
+			ID:     block_actors.IDSkull,
+			Buffer: []byte{1, 0, 0, 5, 0, 0, 52, 66, 1, 250, 10},
+		},
+		{
+			ID:     block_actors.IDSkull,
+			Buffer: []byte{1, 0, 0, 5, 0, 0, 52, 67, 1, 194, 37},
+		},
+		{
+			ID:     block_actors.IDSkull,
+			Buffer: []byte{1, 0, 0, 5, 0, 0, 0, 0, 1, 250, 188, 223, 7},
+		},
+		// 头颅
 		{
 			ID:     block_actors.IDFlowerPot,
 			Buffer: []byte{1, 0, 0, 0},

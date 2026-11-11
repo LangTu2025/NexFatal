@@ -28,22 +28,20 @@ const (
 	InventoryRightTabArmour
 )
 
-// SetPlayerInventoryOptions is sent by the client when it tries to toggle the state of a slot within a Crafter.
+// SetPlayerInventoryOptions is a bidirectional packet that can be used to update the inventory options of a player.
 type SetPlayerInventoryOptions struct {
 	// LeftInventoryTab is the tab that is selected on the left side of the inventory. This is usually for the creative
-	// inventory. It is one of the constants above.
-	LeftInventoryTab int32
+	// inventory. It is one of the InventoryLeftTab constants above.
+	LeftInventoryTab byte
 	// RightInventoryTab is the tab that is selected on the right side of the inventory. This is usually for the player's
-	// own inventory. It is one of the constants above.
-	RightInventoryTab int32
+	// own inventory. It is one of the InventoryRightTab constants above.
+	RightInventoryTab byte
 	// Filtering is whether the player has enabled the filtering between recipes they have unlocked or not.
 	Filtering bool
-	// InventoryLayout is the layout of the inventory. It is one of the constants above.
-	InventoryLayout int32
-	// CraftingLayout is the layout of the crafting inventory. It is one of the constants above.
-	CraftingLayout int32
-	// Unknown1 is an additional trailing toggle currently observed in the NetEase protocol variant.
-	Unknown1 bool
+	// InventoryLayout is the layout of the inventory. It is one of the InventoryLayout constants above.
+	InventoryLayout byte
+	// CraftingLayout is the layout of the crafting inventory. It is one of the InventoryLayout constants above.
+	CraftingLayout byte
 }
 
 // ID ...
@@ -52,10 +50,9 @@ func (*SetPlayerInventoryOptions) ID() uint32 {
 }
 
 func (pk *SetPlayerInventoryOptions) Marshal(io protocol.IO) {
-	io.Varint32(&pk.LeftInventoryTab)
-	io.Varint32(&pk.RightInventoryTab)
+	io.Uint8(&pk.LeftInventoryTab)
+	io.Uint8(&pk.RightInventoryTab)
 	io.Bool(&pk.Filtering)
-	io.Varint32(&pk.InventoryLayout)
-	io.Varint32(&pk.CraftingLayout)
-	io.Bool(&pk.Unknown1)
+	io.Uint8(&pk.InventoryLayout)
+	io.Uint8(&pk.CraftingLayout)
 }

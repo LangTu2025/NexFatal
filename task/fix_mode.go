@@ -9,8 +9,8 @@ import (
 	"sync"
 
 	bwo_chunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
-	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
-	wsstructure "github.com/xingbaiawa/LycorisFlow/structure"
+	wsdefine "github.com/Yeah114/WaterStructure/define"
+	wsstructure "github.com/Yeah114/WaterStructure/structure"
 	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
 	game_control "github.com/LangTu2025/NexFatal/control"
 	builderutils "github.com/LangTu2025/NexFatal/utils"
@@ -408,7 +408,6 @@ func runRepairChatLoop(
 	}
 
 	broadcaster.sendFixModeMessage(ctrl, loc.Text(loc.KeyFixModeExited))
-	broadcaster.sendFixModeMessage(ctrl, loc.Text(loc.KeyFixModeGoodbye))
 	return resultErr
 }
 

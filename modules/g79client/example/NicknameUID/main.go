@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/xingbaiawa/g79client"
-	"github.com/xingbaiawa/g79client/example/login"
+	"github.com/Yeah114/g79client/example/login"
 )
 
 func main() {
@@ -15,7 +14,7 @@ func main() {
 	}
 
 	nickname := "不吃人的魔鬼"
-	resp, err := client.SearchFriend(g79client.SearchFriendRequest{NameOrMail: nickname})
+	resp, err := client.SearchUserByNameOrMail(nickname, 0, 20)
 	if err != nil {
 		log.Fatalf("搜索失败: %v", err)
 	}

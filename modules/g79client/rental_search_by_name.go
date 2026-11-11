@@ -13,7 +13,7 @@ type SearchRentalServerResponse struct {
 }
 
 // 按名称搜索租赁服
-func (c *Client) SearchRentalServerByName(serverName string, _ ...int) (*SearchRentalServerResponse, error) {
+func (c *Client) SearchRentalServerByName(serverName string) (*SearchRentalServerResponse, error) {
 	api := "/rental-server/query/search-by-name"
 
 	requestData := map[string]interface{}{

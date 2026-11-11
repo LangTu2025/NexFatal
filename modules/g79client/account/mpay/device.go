@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Yeah114/g79client/utils"
 	"github.com/google/uuid"
-	"github.com/xingbaiawa/g79client/utils"
 )
 
 const (
@@ -22,8 +22,8 @@ const (
 	realNameEndpoint        = "/mpay/api/users/realname/update_by_token"
 	realNameVerifyEndpoint  = "/mpay/api/users/realname/verify"
 	defaultGameID           = "aecfrxodyqaaaajp-g-x19"
-	defaultGV               = "840300878"
-	defaultGVN              = "3.10.0.300878"
+	defaultGV               = "840292836"
+	defaultGVN              = "3.8.15.292836"
 	defaultCV               = "a5.16.0"
 	defaultSV               = "32"
 	defaultAppType          = "games"

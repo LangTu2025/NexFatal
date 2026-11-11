@@ -1,3 +1,7 @@
+/*
+PhoenixBuilder specific NEMC packet.
+Author: LNSSPsd, Liliya233, CMA2401PT, Happy2018new
+*/
 package packet
 
 import (
@@ -9,7 +13,6 @@ const (
 	PyRpcOperationTypeRecv = 0x0094d408
 )
 
-// Netease packet for Python RPC
 type PyRpc struct {
 	// Value from/to msgpack format
 	Value any

@@ -5,556 +5,445 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
+	bwodefine "github.com/TriM-Organization/bedrock-world-operator/define"
+	"github.com/schollz/progressbar/v3"
 	"github.com/LangTu2025/NexFatal/control"
 	"github.com/LangTu2025/NexFatal/utils"
+	"github.com/LangTu2025/NexFatal/utils/command_upgrader"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
-	bwodefine "github.com/TriM-Organization/bedrock-world-operator/define"
-	"github.com/go-gl/mathgl/mgl32"
-	"github.com/schollz/progressbar/v3"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
+	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/block_actors"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
 	nbt_parser_block "github.com/xingbaiawa/StarShuttler/nbt_parser/block"
-	"go.uber.org/ratelimit"
 )
+
+type commandBlockWriteMode int
 
 const (
-	directNBTGroupSize         int32 = 14
-	directNBTGroupCenterOffset int64 = 6
-	worldBorderSize                  = 30_000_000
+	strictCommandBlockWrite commandBlockWriteMode = iota
+	lenientCommandBlockWrite
 )
 
-type directNBTGroupKey struct {
-	x int32
-	y int32
-	z int32
+// writeCommandBlocksBestEffort 用于修补模式，单个命令方块失败时继续处理后续任务。
+func (b *BuildTask) writeCommandBlocksBestEffort(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask) (int, error) {
+	return b.writeCommandBlockGroups(ctx, ctrl, tasks, lenientCommandBlockWrite, nil)
 }
 
-type directNBTGroup struct {
-	key   directNBTGroupKey
-	tasks []nbtPlacementTask
+// writeCommandBlocksChecked 用于常规构建，命令方块写入失败时直接返回错误。
+func (b *BuildTask) writeCommandBlocksChecked(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, progress *buildProgressReporter) (int, error) {
+	return b.writeCommandBlockGroups(ctx, ctrl, tasks, strictCommandBlockWrite, progress)
 }
 
-type commandBlockChunkKey struct {
-	x int32
-	z int32
-}
-
-func (b *BuildTask) writeDirectNBTBestEffort(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, limiter ratelimit.Limiter) (int, error) {
-	return b.writeDirectNBTGroups(ctx, ctrl, tasks, nbtPlacementWarn, limiter, nil)
-}
-
-func (b *BuildTask) writeDirectNBTChecked(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, limiter ratelimit.Limiter, progress *buildProgressReporter) (int, error) {
-	return b.writeDirectNBTGroups(ctx, ctrl, tasks, nbtPlacementStrict, limiter, progress)
-}
-
-func (b *BuildTask) writeDirectNBTGroups(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, mode nbtPlacementFailureMode, limiter ratelimit.Limiter, progress *buildProgressReporter) (int, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+// writeCommandBlockGroups 先把机器人移动到命令方块附近，再用更新包写入命令数据。
+func (b *BuildTask) writeCommandBlockGroups(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, mode commandBlockWriteMode, progress *buildProgressReporter) (int, error) {
 	if len(tasks) == 0 {
 		return 0, nil
 	}
-	if ctrl == nil || ctrl.Resources == nil || ctrl.API == nil {
-		return 0, loc.Errf(loc.KeyControlAPINotInitialized)
-	}
-	if mode == nbtPlacementStrict && b.Config.VerifyCommandBlocks && containsCommandBlockTask(tasks) {
-		return b.writeDirectNBTGroupsWithCommandVerification(ctx, ctrl, tasks, limiter, progress)
-	}
-	return b.writeDirectNBTGroupsLegacy(ctx, ctrl, tasks, mode, limiter, progress)
-}
-
-func (b *BuildTask) writeDirectNBTGroupsWithCommandVerification(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, limiter ratelimit.Limiter, progress *buildProgressReporter) (int, error) {
-	commandTasks := make([]nbtPlacementTask, 0, len(tasks))
-	otherTasks := make([]nbtPlacementTask, 0, len(tasks))
-	for _, task := range tasks {
-		if isCommandBlock(task.blockName) {
-			commandTasks = append(commandTasks, task)
-		} else {
-			otherTasks = append(otherTasks, task)
-		}
+	// 先切到创造模式，否则部分服务器会拒收命令方块更新包。
+	if err := b.prepareCommandBlockWrites(ctx, ctrl); err != nil {
+		return 0, err
 	}
 
-	bar := taskProgressBar(len(tasks), loc.Text(loc.KeyBuildHandleNBTBlocks))
+	ordered := append([]nbtPlacementTask(nil), tasks...)
+	sortNBTTasks(ordered)
+	groups := commandBlockBatches(ordered)
 	placed := 0
-	if len(commandTasks) > 0 {
-		if err := b.prepareCommandBlockWrites(ctx, ctrl); err != nil {
+	bar := taskProgressBar(len(tasks), loc.Text(loc.KeyBuildHandleCommandBlocks))
+	for _, group := range groups {
+		if err := ctx.Err(); err != nil {
+			return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
+		}
+		if err := b.moveToCommandBlockGroup(ctx, ctrl, group.teleportPos); err != nil {
+			return placed, loc.Errf(loc.KeyBuildCommandBatchTeleportFailed, group.teleportPos.X(), group.teleportPos.Y(), group.teleportPos.Z(), err)
+		}
+		written, err := b.writeCommandBlockGroup(ctx, ctrl, group.tasks, mode, progress, bar)
+		if err != nil {
 			return placed, err
 		}
-		commandPlaced, err := b.writeCommandBlocksByChunk(ctx, ctrl, commandTasks, limiter, progress, bar)
-		if err != nil {
-			return placed + commandPlaced, err
-		}
-		placed += commandPlaced
+		placed += written
 	}
-	if len(otherTasks) > 0 {
-		otherPlaced, err := b.writeDirectNBTGroupsLegacy(ctx, ctrl, otherTasks, nbtPlacementStrict, limiter, progress, bar)
-		if err != nil {
-			return placed + otherPlaced, err
-		}
-		placed += otherPlaced
-	}
+
 	return placed, nil
-}
-
-func (b *BuildTask) writeCommandBlocksByChunk(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, limiter ratelimit.Limiter, progress *buildProgressReporter, bar *progressbar.ProgressBar) (int, error) {
-	dimensionID, err := utils.DimensionID(b.Config.DimensionName)
-	if err != nil {
-		return 0, err
-	}
-	groupsByChunk := make(map[commandBlockChunkKey][]nbtPlacementTask)
-	for _, task := range tasks {
-		key := commandBlockChunkKey{floorDiv(task.pos.X(), 16), floorDiv(task.pos.Z(), 16)}
-		groupsByChunk[key] = append(groupsByChunk[key], task)
-	}
-	keys := make([]commandBlockChunkKey, 0, len(groupsByChunk))
-	for key := range groupsByChunk {
-		keys = append(keys, key)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		if keys[i].x != keys[j].x {
-			return keys[i].x < keys[j].x
-		}
-		return keys[i].z < keys[j].z
-	})
-
-	placed := 0
-	for _, key := range keys {
-		if err := context.Cause(ctx); err != nil {
-			return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
-		}
-		chunkTasks := groupsByChunk[key]
-		if len(chunkTasks) == 0 {
-			continue
-		}
-		chunkGroups := groupDirectNBTTasks(chunkTasks)
-		var lastVerification regionBuildVerification
-		for retry := 0; retry <= commandBlockMaxRetries; retry++ {
-			chunkPlaced := 0
-			for groupIndex, group := range chunkGroups {
-				if err := context.Cause(ctx); err != nil {
-					return placed + chunkPlaced, loc.Errf(loc.KeyBuildImportCancelled, err)
-				}
-				center := directNBTGroupCenter(group.key, dimensionID)
-				var teleportErr error
-				if ctrl.IsDomainServer() {
-					teleportErr = ctrl.TeleportWithAICommand(center)
-				} else {
-					teleportErr = ctrl.Teleport(b.Config.DimensionName, center)
-				}
-				if teleportErr != nil {
-					return placed + chunkPlaced, fmt.Errorf("teleport to command block group %d/%d in chunk (%d, %d): %w", groupIndex+1, len(chunkGroups), key.x, key.z, teleportErr)
-				}
-				groupPlaced, err := b.writeCommandBlockChunk(ctx, ctrl, group.tasks, limiter, progress, bar, retry == 0)
-				if err != nil {
-					return placed + chunkPlaced + groupPlaced, err
-				}
-				chunkPlaced += groupPlaced
-			}
-
-			verification, err := b.verifyCommandBlockTasks(ctx, ctrl, chunkTasks)
-			if err != nil {
-				return placed + chunkPlaced, err
-			}
-			lastVerification = verification
-			if verification.Skipped || !verification.needsRetry() {
-				placed += chunkPlaced
-				break
-			}
-			if retry == commandBlockMaxRetries {
-				placed += chunkPlaced
-				logCommandBlockChunkFailure(key, lastVerification)
-				break
-			}
-		}
-	}
-	return placed, nil
-}
-
-func (b *BuildTask) writeCommandBlockChunk(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, limiter ratelimit.Limiter, progress *buildProgressReporter, bar *progressbar.ProgressBar, countProgress bool) (int, error) {
-	placed := 0
-	for _, task := range tasks {
-		if err := context.Cause(ctx); err != nil {
-			return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
-		}
-		update, err := makeCommandBlockUpdate(task)
-		if err != nil {
-			return placed, loc.Errf(loc.KeyBuildPlaceBlockFailed, loc.Text(loc.KeyBuildCommandBlockKind), task.pos.X(), task.pos.Y(), task.pos.Z(), err)
-		}
-		if limiter != nil {
-			limiter.Take()
-		}
-		if err := ctrl.Resources.WritePacket(update); err != nil {
-			return placed, fmt.Errorf("write command block packet at %v: %w", task.pos, err)
-		}
-		placed++
-		if countProgress {
-			advanceDirectNBTProgress(progress, bar)
-		}
-	}
-	return placed, nil
-}
-
-func (b *BuildTask) writeDirectNBTGroupsLegacy(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, mode nbtPlacementFailureMode, limiter ratelimit.Limiter, progress *buildProgressReporter, sharedBar ...*progressbar.ProgressBar) (int, error) {
-	if containsCommandBlockTask(tasks) {
-		if err := b.prepareCommandBlockWrites(ctx, ctrl); err != nil {
-			return 0, err
-		}
-	}
-
-	dimensionID, err := utils.DimensionID(b.Config.DimensionName)
-	if err != nil {
-		return 0, err
-	}
-	groups := groupDirectNBTTasks(tasks)
-	botUniqueID := ctrl.API.GetBotInfo().EntityUniqueID
-	var bar *progressbar.ProgressBar
-	if len(sharedBar) > 0 {
-		bar = sharedBar[0]
-	} else {
-		bar = taskProgressBar(len(tasks), loc.Text(loc.KeyBuildHandleNBTBlocks))
-	}
-	placed := 0
-	sent := false
-	for groupIndex, group := range groups {
-		if err := context.Cause(ctx); err != nil {
-			return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
-		}
-		center := directNBTGroupCenter(group.key, dimensionID)
-		if err := ctrl.Teleport(b.Config.DimensionName, center); err != nil {
-			return placed, fmt.Errorf("teleport to direct NBT group %d/%d: %w", groupIndex+1, len(groups), err)
-		}
-
-		for _, task := range group.tasks {
-			if err := context.Cause(ctx); err != nil {
-				return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
-			}
-			update, parseErr := makeDirectNBTUpdate(task, botUniqueID)
-			if parseErr != nil {
-				if mode == nbtPlacementStrict {
-					return placed, loc.Errf(loc.KeyBuildPlaceBlockFailed, loc.Text(loc.KeyBuildNBTBlockKind), task.pos.X(), task.pos.Y(), task.pos.Z(), parseErr)
-				}
-				if !isCommandBlock(task.blockName) {
-					reportSkippedNBTTask(loc.Text(loc.KeyBuildNBTBlockKind), task, parseErr)
-					advanceDirectNBTProgress(progress, bar)
-					continue
-				}
-				update = makePlainCommandBlockUpdate(task)
-			}
-
-			if limiter != nil {
-				limiter.Take()
-			}
-			if err := ctrl.Resources.WritePacket(update); err != nil {
-				return placed, fmt.Errorf("write direct NBT packet at %v: %w", task.pos, err)
-			}
-			sent = true
-			if parseErr != nil {
-				reportSkippedNBTTask(loc.Text(loc.KeyBuildCommandBlockKind), task, parseErr)
-				advanceDirectNBTProgress(progress, bar)
-				continue
-			}
-			placed++
-			advanceDirectNBTProgress(progress, bar)
-		}
-	}
-	if sent {
-		if err := ctrl.AwaitChanges(); err != nil {
-			return placed, fmt.Errorf("wait for direct NBT updates: %w", err)
-		}
-	}
-	return placed, nil
-}
-
-func advanceDirectNBTProgress(progress *buildProgressReporter, bar *progressbar.ProgressBar) {
-	if progress != nil {
-		progress.AddRegion(1)
-	}
-	if bar != nil {
-		bar.Add(1)
-	}
-}
-
-func containsCommandBlockTask(tasks []nbtPlacementTask) bool {
-	for _, task := range tasks {
-		if isCommandBlock(task.blockName) {
-			return true
-		}
-	}
-	return false
 }
 
 func (b *BuildTask) prepareCommandBlockWrites(ctx context.Context, ctrl *game_control.Control) error {
 	if b.commandBlockCreativeSet {
 		return nil
 	}
-	if err := context.Cause(ctx); err != nil {
+	if err := ctx.Err(); err != nil {
 		return loc.Errf(loc.KeyBuildImportCancelled, err)
 	}
 
 	if ctrl.IsLobbyServer() {
 		if err := ctrl.SendSettingsCommandAsync("gamemode 1 @s"); err != nil {
-			return fmt.Errorf("set creative mode before direct command block updates: %w", err)
+			return fmt.Errorf("在发送命令方块更新包前，未能将机器人切换到创造模式: %w", err)
 		}
 	} else {
 		resp, isTimeout, err := ctrl.SendSettingsCommandWithTimeout("gamemode 1 @s", 5*time.Second)
 		if isTimeout {
-			return errors.New("set creative mode before direct command block updates: timed out")
+			return fmt.Errorf("在发送命令方块更新包前，未能将机器人切换到创造模式（timed out）")
 		}
 		if err != nil {
-			return fmt.Errorf("set creative mode before direct command block updates: %w", err)
+			return fmt.Errorf("在发送命令方块更新包前，未能将机器人切换到创造模式: %w", err)
 		}
 		if !commandOK(resp) {
-			return fmt.Errorf("set creative mode before direct command block updates: %s", commandErrorText(resp))
+			return fmt.Errorf("在发送命令方块更新包前，未能将机器人切换到创造模式: %s", commandErrorText(resp))
 		}
 	}
 	b.commandBlockCreativeSet = true
 	return nil
 }
 
-func groupDirectNBTTasks(tasks []nbtPlacementTask) []directNBTGroup {
-	groups := make([]directNBTGroup, 0)
-	indexByKey := make(map[directNBTGroupKey]int)
+func (b *BuildTask) writeCommandBlockGroup(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, mode commandBlockWriteMode, progress *buildProgressReporter, bar *progressbar.ProgressBar) (int, error) {
+	pending := append([]nbtPlacementTask(nil), tasks...)
+	placed := 0
+	for len(pending) > 0 {
+		// 命令方块更新包没有稳定的逐块确认，所以写完后通过子区块回读校验。
+		// 未读到或数据不一致的方块会一直重发更新包并重新校验，直到成功或任务被取消。
+		wrote := make([]nbtPlacementTask, 0, len(pending))
+		for _, task := range pending {
+			if err := ctx.Err(); err != nil {
+				return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
+			}
+			if err := b.writeCommandBlockNBT(ctrl, task); err != nil {
+				if mode == lenientCommandBlockWrite {
+					reportSkippedNBTTask(loc.Text(loc.KeyBuildCommandBlockKind), task, err)
+					if bar != nil {
+						bar.Add(1)
+					}
+					continue
+				}
+				return placed, err
+			}
+			wrote = append(wrote, task)
+		}
+		if len(wrote) == 0 {
+			return placed, nil
+		}
+
+		verification, err := b.verifyCommandBlocks(ctx, ctrl, wrote)
+		if err != nil {
+			if mode == lenientCommandBlockWrite {
+				reportSkippedNBTBatch(loc.Text(loc.KeyBuildCommandBlockKind), wrote, err, bar)
+				return placed, nil
+			}
+			return placed, err
+		}
+
+		for _, task := range verification.skipped {
+			reportSkippedNBTTask(loc.Text(loc.KeyBuildCommandBlockKind), task, errCommandBlockRedacted)
+		}
+		handled := len(wrote) - len(verification.retry)
+		for i := 0; i < handled; i++ {
+			if bar != nil {
+				bar.Add(1)
+			}
+		}
+		if progress != nil {
+			progress.AddRegion(handled)
+		}
+		placed += handled
+		pending = verification.retry
+	}
+
+	return placed, nil
+}
+
+func (b *BuildTask) moveToCommandBlockGroup(ctx context.Context, ctrl *game_control.Control, pos protocol.BlockPos) error {
+	if err := ctx.Err(); err != nil {
+		return loc.Errf(loc.KeyBuildImportCancelled, err)
+	}
+	return ctrl.Teleport(b.Config.DimensionName, pos)
+}
+
+func (b *BuildTask) writeCommandBlockNBT(ctrl *game_control.Control, task nbtPlacementTask) error {
+	if err := ctrl.UpdateCommandBlock(task.pos, task.blockName, task.blockStates, task.nbtData); err != nil {
+		return loc.Errf(loc.KeyBuildCommandBatchWriteFailed, 1, task.pos.X(), task.pos.Y(), task.pos.Z(), err)
+	}
+	return nil
+}
+
+type commandBlockVerificationResult struct {
+	retry   []nbtPlacementTask
+	skipped []nbtPlacementTask
+}
+
+// verifyCommandBlocks 从子区块回读命令方块数据，用于发现更新包未生效或内容被服务器拦截。
+func (b *BuildTask) verifyCommandBlocks(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask) (commandBlockVerificationResult, error) {
+	result := commandBlockVerificationResult{}
+	if len(tasks) == 0 {
+		return result, nil
+	}
+	dimensionID, err := utils.DimensionID(b.Config.DimensionName)
+	if err != nil {
+		return result, err
+	}
+	positions := commandBlockSubChunkPositions(tasks)
+	subChunkRequest := ctrl.API.SubChunkRequest()
+	request := subChunkRequest.MakeSubChunkRequestBySubChunkPos(int32(dimensionID), positions)
+	resp, isTimeout, err := subChunkRequest.SendSubChunkRequestWithRespTimeout(request, 3*time.Second)
+	if err != nil {
+		return result, err
+	}
+	if isTimeout {
+		result.retry = tasks
+		return result, nil
+	}
+
+	seen, err := commandBlocksFromSubChunks(resp, bwodefine.Dimension(dimensionID))
+	if err != nil {
+		return result, err
+	}
+
 	for _, task := range tasks {
-		position := task.pos
-		key := directNBTGroupKey{
-			x: floorDiv(position.X(), directNBTGroupSize),
-			y: floorDiv(position.Y(), directNBTGroupSize),
-			z: floorDiv(position.Z(), directNBTGroupSize),
+		got, ok := seen[task.pos]
+		if !ok {
+			result.retry = append(result.retry, task)
+			continue
 		}
-		index, found := indexByKey[key]
-		if !found {
-			index = len(groups)
-			indexByKey[key] = index
-			groups = append(groups, directNBTGroup{key: key})
+		if commandBlockCommandRedacted(task, got) {
+			result.skipped = append(result.skipped, task)
+			continue
 		}
-		groups[index].tasks = append(groups[index].tasks, task)
+
+		checked, err := verifyCommandBlockData(task, got)
+		if err != nil {
+			return result, err
+		}
+		if !checked.matches {
+			result.retry = append(result.retry, task)
+		}
+	}
+	return result, nil
+}
+
+func commandBlockSubChunkPositions(tasks []nbtPlacementTask) []protocol.SubChunkPos {
+	seen := make(map[protocol.SubChunkPos]struct{})
+	positions := make([]protocol.SubChunkPos, 0)
+	for _, task := range tasks {
+		pos := protocol.SubChunkPos{
+			floorDivBlockCoord(task.pos.X(), 16),
+			floorDivBlockCoord(task.pos.Y(), 16),
+			floorDivBlockCoord(task.pos.Z(), 16),
+		}
+		if _, ok := seen[pos]; ok {
+			continue
+		}
+		seen[pos] = struct{}{}
+		positions = append(positions, pos)
+	}
+	sort.Slice(positions, func(i, j int) bool {
+		if positions[i].X() != positions[j].X() {
+			return positions[i].X() < positions[j].X()
+		}
+		if positions[i].Z() != positions[j].Z() {
+			return positions[i].Z() < positions[j].Z()
+		}
+		return positions[i].Y() < positions[j].Y()
+	})
+	return positions
+}
+
+func commandBlocksFromSubChunks(resp *packet.SubChunk, dimension bwodefine.Dimension) (map[protocol.BlockPos]map[string]any, error) {
+	result := make(map[protocol.BlockPos]map[string]any)
+	if resp == nil {
+		return result, nil
+	}
+	for _, entry := range resp.SubChunkEntries {
+		if entry.Result != protocol.SubChunkResultSuccess {
+			continue
+		}
+		_, nbts, err := decodeSubChunkPayload(entry.RawPayload, dimension.Range())
+		if err != nil {
+			return nil, err
+		}
+		for _, blockNBT := range nbts {
+			if !commandBlockActor(blockNBT) {
+				continue
+			}
+			pos, ok := blockActorPosition(blockNBT)
+			if !ok {
+				continue
+			}
+			result[pos] = blockNBT
+		}
+	}
+	return result, nil
+}
+
+func commandBlockActor(blockNBT map[string]any) bool {
+	id, _ := blockNBT["id"].(string)
+	return strings.EqualFold(id, block_actors.IDCommandBlock)
+}
+
+func blockActorPosition(blockNBT map[string]any) (protocol.BlockPos, bool) {
+	x, okX := asInt32(blockNBT["x"])
+	y, okY := asInt32(blockNBT["y"])
+	z, okZ := asInt32(blockNBT["z"])
+	if !okX || !okY || !okZ {
+		return protocol.BlockPos{}, false
+	}
+	return protocol.BlockPos{x, y, z}, true
+}
+
+type commandBlockDataVerification struct {
+	matches bool
+}
+
+var errCommandBlockExpectation = errors.New("failed to parse expected command block data")
+var errCommandBlockRedacted = errors.New("命令方块内容被服务器替换为 ***")
+
+// verifyCommandBlockData 对比回读到的命令方块数据。
+func verifyCommandBlockData(task nbtPlacementTask, got map[string]any) (commandBlockDataVerification, error) {
+	if commandBlockDataMatches(task, got) {
+		return commandBlockDataVerification{matches: true}, nil
+	}
+	if _, ok := expectedCommandBlockData(task); !ok {
+		return commandBlockDataVerification{}, errCommandBlockExpectation
+	}
+	return commandBlockDataVerification{}, nil
+}
+
+func commandBlockCommandRedacted(task nbtPlacementTask, got map[string]any) bool {
+	gotCommand, _ := got["Command"].(string)
+	if gotCommand != "***" {
+		return false
+	}
+	want, ok := expectedCommandBlockData(task)
+	return ok && want.Command != "***"
+}
+
+func commandBlockDataMatches(task nbtPlacementTask, got map[string]any) bool {
+	want, ok := expectedCommandBlockData(task)
+	if !ok {
+		return false
+	}
+	gotCommand, _ := got["Command"].(string)
+	return gotCommand == want.Command &&
+		nbtString(got["CustomName"]) == want.CustomName &&
+		nbtInt32(got["TickDelay"]) == want.TickDelay &&
+		nbtByte(got["ExecuteOnFirstTick"]) == want.ExecuteOnFirstTick &&
+		nbtByte(got["TrackOutput"]) == want.TrackOutput &&
+		nbtByte(got["auto"]) == want.Auto
+}
+
+type commandBlockExpectation struct {
+	Command            string
+	CustomName         string
+	TickDelay          int32
+	ExecuteOnFirstTick byte
+	TrackOutput        byte
+	Auto               byte
+}
+
+func expectedCommandBlockData(task nbtPlacementTask) (commandBlockExpectation, bool) {
+	block, err := nbt_parser_block.ParseBlock(nil, task.blockName, task.blockStates, task.nbtData)
+	if err != nil {
+		return commandBlockExpectation{}, false
+	}
+	commandBlock, ok := block.(*nbt_parser_block.CommandBlock)
+	if !ok {
+		return commandBlockExpectation{}, false
+	}
+	return commandBlockExpectation{
+		Command:            command_upgrader.NormalizeCommandBlockCommand(commandBlock.NBT.Command),
+		CustomName:         commandBlock.NBT.CustomName,
+		TickDelay:          commandBlock.NBT.TickDelay,
+		ExecuteOnFirstTick: commandBlock.NBT.ExecuteOnFirstTick,
+		TrackOutput:        commandBlock.NBT.TrackOutput,
+		Auto:               commandBlock.NBT.Auto,
+	}, true
+}
+
+func asInt32(value any) (int32, bool) {
+	switch v := value.(type) {
+	case int32:
+		return v, true
+	case int:
+		return int32(v), true
+	case int16:
+		return int32(v), true
+	case int64:
+		return int32(v), true
+	case byte:
+		return int32(v), true
+	default:
+		return 0, false
+	}
+}
+
+func nbtInt32(value any) int32 {
+	v, _ := asInt32(value)
+	return v
+}
+
+func nbtByte(value any) byte {
+	switch v := value.(type) {
+	case byte:
+		return v
+	case int8:
+		return byte(v)
+	case int16:
+		return byte(v)
+	case int32:
+		return byte(v)
+	case int:
+		return byte(v)
+	default:
+		return 0
+	}
+}
+
+func nbtString(value any) string {
+	v, _ := value.(string)
+	return v
+}
+
+func floorDivBlockCoord(value, divisor int32) int32 {
+	if divisor <= 0 {
+		return 0
+	}
+	if value >= 0 {
+		return value / divisor
+	}
+	return -((-value + divisor - 1) / divisor)
+}
+
+type commandBlockBatch struct {
+	teleportPos protocol.BlockPos
+	tasks       []nbtPlacementTask
+}
+
+// commandBlockBatches 按写入距离限制给命令方块分组。
+// 1.21.93 中命令方块更新包只接受机器人附近约 7 格范围内的目标。
+func commandBlockBatches(tasks []nbtPlacementTask) []commandBlockBatch {
+	const reach = int32(7)
+	groups := make([]commandBlockBatch, 0)
+	for _, task := range tasks {
+		added := false
+		for i := range groups {
+			if withinWriteReach(groups[i].teleportPos, task.pos, reach) {
+				groups[i].tasks = append(groups[i].tasks, task)
+				added = true
+				break
+			}
+		}
+		if added {
+			continue
+		}
+		groups = append(groups, commandBlockBatch{
+			teleportPos: task.pos,
+			tasks:       []nbtPlacementTask{task},
+		})
 	}
 	return groups
 }
 
-func directNBTGroupCenter(key directNBTGroupKey, dimensionID uint8) protocol.BlockPos {
-	rangeY := bwodefine.Dimension(dimensionID).Range()
-	return protocol.BlockPos{
-		clampInt64(directNBTGroupCenterCoordinate(key.x), -worldBorderSize, worldBorderSize),
-		clampInt64(directNBTGroupCenterCoordinate(key.y), int32(rangeY.Min()), int32(rangeY.Max())),
-		clampInt64(directNBTGroupCenterCoordinate(key.z), -worldBorderSize, worldBorderSize),
-	}
-}
-
-func directNBTGroupCenterCoordinate(group int32) int64 {
-	return int64(group)*int64(directNBTGroupSize) + directNBTGroupCenterOffset
-}
-
-func clampInt64(value int64, minimum, maximum int32) int32 {
-	if value < int64(minimum) {
-		return minimum
-	}
-	if value > int64(maximum) {
-		return maximum
-	}
-	return int32(value)
-}
-
-func floorDiv(value, divisor int32) int32 {
-	quotient := value / divisor
-	remainder := value % divisor
-	if remainder != 0 && (remainder < 0) != (divisor < 0) {
-		quotient--
-	}
-	return quotient
-}
-
-func floorDivBlockCoord(value, divisor int32) int32 {
-	return floorDiv(value, divisor)
-}
-
-func makeDirectNBTUpdate(task nbtPlacementTask, botUniqueID int64) (packet.Packet, error) {
-	switch task.blockName {
-	case "minecraft:command_block", "minecraft:chain_command_block", "minecraft:repeating_command_block":
-		return makeCommandBlockUpdate(task)
-	case "minecraft:structure_block":
-		return makeStructureBlockUpdate(task, botUniqueID)
-	case "minecraft:jigsaw":
-		return makeJigsawBlockUpdate(task)
-	default:
-		return nil, fmt.Errorf("block %s does not support direct NBT updates", task.blockName)
-	}
-}
-
-func parseDirectNBTBlock(task nbtPlacementTask) (any, error) {
-	parsed, err := nbt_parser_block.ParseBlock(nil, task.blockName, task.blockStates, task.nbtData)
-	if err != nil {
-		return nil, err
-	}
-	return parsed, nil
-}
-
-func makeCommandBlockUpdate(task nbtPlacementTask) (*packet.CommandBlockUpdate, error) {
-	parsed, err := parseDirectNBTBlock(task)
-	if err != nil {
-		return nil, fmt.Errorf("parse command block NBT: %w", err)
-	}
-	commandBlock, ok := parsed.(*nbt_parser_block.CommandBlock)
-	if !ok {
-		return nil, errors.New("parsed command block has an unexpected type")
-	}
-
-	tickDelay := max(commandBlock.NBT.TickDelay, 0)
-	return &packet.CommandBlockUpdate{
-		Block:              true,
-		Position:           task.pos,
-		Mode:               commandBlockMode(task.blockName),
-		NeedsRedstone:      commandBlock.NBT.Auto == 0,
-		Conditional:        commandBlock.NBT.ConditionalMode == 1,
-		Command:            commandBlock.NBT.Command,
-		LastOutput:         stringNBTValue(task.nbtData, "LastOutput"),
-		Name:               commandBlock.NBT.CustomName,
-		FilteredName:       stringNBTValue(task.nbtData, "FilteredName"),
-		ShouldTrackOutput:  commandBlock.NBT.TrackOutput == 1,
-		TickDelay:          uint32(tickDelay),
-		ExecuteOnFirstTick: commandBlock.NBT.ExecuteOnFirstTick == 1,
-	}, nil
-}
-
-func makeStructureBlockUpdate(task nbtPlacementTask, botUniqueID int64) (*packet.StructureBlockUpdate, error) {
-	parsed, err := parseDirectNBTBlock(task)
-	if err != nil {
-		return nil, fmt.Errorf("parse structure block NBT: %w", err)
-	}
-	structureBlock, ok := parsed.(*nbt_parser_block.StructureBlock)
-	if !ok {
-		return nil, errors.New("parsed structure block has an unexpected type")
-	}
-
-	nbt := structureBlock.NBT
-	return &packet.StructureBlockUpdate{
-		Position:           task.pos,
-		StructureName:      nbt.StructureName,
-		DataField:          nbt.DataField,
-		IncludePlayers:     nbt.IncludePlayers == 1,
-		ShowBoundingBox:    nbt.ShowBoundingBox == 1,
-		StructureBlockType: nbt.Data,
-		Settings: protocol.StructureSettings{
-			PaletteName:           "default",
-			IgnoreEntities:        nbt.IgnoreEntities == 1,
-			IgnoreBlocks:          nbt.RemoveBlocks == 1,
-			AllowNonTickingChunks: true,
-			Size: protocol.BlockPos{
-				nbt.XStructureSize,
-				nbt.YStructureSize,
-				nbt.ZStructureSize,
-			},
-			Offset: protocol.BlockPos{
-				nbt.XStructureOffset,
-				nbt.YStructureOffset,
-				nbt.ZStructureOffset,
-			},
-			LastEditingPlayerUniqueID: botUniqueID,
-			Rotation:                  nbt.Rotation,
-			Mirror:                    nbt.Mirror,
-			AnimationMode:             nbt.AnimationMode,
-			AnimationDuration:         nbt.AnimationSeconds,
-			Integrity:                 nbt.Integrity,
-			Seed:                      uint32(nbt.Seed),
-			Pivot: mgl32.Vec3{
-				(float32(nbt.XStructureSize) - 1) / 2,
-				(float32(nbt.YStructureSize) - 1) / 2,
-				(float32(nbt.ZStructureSize) - 1) / 2,
-			},
-		},
-		RedstoneSaveMode: nbt.RedstoneSaveMode,
-		ShouldTrigger:    false,
-		Waterlogged:      false,
-	}, nil
-}
-
-func makeJigsawBlockUpdate(task nbtPlacementTask) (*packet.BlockActorData, error) {
-	parsed, err := parseDirectNBTBlock(task)
-	if err != nil {
-		return nil, fmt.Errorf("parse jigsaw block NBT: %w", err)
-	}
-	jigsaw, ok := parsed.(*nbt_parser_block.Jigsaw)
-	if !ok {
-		return nil, errors.New("parsed jigsaw block has an unexpected type")
-	}
-
-	position := task.pos
-	return &packet.BlockActorData{
-		Position: position,
-		NBTData: map[string]any{
-			"id":                 "JigsawBlock",
-			"isMovable":          int32(1),
-			"x":                  position.X(),
-			"y":                  position.Y(),
-			"z":                  position.Z(),
-			"final_state":        jigsaw.NBT.FinalState,
-			"joint":              jigsaw.NBT.Joint,
-			"name":               jigsaw.NBT.Name,
-			"placement_priority": jigsaw.NBT.PlacementPriority,
-			"selection_priority": jigsaw.NBT.SelectionPriority,
-			"target":             jigsaw.NBT.Target,
-			"target_pool":        jigsaw.NBT.TargetPool,
-		},
-	}, nil
-}
-
-func makePlainCommandBlockUpdate(task nbtPlacementTask) *packet.CommandBlockUpdate {
-	conditional, _ := task.blockStates["conditional_bit"].(byte)
-	mode := commandBlockMode(task.blockName)
-	return &packet.CommandBlockUpdate{
-		Block:              true,
-		Position:           task.pos,
-		Mode:               mode,
-		NeedsRedstone:      mode != packet.CommandBlockChain,
-		Conditional:        conditional == 1,
-		ShouldTrackOutput:  true,
-		ExecuteOnFirstTick: mode == packet.CommandBlockRepeating,
-	}
-}
-
-func defaultCommandBlockData(blockName string) map[string]any {
-	data := map[string]any{
-		"ExecuteOnFirstTick": byte(0),
-		"TrackOutput":        byte(1),
-		"conditionalMode":    byte(0),
-		"auto":               byte(0),
-	}
-	switch blockName {
-	case "minecraft:chain_command_block":
-		data["auto"] = byte(1)
-	case "minecraft:repeating_command_block":
-		data["ExecuteOnFirstTick"] = byte(1)
-	}
-	return data
-}
-
-func commandBlockMode(blockName string) uint32 {
-	switch blockName {
-	case "minecraft:chain_command_block":
-		return packet.CommandBlockChain
-	case "minecraft:repeating_command_block":
-		return packet.CommandBlockRepeating
-	default:
-		return packet.CommandBlockImpulse
-	}
-}
-
-func stringNBTValue(data map[string]any, key string) string {
-	value, _ := data[key].(string)
-	return value
-}
-
-func isCommandBlock(blockName string) bool {
-	switch blockName {
-	case "minecraft:command_block", "minecraft:chain_command_block", "minecraft:repeating_command_block":
-		return true
-	default:
-		return false
-	}
-}
-
-func isDirectNBTBlock(blockName string) bool {
-	return isCommandBlock(blockName) || blockName == "minecraft:structure_block" || blockName == "minecraft:jigsaw"
+func withinWriteReach(from protocol.BlockPos, target protocol.BlockPos, reach int32) bool {
+	return absInt32(from.X()-target.X()) <= reach &&
+		absInt32(from.Y()-target.Y()) <= reach &&
+		absInt32(from.Z()-target.Z()) <= reach
 }

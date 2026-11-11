@@ -18,7 +18,7 @@ var errInvalidTokenFSM = loc.Err(loc.KeyTokenFSMInvalid)
 
 var tokenFSMMagic = []byte{'F', 'S', 'M', '1'}
 
-// SaveTokenToFSM 将认证令牌加密保存到本地
+// SaveTokenToFSM 将认证令牌加密保存到本地。
 func SaveTokenToFSM(token string) error {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -32,7 +32,7 @@ func SaveTokenToFSM(token string) error {
 	return os.WriteFile(GetTokenFilePath(), payload, 0600)
 }
 
-// LoadTokenFromFSM 从本地加密文件读取认证令牌
+// LoadTokenFromFSM 从本地加密文件读取认证令牌。
 func LoadTokenFromFSM() (string, error) {
 	payload, err := os.ReadFile(GetTokenFilePath())
 	if err != nil {
@@ -41,7 +41,7 @@ func LoadTokenFromFSM() (string, error) {
 	return decryptTokenFile(payload)
 }
 
-// RemoveTokenFSM 删除本地保存的认证令牌
+// RemoveTokenFSM 删除本地保存的认证令牌。
 func RemoveTokenFSM() error {
 	err := os.Remove(GetTokenFilePath())
 	if err != nil && !errors.Is(err, os.ErrNotExist) {

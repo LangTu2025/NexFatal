@@ -1,8 +1,6 @@
 package packet
 
-import (
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
-)
+import "github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 
 // InventorySlot is sent by the server to update a single slot in one of the inventory windows that the client
 // currently has opened. Usually this is the main inventory, but it may also be the off hand or, for example,

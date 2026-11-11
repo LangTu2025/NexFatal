@@ -7,13 +7,13 @@ import (
 	"os"
 	"strings"
 
-	wsdefine "github.com/xingbaiawa/LycorisFlow/define"
-	wsstructure "github.com/xingbaiawa/LycorisFlow/structure"
+	wsdefine "github.com/Yeah114/WaterStructure/define"
+	wsstructure "github.com/Yeah114/WaterStructure/structure"
 	"github.com/LangTu2025/NexFatal/defines"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
 )
 
-// Parse 解析命令行参数，并返回控制配置、构建配置和是否直接运行
+// Parse 解析命令行参数，并返回控制配置、构建配置和是否直接运行。
 func Parse() (defines.ControlConfig, defines.BuildTaskConfig, bool, error) {
 	return readCommandLineConfig(os.Args[1:])
 }
@@ -124,7 +124,7 @@ func looksLikeFlag(arg string) bool {
 	return arg == "--" || strings.HasPrefix(arg, "-")
 }
 
-// startChunkForPercent 读取结构文件的总区块数，将 1~100 的百分比换算成起始区块号
+// startChunkForPercent 读取结构文件的总区块数，将 1~100 的百分比换算成起始区块号。
 func startChunkForPercent(filePath string, percent float64) (int, error) {
 	if percent <= 0 || percent > 100 {
 		return 0, loc.Err(loc.KeyArgsStartPercentRange)
@@ -154,7 +154,7 @@ func startChunkForPercent(filePath string, percent float64) (int, error) {
 	return startChunkForTotalChunks(totalChunks, percent)
 }
 
-// startChunkForTotalChunks 把百分比按总区块数换算成 1-based 起始区块号，并夹到合法范围
+// startChunkForTotalChunks 把百分比按总区块数换算成 1-based 起始区块号，并夹到合法范围。
 func startChunkForTotalChunks(totalChunks int, percent float64) (int, error) {
 	if percent <= 0 || percent > 100 {
 		return 0, loc.Err(loc.KeyArgsStartPercentRange)

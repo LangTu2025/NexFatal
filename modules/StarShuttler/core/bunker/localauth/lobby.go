@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	g79 "github.com/xingbaiawa/g79client"
+	g79 "github.com/Yeah114/g79client"
 )
 
 const (
@@ -33,12 +33,12 @@ func isTransientError(err error) bool {
 //   - 错误码 12022（网易频率限制）
 func enterLobbyRoom(
 	cli *g79.Client,
-	roomCode, password, lobbyManifestVersion string,
+	roomCode, password string,
 	repurchase func(),
 ) (*g79.OnlineLobbyRoomEnterResponse, error) {
 	var lastErr error
 	for attempt := 1; attempt <= lobbyEnterMaxRetries; attempt++ {
-		resp, err := cli.EnterOnlineLobbyRoom(roomCode, password, lobbyManifestVersion)
+		resp, err := cli.EnterOnlineLobbyRoom(roomCode, password)
 		if err != nil {
 			if isTransientError(err) && attempt < lobbyEnterMaxRetries {
 				lastErr = err

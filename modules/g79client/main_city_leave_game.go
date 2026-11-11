@@ -28,10 +28,6 @@ func (c *Client) LeaveEnteredGame() error {
 	}
 
 	sessionID := fmt.Sprintf("%s%d", c.UserID, time.Now().UnixNano())
-	seed := c.Seed
-	if seed == "" {
-		seed = c.Sead
-	}
 
 	payload := map[string]any{
 		"is_emulator":       "None",
@@ -47,7 +43,7 @@ func (c *Client) LeaveEnteredGame() error {
 		"transid":           "None",
 		"operate_type":      "leave_main_city_no_game",
 		"isp_name":          "default",
-		"sead":              seed,
+		"sead":              c.Seed,
 		"os_ver":            "11",
 		"network":           "CHANNEL_UNKNOW",
 		"login_channel":     "netease",

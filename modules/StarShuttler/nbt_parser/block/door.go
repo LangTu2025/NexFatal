@@ -16,21 +16,21 @@ func (Door) NeedCheckCompletely() bool {
 }
 
 func (d Door) Direction() int32 {
-	return blockStateInt32(d.States, "direction", 0)
+	return doorStateInt32(d.States, "direction", 0)
 }
 
 func (d Door) Open() bool {
-	return blockStateBool(d.States, "open_bit", false)
+	return doorStateBool(d.States, "open_bit", false)
 }
 
 func (d Door) Hinge() bool {
-	return blockStateBool(d.States, "door_hinge_bit", false)
+	return doorStateBool(d.States, "door_hinge_bit", false)
 }
 
 func (d Door) LowerStates(open ...bool) map[string]any {
 	states := d.normalizedStates()
 	if len(open) > 0 {
-		states["open_bit"] = boolByte(open[0])
+		states["open_bit"] = doorBoolByte(open[0])
 	}
 	states["upper_block_bit"] = byte(0)
 	return states
@@ -39,7 +39,7 @@ func (d Door) LowerStates(open ...bool) map[string]any {
 func (d Door) UpperStates(open ...bool) map[string]any {
 	states := d.normalizedStates()
 	if len(open) > 0 {
-		states["open_bit"] = boolByte(open[0])
+		states["open_bit"] = doorBoolByte(open[0])
 	}
 	states["upper_block_bit"] = byte(1)
 	return states
@@ -50,9 +50,9 @@ func (d Door) normalizedStates() map[string]any {
 	for key, value := range d.States {
 		states[key] = value
 	}
-	states["direction"] = blockStateInt32(states, "direction", 0)
-	states["door_hinge_bit"] = boolByte(blockStateBool(states, "door_hinge_bit", false))
-	states["open_bit"] = boolByte(blockStateBool(states, "open_bit", false))
+	states["direction"] = doorStateInt32(states, "direction", 0)
+	states["door_hinge_bit"] = doorBoolByte(doorStateBool(states, "door_hinge_bit", false))
+	states["open_bit"] = doorBoolByte(doorStateBool(states, "open_bit", false))
 	return states
 }
 
@@ -83,7 +83,7 @@ func (d *Door) FullStableBytes() []byte {
 	return append(d.DefaultBlock.FullStableBytes(), d.NBTStableBytes()...)
 }
 
-func blockStateBool(states map[string]any, key string, fallback bool) bool {
+func doorStateBool(states map[string]any, key string, fallback bool) bool {
 	value, ok := states[key]
 	if !ok {
 		return fallback
@@ -112,7 +112,7 @@ func blockStateBool(states map[string]any, key string, fallback bool) bool {
 	}
 }
 
-func blockStateInt32(states map[string]any, key string, fallback int32) int32 {
+func doorStateInt32(states map[string]any, key string, fallback int32) int32 {
 	value, ok := states[key]
 	if !ok {
 		return fallback
@@ -139,7 +139,7 @@ func blockStateInt32(states map[string]any, key string, fallback int32) int32 {
 	}
 }
 
-func boolByte(value bool) byte {
+func doorBoolByte(value bool) byte {
 	if value {
 		return 1
 	}

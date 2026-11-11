@@ -19,9 +19,6 @@ type Crafting struct {
 	ResultSlotID    resources_control.SlotID
 	ResultCount     uint8
 	ResultItem      resources_control.ExpectedNewItem
-	// DeprecatedResultItems is required by newer servers for recipes whose
-	// output is validated through the legacy result action.
-	DeprecatedResultItems []protocol.ItemStack
 }
 
 func (Crafting) ID() uint8 {
@@ -77,14 +74,8 @@ func (d Crafting) Make(runtimeData MakingRuntime) []protocol.StackRequestAction 
 		[]protocol.StackRequestAction{
 			&protocol.CraftRecipeStackRequestAction{RecipeNetworkID: d.RecipeNetworkID, NumberOfCrafts: 1},
 		},
+		consumeActions...,
 	)
-	if len(d.DeprecatedResultItems) > 0 {
-		actions = append(actions, &protocol.CraftResultsDeprecatedStackRequestAction{
-			ResultItems:  d.DeprecatedResultItems,
-			TimesCrafted: 1,
-		})
-	}
-	actions = append(actions, consumeActions...)
 	actions = append(actions, &moveBack)
 
 	return actions

@@ -8,7 +8,14 @@ const (
 	ContainerSmithingTableMaterial
 	ContainerSmithingTableResultPreview
 	ContainerArmor
+
+	// PhoenixBuilder specific changes.
+	// Author: Liliya233, Happy2018new
+	//
+	// container_items, can used by agent robot,
+	// chest, dispenser, dropper, hopper, crafter.
 	ContainerLevelEntity
+
 	ContainerBeaconPayment
 	ContainerBrewingStandInput
 	ContainerBrewingStandResult
@@ -18,7 +25,13 @@ const (
 	ContainerCraftingOutputPreview
 	ContainerRecipeConstruction
 	ContainerRecipeNature
-	ContainerRecipeCustom // Netease/PhoenixBuilder compatibility
+
+	// PhoenixBuilder specific changes.
+	// Author: Liliya233
+	//
+	// Netease
+	ContainerRecipeCustom
+
 	ContainerRecipeItems
 	ContainerRecipeSearch
 	ContainerRecipeSearchBar
@@ -66,9 +79,13 @@ const (
 	ContainerSmithingTableTemplate
 	ContainerCrafterLevelEntity
 	ContainerDynamic
-	ContainerRecipeFood
-	ContainerRecipeBlocks
-	ContainerRecipeFurnaceItems
+
+	// PhoenixBuilder specific changes.
+	// Author: Liliya233
+	//
+	// Netease
+	ContainerNeteaseNoDrop
+	ContainerNeteaseUI
 )
 
 const (

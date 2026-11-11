@@ -1,7 +1,7 @@
 package localauth
 
 import (
-	g79 "github.com/xingbaiawa/g79client"
+	g79 "github.com/Yeah114/g79client"
 )
 
 // LoginParams 定义进入服务器验证所需的参数。

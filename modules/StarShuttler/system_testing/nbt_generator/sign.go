@@ -5,10 +5,10 @@ import (
 	"math/rand"
 	"os"
 
-	"github.com/google/uuid"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/nbt"
 	"github.com/xingbaiawa/StarShuttler/mapping"
 	"github.com/xingbaiawa/StarShuttler/utils"
+	"github.com/google/uuid"
 )
 
 func GenerateRandomSign() {

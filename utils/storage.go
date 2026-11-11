@@ -3,6 +3,7 @@ package utils
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/LangTu2025/NexFatal/constants"
 )
@@ -14,6 +15,9 @@ const (
 
 // GetStoragePath 返回 NexFatal 的运行时存储目录
 func GetStoragePath() string {
+	if value := strings.TrimSpace(os.Getenv("NEXFATAL_STORAGE")); value != "" {
+		return filepath.Clean(value)
+	}
 	return filepath.Join(".", constants.StorageDirName)
 }
 
@@ -29,7 +33,19 @@ func GetCustomAuthServerFilePath() string {
 
 // GetExportFileDir 返回导出文件默认目录
 func GetExportFileDir() string {
-	return "."
+	return filepath.Join(GetStoragePath(), "exports")
+}
+
+func GetImportFileDir() string {
+	return filepath.Join(GetStoragePath(), "imports")
+}
+
+func GetTasksDir() string {
+	return filepath.Join(GetStoragePath(), "tasks")
+}
+
+func GetServerConfigsDir() string {
+	return filepath.Join(GetStoragePath(), "server_configs")
 }
 
 // GetConvertedFileDir 返回结构转换缓存目录
@@ -54,6 +70,10 @@ func EnsureStorageDirs() error {
 	}
 
 	dirs := []string{
+		GetImportFileDir(),
+		GetExportFileDir(),
+		GetTasksDir(),
+		GetServerConfigsDir(),
 		GetConvertedFileDir(),
 		GetBuildInterruptDir(),
 	}

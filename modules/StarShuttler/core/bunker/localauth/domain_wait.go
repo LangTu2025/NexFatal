@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	g79 "github.com/xingbaiawa/g79client"
+	g79 "github.com/Yeah114/g79client"
 )
 
 const (

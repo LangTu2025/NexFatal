@@ -1,13 +1,6 @@
 package resource
 
-import (
-	"encoding/json"
-	"fmt"
-	"strconv"
-	"strings"
-
-	"github.com/google/uuid"
-)
+import "github.com/google/uuid"
 
 // Documentation on this may be found here:
 // https://learn.microsoft.com/en-us/minecraft/creator/reference/content/addonsreference/examples/addonmanifest
@@ -27,8 +20,6 @@ type Manifest struct {
 	// Capabilities are the different features that the pack makes use of that aren't necessarily enabled by
 	// default. For a list of options, see below.
 	Capabilities []Capability `json:"capabilities,omitempty"`
-	// Metadata contains additional information about the pack that is otherwise optional.
-	Metadata *Metadata `json:"metadata,omitempty"`
 
 	// worldTemplate holds a value indicating if the pack holds an entire world template or not.
 	worldTemplate bool
@@ -44,9 +35,9 @@ type Header struct {
 	// UUID is a unique identifier this pack from any other pack.
 	UUID uuid.UUID `json:"uuid"`
 	// Version is the version of the pack, which can be used to identify changes in the pack.
-	Version Version `json:"version"`
+	Version [3]int `json:"version"`
 	// MinimumGameVersion is the minimum version of the game that this resource pack was written for.
-	MinimumGameVersion Version `json:"min_engine_version"`
+	MinimumGameVersion [3]int `json:"min_engine_version"`
 }
 
 // Module describes a module that comprises the pack. Each module defines one of the kinds of contents of the
@@ -62,7 +53,7 @@ type Module struct {
 	Type string `json:"type"`
 	// Version is the version of the module in the same format as the pack's version in the header. This can
 	// be used to further identify changes in the pack.
-	Version Version `json:"version"`
+	Version [3]int `json:"version"`
 }
 
 // Dependency describes a pack that this pack depends on in order to work.
@@ -72,7 +63,7 @@ type Dependency struct {
 	UUID string `json:"uuid"`
 	// Version is the specific version of the pack that the pack depends on. Should match the version the
 	// other pack has in its manifest file.
-	Version Version `json:"version"`
+	Version [3]int `json:"version"`
 }
 
 // Capability is a particular feature that the pack utilises of that isn't necessarily enabled by default.
@@ -84,41 +75,10 @@ type Capability string
 
 // Metadata contains additional information about the pack that is otherwise optional.
 type Metadata struct {
-	// Authors are the authors of the pack.
-	Authors []string `json:"authors,omitempty"`
+	// Author is the name of the author(s) of the pack.
+	Author string `json:"authors,omitempty"`
 	// License is the license applied to the pack.
 	License string `json:"license,omitempty"`
 	// URL is the home website of the creator of the pack.
 	URL string `json:"url,omitempty"`
-}
-
-// Version may be present in the manifest as [1,0,0] or "1.0.0".
-type Version [3]int
-
-// UnmarshalJSON unmarshals a Version from either an array or a dotted string.
-func (v *Version) UnmarshalJSON(b []byte) error {
-	var arr [3]int
-	if err := json.Unmarshal(b, &arr); err == nil {
-		*v = arr
-		return nil
-	}
-
-	var s string
-	if err := json.Unmarshal(b, &s); err == nil {
-		s = strings.TrimSpace(s)
-		parts := strings.Split(s, ".")
-		if len(parts) != 3 {
-			return fmt.Errorf("invalid version %q (need x.y.z)", s)
-		}
-		for i := range 3 {
-			n, err := strconv.Atoi(parts[i])
-			if err != nil {
-				return fmt.Errorf("invalid version component %q in %q", parts[i], s)
-			}
-			v[i] = n
-		}
-		return nil
-	}
-
-	return fmt.Errorf("invalid version: %s", string(b))
 }

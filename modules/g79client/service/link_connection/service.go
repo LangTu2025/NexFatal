@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	g79client "github.com/xingbaiawa/g79client"
+	g79client "github.com/Yeah114/g79client"
 )
 
 // LinkEndpoint 描述一个可用的 Link 服务器节点。
