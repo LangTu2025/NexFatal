@@ -86,6 +86,8 @@ func openMainMenu(ctx context.Context, controlCfg defines.ControlConfig) {
 	// 复用命令行传入的令牌，避免交互模式重复询问。
 	if token := strings.TrimSpace(controlCfg.AuthServerToken); token != "" {
 		sessionAuthToken = token
+		sessionAuthServer = currentAccountServer()
+		sessionDoNotRemember = controlCfg.AuthServerTokenVolatile
 	}
 
 	options := []ui.MenuOption{
@@ -95,6 +97,7 @@ func openMainMenu(ctx context.Context, controlCfg defines.ControlConfig) {
 		{ID: "4", Label: "管理服务器配置", Description: "保存和编辑常用服务器、房间及山头配置"},
 		{ID: "5", Label: "目录与使用帮助", Description: "查看文件放置位置和操作说明"},
 		{ID: "6", Label: "公告与更新", Description: "联网获取公告和检查新版本"},
+		{ID: "7", Label: "用户中心", Description: "账号与余额、登录凭据、游戏账号及认证服务"},
 		{ID: "0", Label: "退出"},
 	}
 	for ctx.Err() == nil {
@@ -111,6 +114,8 @@ func openMainMenu(ctx context.Context, controlCfg defines.ControlConfig) {
 				manageServerConfigs()
 			case "5":
 				showWorkspaceHelp()
+			case "7":
+				openUserCenter(ctx)
 			case "6":
 				ui.ShowOnlineStatus()
 			case "0":

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -29,6 +30,13 @@ var fallbackDNSServers = []string{
 	"119.29.29.29:53",
 	"1.1.1.1:53",
 	"8.8.8.8:53",
+}
+
+// HTTPError reports an unsuccessful HTTP response without exposing credentials or response bodies.
+type HTTPError struct{ StatusCode int }
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("用户中心 HTTP 错误: %d %s", e.StatusCode, http.StatusText(e.StatusCode))
 }
 
 type responseEnvelope struct {
@@ -65,8 +73,9 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 	}
 	transport.DialContext = dialer.DialContext
 	return &http.Client{
-		Timeout:   timeout,
-		Transport: transport,
+		Timeout:       timeout,
+		Transport:     transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
 	}
 }
 
@@ -132,11 +141,17 @@ func (c *SafeClient) PostJSONWithHeadersContext(ctx context.Context, url string,
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &HTTPError{StatusCode: resp.StatusCode}
+	}
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024+1))
 	if err != nil {
 		return nil, err
 	}
 
+	if len(respBody) > 4*1024*1024 {
+		return nil, errors.New("SafeHttp: response body too large")
+	}
 	return c.decodeBody(respBody)
 }
 
@@ -155,11 +170,17 @@ func (c *SafeClient) Get(url string) ([]byte, int, error) {
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, resp.StatusCode, &HTTPError{StatusCode: resp.StatusCode}
+	}
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024+1))
 	if err != nil {
 		return nil, 0, err
 	}
 
+	if len(respBody) > 4*1024*1024 {
+		return nil, resp.StatusCode, errors.New("SafeHttp: response body too large")
+	}
 	plaintext, err := c.decodeBody(respBody)
 	return plaintext, resp.StatusCode, err
 }

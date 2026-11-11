@@ -21,7 +21,9 @@ jobs:
           go-version: '1.26'
           cache: true
       - name: Test
-        run: go test ./...
+        run: |
+          go test ./...
+          go -C utils/safe_http test ./...
 
   build:
     needs: test

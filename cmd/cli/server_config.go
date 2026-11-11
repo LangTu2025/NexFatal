@@ -63,11 +63,13 @@ func pickServerConfig() (defines.ControlConfig, error) {
 }
 
 func ensureAuthToken(cfg defines.ControlConfig) (defines.ControlConfig, error) {
-	token, err := resolveAuthToken(cfg.AuthServerToken, true, false)
+	// Server profiles describe game targets; account credentials come from the active user center.
+	token, err := resolveAuthToken("", true, false)
 	if err != nil {
 		return defines.ControlConfig{}, err
 	}
 	cfg.AuthServerToken = token
+	cfg.AuthServerAddress = defines.DefaultAuthServerAddress()
 	cfg.Normalize()
 	return cfg, nil
 }

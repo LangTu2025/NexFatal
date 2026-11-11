@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/LangTu2025/NexFatal/constants"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
 )
 
@@ -20,25 +21,16 @@ var tokenFSMMagic = []byte{'F', 'S', 'M', '1'}
 
 // SaveTokenToFSM 将认证令牌加密保存到本地。
 func SaveTokenToFSM(token string) error {
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return loc.Err(loc.KeyTokenEmpty)
-	}
-
-	payload, err := encryptTokenFile(token)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(GetTokenFilePath(), payload, 0600)
+	return SaveAuthSession(AuthSession{Server: constants.UserCenterURL, Token: token})
 }
 
-// LoadTokenFromFSM 从本地加密文件读取认证令牌。
+// LoadTokenFromFSM reads the default service credential.
 func LoadTokenFromFSM() (string, error) {
-	payload, err := os.ReadFile(GetTokenFilePath())
+	session, err := LoadAuthSession(constants.UserCenterURL)
 	if err != nil {
 		return "", err
 	}
-	return decryptTokenFile(payload)
+	return session.Token, nil
 }
 
 // RemoveTokenFSM 删除本地保存的认证令牌。

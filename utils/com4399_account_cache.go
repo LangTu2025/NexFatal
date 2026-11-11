@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -35,7 +36,11 @@ func SaveCom4399AccountToJSON(username, password string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(GetCom4399AccountFilePath(), payload, 0600)
+	encrypted, err := encryptTokenFile(string(payload))
+	if err != nil {
+		return err
+	}
+	return writePrivateFile(GetCom4399AccountFilePath(), encrypted)
 }
 
 func LoadCom4399AccountFromJSON() (string, string, error) {
@@ -44,6 +49,13 @@ func LoadCom4399AccountFromJSON() (string, string, error) {
 		return "", "", err
 	}
 
+	if bytes.HasPrefix(payload, tokenFSMMagic) {
+		plaintext, err := decryptTokenFile(payload)
+		if err != nil {
+			return "", "", err
+		}
+		payload = []byte(plaintext)
+	}
 	var cached com4399AccountCache
 	if err := json.Unmarshal(payload, &cached); err == nil {
 		username := strings.TrimSpace(cached.Username)

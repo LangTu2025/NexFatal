@@ -11,6 +11,7 @@ import (
 
 	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
 	"github.com/LangTu2025/NexFatal/defines"
+	"github.com/LangTu2025/NexFatal/utils"
 	safehttp "github.com/LangTu2025/NexFatal/utils/safe_http"
 )
 
@@ -151,7 +152,11 @@ func (c *BuilderCharger) IsFree() bool {
 }
 
 func builderEndpointURL(authServer, apiPath string) (string, error) {
-	u, err := url.Parse(strings.TrimSpace(authServer))
+	canonical, err := utils.CanonicalAuthServer(authServer)
+	if err != nil {
+		return "", err
+	}
+	u, err := url.Parse(canonical)
 	if err != nil {
 		return "", err
 	}
