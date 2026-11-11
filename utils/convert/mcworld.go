@@ -15,7 +15,7 @@ import (
 	"github.com/Yeah114/WaterStructure/define"
 	wsstructure "github.com/Yeah114/WaterStructure/structure"
 	"github.com/mholt/archiver/v3"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 )
 
 const (

@@ -76,3 +76,4 @@ func (c *disconnectedPacketConn) SetReadDeadline(time.Time) error { //nolint:unu
 func (c *disconnectedPacketConn) SetWriteDeadline(time.Time) error { //nolint:unused
 	return nil
 }
+

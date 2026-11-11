@@ -12,7 +12,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/ugorji/go/codec v1.3.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
-	github.com/LangTu2025/NexFatal/utils/safe_http v0.0.0
+	github.com/xingbaiawa/NovaBuilder/utils/safe_http v0.0.0
 	golang.org/x/text v0.36.0
 )
 
@@ -91,4 +91,4 @@ replace github.com/Yeah114/g79client => ../g79client
 
 replace github.com/Yeah114/unmcpk => ../unmcpk
 
-replace github.com/LangTu2025/NexFatal/utils/safe_http => ../../utils/safe_http
+replace github.com/xingbaiawa/NovaBuilder/utils/safe_http => ../../utils/safe_http

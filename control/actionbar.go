@@ -1,6 +1,6 @@
 package game_control
 
-import loc "github.com/LangTu2025/NexFatal/utils/localization"
+import loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 
 // SendActionBar 向游戏内发送动作栏消息。
 func (c *Control) SendActionBar(message string) error {

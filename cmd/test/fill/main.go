@@ -12,7 +12,7 @@ import (
 	"github.com/TriM-Organization/bedrock-world-operator/chunk"
 	wsDefine "github.com/Yeah114/WaterStructure/define"
 	"github.com/Yeah114/WaterStructure/structure"
-	"github.com/LangTu2025/NexFatal/utils/chunk_fill"
+	"github.com/xingbaiawa/NovaBuilder/utils/chunk_fill"
 )
 
 const structurePath = "VOH3-1地图@[1712,-61,1000]~[3529,100,1520].mcworld"

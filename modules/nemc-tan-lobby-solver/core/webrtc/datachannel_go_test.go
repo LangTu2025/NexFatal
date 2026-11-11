@@ -855,3 +855,4 @@ func TestOnBufferedAmountLowDeadlock(t *testing.T) {
 	<-gotAllMessages.Done()
 	closePairNow(t, offerPC, answerPC)
 }
+

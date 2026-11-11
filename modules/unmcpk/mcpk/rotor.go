@@ -150,7 +150,7 @@ func (r *RotorObj) PermuteRotor(e, d []byte) {
 		e[i] = j
 		d[j] = byte(i)
 	}
-
+	
 	d[e[0]] = 0
 }
 

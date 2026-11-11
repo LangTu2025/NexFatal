@@ -168,3 +168,4 @@ func TestIVFReader_EOFWhenNoFramesLeft(t *testing.T) {
 
 	assert.Equal(io.EOF, err)
 }
+

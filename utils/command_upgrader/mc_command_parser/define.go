@@ -1,6 +1,6 @@
 package mc_command_parser
 
-import "github.com/LangTu2025/NexFatal/utils/command_upgrader/string_reader"
+import "github.com/xingbaiawa/NovaBuilder/utils/command_upgrader/string_reader"
 
 type CommandParser struct {
 	reader *string_reader.StringReader

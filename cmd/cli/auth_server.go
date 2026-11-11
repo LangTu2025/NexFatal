@@ -5,11 +5,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
-	"github.com/LangTu2025/NexFatal/constants"
-	"github.com/LangTu2025/NexFatal/defines"
-	"github.com/LangTu2025/NexFatal/utils"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
+	"github.com/xingbaiawa/NovaBuilder/constants"
+	"github.com/xingbaiawa/NovaBuilder/defines"
+	"github.com/xingbaiawa/NovaBuilder/utils"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 )
 
 const customAuthServerFileName = "server"

@@ -333,3 +333,4 @@ func (i *dropFilter) BindLocalStream(info *interceptor.StreamInfo, writer interc
 		return writer.Write(header, payload, attrs)
 	})
 }
+

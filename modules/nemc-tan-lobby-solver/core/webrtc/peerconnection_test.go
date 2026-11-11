@@ -761,3 +761,4 @@ func TestDTLSClose(t *testing.T) {
 	peerConnectionsConnected.Wait()
 	assert.NoError(t, pcOffer.Close())
 }
+

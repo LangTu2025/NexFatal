@@ -1,4 +1,4 @@
-package ui
+﻿package ui
 
 import (
 	"encoding/json"
@@ -11,18 +11,17 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/LangTu2025/NexFatal/constants"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
-	safehttp "github.com/LangTu2025/NexFatal/utils/safe_http"
 	"github.com/mattn/go-runewidth"
 	"github.com/pterm/pterm"
+	"github.com/xingbaiawa/NovaBuilder/constants"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
+	safehttp "github.com/xingbaiawa/NovaBuilder/utils/safe_http"
 	"golang.org/x/term"
 )
 
 type MenuOption struct {
-	ID          string
-	Label       string
-	Description string
+	ID    string
+	Label string
 }
 
 type githubRelease struct {
@@ -42,33 +41,35 @@ var (
 	we          = pterm.White("]")
 	infoPrefix  = wb + pterm.Green("INFO") + we
 	warnPrefix  = wb + pterm.Yellow("WARN") + we
-	errorPrefix = wb + pterm.Red("ERROR") + we
+	errorPrefix = wb + pterm.Red("EROR") + we
 )
 
 func ShowStartup() {
-	Page(constants.Name, "Minecraft 建筑工作台 · 导入 / 导出 / 批量任务")
-	Hint(constants.VersionLine() + "  ·  " + currentLanguageName())
-	Hint(constants.RepoURL)
-}
+	boxStyle := pterm.NewStyle(pterm.FgWhite)
+	linkStyle := pterm.NewStyle(pterm.FgLightCyan)
+	versionStyle := pterm.NewStyle(pterm.FgYellow)
+	textStyle := pterm.NewStyle(pterm.FgWhite)
 
-// ShowOnlineStatus is explicit so launching the application also works offline.
-func ShowOnlineStatus() {
-	Page("公告与更新", "获取服务公告，并检查 NexFatal 的最新版本")
+	linkLine := " " + constants.RepoURL + " "
+	border := strings.Repeat("─", len([]rune(linkLine)))
+
+	fmt.Println(boxStyle.Sprint("┌" + border + "┐"))
+	fmt.Println(boxStyle.Sprint("│") + linkStyle.Sprint(linkLine) + boxStyle.Sprint("│"))
+	fmt.Println(boxStyle.Sprint("└" + border + "┘"))
+	fmt.Println(versionStyle.Sprint(constants.VersionLine()))
+	fmt.Println(textStyle.Sprintf("已启用语言：%s", currentLanguageName()))
+
 	printBuilderAnnouncement()
 	printStartupUpdateStatus()
 }
 
 func printStartupUpdateStatus() {
-	Info("正在检查更新，请稍等…")
+	fmt.Print("正在检查更新，请稍等...")
 	latestVersion, err := latestReleaseVersion()
-	if err != nil {
-		Warn("暂时无法检查更新：" + err.Error())
-		return
-	}
-	if versionGreaterThan(latestVersion, constants.Version) {
-		Info(loc.Sprintf(loc.KeyAutoUpdateNewVersion, trimVersionPrefix(latestVersion)))
-	} else {
-		Info("当前已是最新版本")
+	fmt.Println("完成")
+
+	if err == nil && versionGreaterThan(latestVersion, constants.Version) {
+		fmt.Println(loc.Sprintf(loc.KeyAutoUpdateNewVersion, trimVersionPrefix(latestVersion)))
 	}
 }
 
@@ -322,22 +323,10 @@ func SelectID(prompt string, options []MenuOption, defaultID string) string {
 	}
 
 	startInteractiveLine()
-	Section(prompt, "")
+	fmt.Println(prompt)
 	for _, option := range options {
-		prefix := "[" + option.ID + "]"
-		lines := wrapAnnouncementText(option.Label, pageWidth()-len(prefix)-5)
-		for i, line := range lines {
-			if i == 0 {
-				fmt.Printf("  %s  %s\n", pterm.LightCyan(prefix), line)
-			} else {
-				fmt.Println(strings.Repeat(" ", len(prefix)+4) + line)
-			}
-		}
-		if option.Description != "" {
-			Hint("     " + option.Description)
-		}
+		fmt.Printf("  [%s] %s\n", option.ID, option.Label)
 	}
-	Hint("输入编号选择 · /back 返回首页")
 
 	lookup := make(map[string]struct{}, len(options))
 	for _, option := range options {
@@ -345,7 +334,7 @@ func SelectID(prompt string, options []MenuOption, defaultID string) string {
 	}
 
 	for {
-		value := strings.TrimSpace(Input(defaultPrompt("  请选择", defaultID)))
+		value := strings.TrimSpace(Input("  (ID): "))
 		if value == "" && defaultID != "" {
 			value = defaultID
 		}
@@ -470,7 +459,7 @@ func renderMinecraftColors(text string) string {
 }
 
 func terminalSeparatorWidth() int {
-	width := 80
+	width := 48
 	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
 		width = w - 2
 	}

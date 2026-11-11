@@ -11,8 +11,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/LangTu2025/NexFatal/constants"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 )
 
 var errInvalidTokenFSM = loc.Err(loc.KeyTokenFSMInvalid)
@@ -21,16 +20,25 @@ var tokenFSMMagic = []byte{'F', 'S', 'M', '1'}
 
 // SaveTokenToFSM 将认证令牌加密保存到本地。
 func SaveTokenToFSM(token string) error {
-	return SaveAuthSession(AuthSession{Server: constants.UserCenterURL, Token: token})
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return loc.Err(loc.KeyTokenEmpty)
+	}
+
+	payload, err := encryptTokenFile(token)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(GetTokenFilePath(), payload, 0600)
 }
 
-// LoadTokenFromFSM reads the default service credential.
+// LoadTokenFromFSM 从本地加密文件读取认证令牌。
 func LoadTokenFromFSM() (string, error) {
-	session, err := LoadAuthSession(constants.UserCenterURL)
+	payload, err := os.ReadFile(GetTokenFilePath())
 	if err != nil {
 		return "", err
 	}
-	return session.Token, nil
+	return decryptTokenFile(payload)
 }
 
 // RemoveTokenFSM 删除本地保存的认证令牌。
@@ -106,7 +114,7 @@ func machineTokenKey() [32]byte {
 	hostname, _ := os.Hostname()
 	homeDir, _ := os.UserHomeDir()
 	keyMaterial := strings.Join([]string{
-		"NexFatal",
+		"NovaBuilder",
 		"token",
 		"fsm",
 		"v1",

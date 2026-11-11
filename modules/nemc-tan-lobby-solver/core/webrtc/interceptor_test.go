@@ -507,3 +507,4 @@ func testInterceptorNack(t *testing.T, requestNack bool) { //nolint:cyclop
 		assert.False(t, gotNack, "Expected to get no NACK, got one")
 	}
 }
+

@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LangTu2025/NexFatal/utils"
+	"github.com/xingbaiawa/NovaBuilder/utils"
 	xnetproxy "golang.org/x/net/proxy"
 )
 

@@ -2963,3 +2963,4 @@ func (a *Association) completeHandshake(handshakeErr error) bool {
 
 	return false
 }
+

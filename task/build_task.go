@@ -8,10 +8,10 @@ import (
 
 	wsdefine "github.com/Yeah114/WaterStructure/define"
 	wsstructure "github.com/Yeah114/WaterStructure/structure"
-	"github.com/LangTu2025/NexFatal/control"
-	"github.com/LangTu2025/NexFatal/defines"
-	"github.com/LangTu2025/NexFatal/utils"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	"github.com/xingbaiawa/NovaBuilder/control"
+	"github.com/xingbaiawa/NovaBuilder/defines"
+	"github.com/xingbaiawa/NovaBuilder/utils"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 	"go.uber.org/ratelimit"
 )
 

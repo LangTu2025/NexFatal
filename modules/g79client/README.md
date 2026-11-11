@@ -25,7 +25,7 @@ package main
 import (
     "fmt"
     "log"
-
+    
     "github.com/Yeah114/g79client"
 )
 
@@ -41,7 +41,7 @@ func main() {
 ## 模块结构
 
 - `crypto.go` - 加密解密功能
-- `auth.go` - 认证相关功能
+- `auth.go` - 认证相关功能  
 - `client.go` - HTTP 客户端和 API 调用
 - `main.go` - 主要业务逻辑
 - `example/` - 使用示例

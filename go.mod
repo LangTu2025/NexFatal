@@ -1,4 +1,4 @@
-module github.com/LangTu2025/NexFatal
+module github.com/xingbaiawa/NovaBuilder
 
 go 1.26.0
 
@@ -11,7 +11,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pterm/pterm v0.12.82
 	github.com/schollz/progressbar/v3 v3.18.0
-	github.com/LangTu2025/NexFatal/utils/safe_http v0.0.0
+	github.com/xingbaiawa/NovaBuilder/utils/safe_http v0.0.0
 	github.com/xingbaiawa/StarShuttler v0.0.0
 	go.uber.org/ratelimit v0.3.1
 	golang.org/x/net v0.53.0
@@ -94,4 +94,4 @@ replace github.com/xingbaiawa/StarShuttler => ./modules/StarShuttler
 
 replace github.com/Happy2018new/nemc-tan-lobby-solver => ./modules/nemc-tan-lobby-solver
 
-replace github.com/LangTu2025/NexFatal/utils/safe_http => ./utils/safe_http
+replace github.com/xingbaiawa/NovaBuilder/utils/safe_http => ./utils/safe_http

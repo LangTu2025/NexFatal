@@ -114,7 +114,7 @@ func (f *FuHongV6) populateFromBuild(chunks []map[string]any) error {
 		if err != nil {
 			return fmt.Errorf("区块 %d: %w", chunkIdx, err)
 		}
-
+		
 		// V6 中 startX/startZ 是相对于结构原点的偏移，但方块坐标是绝对坐标
 		// 根据 fuhong.py 的实现，坐标不需要加上 startX/startZ
 		_ = startX
@@ -137,12 +137,12 @@ func (f *FuHongV6) populateFromBuild(chunks []map[string]any) error {
 				if err != nil {
 					return fmt.Errorf("区块 %d 实体 %d: %w", chunkIdx, entryIdx, err)
 				}
-
+				
 				// 实体坐标是绝对坐标
 				gx := int(math.Round(entity.X))
 				gy := int(math.Round(entity.Y))
 				gz := int(math.Round(entity.Z))
-
+				
 				if gx < minX {
 					minX = gx
 				}
@@ -161,7 +161,7 @@ func (f *FuHongV6) populateFromBuild(chunks []map[string]any) error {
 				if gz > maxZ {
 					maxZ = gz
 				}
-
+				
 				f.entities = append(f.entities, entity)
 				continue
 			}
@@ -817,15 +817,15 @@ func (f *FuHongV6) WriteTo(
 	maxChunkX := floorDiv(endX, 32)
 	minChunkZ := floorDiv(startZ, 32)
 	maxChunkZ := floorDiv(endZ, 32)
-
+	
 	// 确保区块范围是连续的
 	chunkXCount := maxChunkX - minChunkX + 1
 	chunkZCount := maxChunkZ - minChunkZ + 1
-
+	
 	minSubChunkY := floorDiv(startY, 16)
 	maxSubChunkY := floorDiv(endY, 16)
 	subChunkYCount := maxSubChunkY - minSubChunkY + 1
-
+	
 	totalSubChunks := chunkXCount * chunkZCount * subChunkYCount
 	if startCallback != nil {
 		startCallback(totalSubChunks)
@@ -847,7 +847,7 @@ func (f *FuHongV6) WriteTo(
 	for cz := minChunkZ; cz <= maxChunkZ; cz++ {
 		chunkWorldZStart := cz * 32
 		chunkWorldZEnd := chunkWorldZStart + 31
-
+		
 		for cx := minChunkX; cx <= maxChunkX; cx++ {
 			chunkWorldXStart := cx * 32
 			chunkWorldXEnd := chunkWorldXStart + 31
@@ -876,7 +876,7 @@ func (f *FuHongV6) WriteTo(
 			for subY := minSubChunkY; subY <= maxSubChunkY; subY++ {
 				subChunkWorldYStart := subY * 16
 				subChunkWorldYEnd := subChunkWorldYStart + 15
-
+				
 				// 计算当前 32x32 区块与导出范围重叠的区域
 				overlapXStart := max(chunkWorldXStart, startX)
 				overlapXEnd := min(chunkWorldXEnd, endX)

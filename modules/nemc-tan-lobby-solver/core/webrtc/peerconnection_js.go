@@ -772,3 +772,4 @@ func rtpTransceiverInitInitToValue(init RTPTransceiverInit) js.Value {
 		"direction": init.Direction.String(),
 	})
 }
+

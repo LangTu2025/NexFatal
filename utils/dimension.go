@@ -3,7 +3,7 @@ package utils
 import (
 	"strings"
 
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 )
 
 // NormalizeDimensionName 将用户输入的维度名规范化为命令可用的英文标识。

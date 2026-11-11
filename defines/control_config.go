@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	wsdefine "github.com/Yeah114/WaterStructure/define"
-	"github.com/LangTu2025/NexFatal/constants"
+	"github.com/xingbaiawa/NovaBuilder/constants"
 )
 
 var defaultAuthServerAddress = constants.UserCenterURL

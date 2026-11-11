@@ -7,17 +7,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
-	game_control "github.com/LangTu2025/NexFatal/control"
-	"github.com/LangTu2025/NexFatal/defines"
-	taskpkg "github.com/LangTu2025/NexFatal/task"
-	"github.com/LangTu2025/NexFatal/utils"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
+	game_control "github.com/xingbaiawa/NovaBuilder/control"
+	"github.com/xingbaiawa/NovaBuilder/defines"
+	taskpkg "github.com/xingbaiawa/NovaBuilder/task"
+	"github.com/xingbaiawa/NovaBuilder/utils"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 )
 
 func openBuildFlow(ctx context.Context) {
-	ui.Page("开始构建", "连接服务器 → 配置建筑 → 确认并执行；输入 /back 返回首页")
-	ui.Step(1, 3, "目标服务器")
 	serverConfig, err := pickServerConfig()
 	if err != nil {
 		fmt.Printf(loc.Text(loc.KeyBuildSelectServerConfigFailed), err)
@@ -45,7 +43,6 @@ func openBuildFlow(ctx context.Context) {
 		return
 	}
 
-	ui.Step(2, 3, "配置建筑任务")
 	buildTasks, err := collectBuildTasks()
 	if err != nil {
 		fmt.Printf(loc.Text(loc.KeyBuildConfigureTasksFailed), err)
@@ -56,11 +53,6 @@ func openBuildFlow(ctx context.Context) {
 		return
 	}
 
-	ui.Step(3, 3, "确认构建")
-	ui.Summary("任务概览", []ui.Field{
-		{Label: "目标", Value: serverKindText(serverConfig.ServerKind) + " / " + serverCodeText(serverConfig.RentalServerCode)},
-		{Label: "任务数", Value: fmt.Sprint(len(buildTasks))},
-	})
 	if !ui.ConfirmInfoWithDefault(loc.Text(loc.KeyBuildRunNow), true) {
 		return
 	}

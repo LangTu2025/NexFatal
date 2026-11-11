@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	wsdefine "github.com/Yeah114/WaterStructure/define"
-	"github.com/LangTu2025/NexFatal/control"
-	"github.com/LangTu2025/NexFatal/defines"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	"github.com/xingbaiawa/NovaBuilder/control"
+	"github.com/xingbaiawa/NovaBuilder/defines"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 	"go.uber.org/ratelimit"
 )
 

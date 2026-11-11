@@ -8,7 +8,7 @@ import (
 	bwo_block "github.com/TriM-Organization/bedrock-world-operator/block"
 	bwo_chunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
 	wsdefine "github.com/Yeah114/WaterStructure/define"
-	"github.com/LangTu2025/NexFatal/defines"
+	"github.com/xingbaiawa/NovaBuilder/defines"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 )
 

@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LangTu2025/NexFatal/control"
-	"github.com/LangTu2025/NexFatal/utils"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	"github.com/xingbaiawa/NovaBuilder/control"
+	"github.com/xingbaiawa/NovaBuilder/utils"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
 )
 

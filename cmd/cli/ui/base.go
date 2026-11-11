@@ -2,48 +2,17 @@ package ui
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
 
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 	"golang.org/x/term"
 )
 
 var reader = bufio.NewReader(os.Stdin)
-
-// ErrInputClosed ends an interactive session when its input stream closes.
-var ErrInputClosed = errors.New("输入已关闭")
-var errBack = errors.New("返回首页")
-
-// HandleInputClose belongs at the interactive entry point. Other panics stay visible.
-func HandleInputClose() {
-	if value := recover(); value != nil && value != ErrInputClosed && value != errBack {
-		panic(value)
-	}
-}
-
-// RunPage lets any prompt return to the home menu with /back.
-func RunPage(page func()) {
-	defer func() {
-		if value := recover(); value != nil && value != errBack {
-			panic(value)
-		}
-	}()
-	page()
-}
-
-func inputValue(line string) string {
-	value := strings.TrimSpace(line)
-	if value == "/back" {
-		panic(errBack)
-	}
-	return value
-}
 
 func ResetInput() {
 	reader.Reset(os.Stdin)
@@ -67,14 +36,15 @@ func startInteractiveLine() {
 func Input(prompt string) string {
 	startInteractiveLine()
 	fmt.Print(prompt)
-	line, err := reader.ReadString('\n')
+	var buf [4096]byte
+	n, err := os.Stdin.Read(buf[:])
 	if closePromptLineAfterInput() {
 		fmt.Println()
 	}
-	if err != nil && (err != io.EOF || len(line) == 0) {
-		panic(ErrInputClosed)
+	if err != nil || n == 0 {
+		return ""
 	}
-	return inputValue(line)
+	return strings.TrimSpace(string(buf[:n]))
 }
 
 func InputInfo(prompt string) string {
@@ -82,7 +52,7 @@ func InputInfo(prompt string) string {
 }
 
 func InputWithDefault(prompt string, defaultValue string) string {
-	value := Input(defaultPrompt(prompt, defaultValue))
+	value := Input(prompt)
 	if value == "" {
 		return defaultValue
 	}
@@ -90,7 +60,7 @@ func InputWithDefault(prompt string, defaultValue string) string {
 }
 
 func InputInfoWithDefault(prompt string, defaultValue string) string {
-	value := InputInfo(defaultPrompt(prompt, defaultValue))
+	value := InputInfo(prompt)
 	if value == "" {
 		return defaultValue
 	}
@@ -110,7 +80,7 @@ func InputInt(prompt string) int {
 
 func InputIntWithDefault(prompt string, defaultValue int) int {
 	for {
-		value := strings.TrimSpace(Input(defaultPrompt(prompt, strconv.Itoa(defaultValue))))
+		value := strings.TrimSpace(Input(prompt))
 		if value == "" {
 			return defaultValue
 		}
@@ -124,7 +94,7 @@ func InputIntWithDefault(prompt string, defaultValue int) int {
 
 func InputInfoIntWithDefault(prompt string, defaultValue int) int {
 	for {
-		value := strings.TrimSpace(InputInfo(defaultPrompt(prompt, strconv.Itoa(defaultValue))))
+		value := strings.TrimSpace(InputInfo(prompt))
 		if value == "" {
 			return defaultValue
 		}
@@ -146,7 +116,7 @@ func Password(prompt string) string {
 	if err != nil {
 		return ""
 	}
-	return inputValue(string(bytes))
+	return strings.TrimSpace(string(bytes))
 }
 
 func PasswordInfo(prompt string) string {
@@ -178,18 +148,40 @@ func ConfirmWithDefault(prompt string, defaultYes bool) bool {
 }
 
 func ConfirmInfoWithDefault(prompt string, defaultYes bool) bool {
-	return ConfirmWithDefault(InfoPrompt(prompt), defaultYes)
+	suffix := " [y/N]: "
+	if defaultYes {
+		suffix = " [Y/n]: "
+	}
+	for {
+		value := strings.ToLower(strings.TrimSpace(InputInfo(prompt + suffix)))
+		if value == "" {
+			return defaultYes
+		}
+		if value == "y" || value == "yes" {
+			return true
+		}
+		if value == "n" || value == "no" {
+			return false
+		}
+		fmt.Println(loc.Text(loc.KeyUIConfirmYOrN))
+	}
 }
 
 func Select(prompt string, options []string) (int, string) {
 	if len(options) == 0 {
 		return -1, ""
 	}
-	items := make([]MenuOption, len(options))
+	startInteractiveLine()
+	fmt.Println(prompt + ":")
 	for i, option := range options {
-		items[i] = MenuOption{ID: strconv.Itoa(i + 1), Label: option}
+		fmt.Printf("  [%d] %s\n", i+1, option)
 	}
-	id := SelectID(prompt, items, "")
-	index, _ := strconv.Atoi(id)
-	return index - 1, options[index-1]
+	for {
+		value := strings.TrimSpace(Input("  (ID): "))
+		index, err := strconv.Atoi(value)
+		if err == nil && index >= 1 && index <= len(options) {
+			return index - 1, options[index-1]
+		}
+		fmt.Println(loc.Text(loc.KeyUIInvalidSelection))
+	}
 }

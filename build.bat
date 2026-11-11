@@ -1,10 +1,9 @@
 @echo off
 chcp 65001 >nul
 setlocal enabledelayedexpansion
-cd /d "%~dp0"
 
 set "APP_NAME=NexFatal"
-set "MODULE_PATH=github.com/LangTu2025/NexFatal"
+set "MODULE_PATH=github.com/xingbaiawa/NovaBuilder"
 set "MAIN_PKG=./cmd/cli"
 set "DIST_DIR=%APP_NAME%_Storage\dist"
 set "NO_PAUSE="
@@ -51,7 +50,8 @@ if defined CHECK_ONLY (
     exit /b 0
 )
 
-if not exist "%DIST_DIR%" mkdir "%DIST_DIR%"
+if exist "%DIST_DIR%" rmdir /s /q "%DIST_DIR%"
+mkdir "%DIST_DIR%" 2>nul
 if errorlevel 1 (
     echo 错误: 无法创建输出目录 %DIST_DIR%
     call :maybe_pause

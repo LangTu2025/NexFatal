@@ -1,208 +1,201 @@
 package main
 
 import (
-	"context"
+	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
-	"github.com/LangTu2025/NexFatal/defines"
-	"github.com/LangTu2025/NexFatal/utils"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
+	"github.com/xingbaiawa/NovaBuilder/defines"
+	"github.com/xingbaiawa/NovaBuilder/utils"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
+	sh "github.com/xingbaiawa/NovaBuilder/utils/safe_http"
 )
 
-var (
-	sessionAuthToken     string
-	sessionAuthServer    string
-	sessionProfile       *accountProfile
-	sessionExpiresAt     string
-	sessionVerifiedAt    time.Time
-	sessionDoNotRemember bool
-)
-
-func clearAccountSession() {
-	sessionAuthToken = ""
-	sessionAuthServer = ""
-	sessionProfile = nil
-	sessionExpiresAt = ""
-	sessionVerifiedAt = time.Time{}
-}
-
-func useAccount(login accountLogin) {
-	server, _ := utils.CanonicalAuthServer(defines.DefaultAuthServerAddress())
-	sessionAuthToken = login.Token
-	sessionAuthServer = server
-	sessionProfile = &login.Profile
-	sessionExpiresAt = login.ExpiresAt
-	sessionVerifiedAt = time.Now()
-}
-
-func currentAccountServer() string {
-	server, _ := utils.CanonicalAuthServer(defines.DefaultAuthServerAddress())
-	return server
-}
-
-func accountCandidate(currentToken string) (utils.AuthSession, error) {
-	server := currentAccountServer()
-	if token := strings.TrimSpace(currentToken); token != "" {
-		return utils.AuthSession{Server: server, Token: token}, nil
-	}
-	if sessionAuthToken != "" && (sessionAuthServer == "" || sessionAuthServer == server) {
-		return utils.AuthSession{Server: server, Token: sessionAuthToken, ExpiresAt: sessionExpiresAt}, nil
-	}
-	return utils.LoadAuthSession(defines.DefaultAuthServerAddress())
-}
-
-func validateAccount(ctx context.Context, candidate utils.AuthSession) (accountLogin, error) {
-	if candidate.Server != "" {
-		bound, err := utils.CanonicalAuthServer(candidate.Server)
-		if err != nil {
-			return accountLogin{}, err
-		}
-		if bound != currentAccountServer() {
-			return accountLogin{}, utils.ErrTokenServerMismatch
-		}
-	}
-	api, err := newAccountAPI()
-	if err != nil {
-		return accountLogin{}, err
-	}
-	profile, err := api.check(ctx, candidate.Token)
-	if err != nil {
-		return accountLogin{}, err
-	}
-	return accountLogin{Token: candidate.Token, Profile: profile, ExpiresAt: candidate.ExpiresAt}, nil
-}
-
-func persistAccount(login accountLogin) error {
-	return utils.SaveAuthSession(utils.AuthSession{
-		Server: defines.DefaultAuthServerAddress(), Token: login.Token, ExpiresAt: login.ExpiresAt,
-	})
-}
+var sessionAuthToken string
 
 func resolveAuthToken(currentToken string, persist bool, forcePrompt bool) (string, error) {
+	token := strings.TrimSpace(currentToken)
+	if token != "" {
+		sessionAuthToken = token
+		if persist {
+			if err := utils.SaveTokenToFSM(token); err != nil {
+				ui.Warn(loc.Sprintf(loc.KeyTokenSaveFailed, err))
+			}
+		}
+		return checkUserAndWelcome(token)
+	}
+
 	if forcePrompt {
-		return promptAndUseAccount(context.Background(), persist)
-	}
-	candidate, err := accountCandidate(currentToken)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			ui.Warn("无法复用已保存的登录凭据: " + err.Error())
-		}
-		return promptAndUseAccount(context.Background(), persist)
-	}
-	login, err := validateAccount(context.Background(), candidate)
-	if err != nil {
-		var rejected *accountRejectedError
-		if errors.As(err, &rejected) {
-			ui.Warn("登录凭据未通过验证: " + err.Error())
-			if candidate.Token == sessionAuthToken {
-				clearAccountSession()
+		token = chooseLoginMethod()
+		sessionAuthToken = token
+		if persist {
+			if err := utils.SaveTokenToFSM(token); err != nil {
+				ui.Warn(loc.Sprintf(loc.KeyTokenSaveFailed, err))
 			}
-			return promptAndUseAccount(context.Background(), persist)
 		}
-		// An outage must not discard a previously saved credential or start a paid task.
-		return "", err
+		return token, nil
 	}
-	if persist && !sessionDoNotRemember {
-		if err := persistAccount(login); err != nil {
-			ui.Warn("本次登录有效，但加密保存失败: " + err.Error())
-		}
-	}
-	useAccount(login)
-	if !persist {
-		sessionDoNotRemember = true
-	}
-	welcomeAccount(login.Profile)
-	return login.Token, nil
-}
 
-func welcomeAccount(profile accountProfile) {
-	ui.Info(loc.Sprintf(loc.KeyLoginWelcome, profile.UserName) + " " + loc.Sprintf(loc.KeyLoginBalance, profile.Balance))
-}
+	if strings.TrimSpace(sessionAuthToken) != "" {
+		return sessionAuthToken, nil
+	}
 
-func promptAndUseAccount(ctx context.Context, rememberDefault bool) (string, error) {
-	login, err := promptAccountLogin(ctx)
-	if err != nil {
-		return "", err
-	}
-	if !rememberDefault {
-		useAccount(login)
-		sessionDoNotRemember = true
-		welcomeAccount(login.Profile)
-		return login.Token, nil
-	}
-	remember := ui.ConfirmInfoWithDefault("在本机加密保存登录凭据，下次自动登录", rememberDefault && !sessionDoNotRemember)
-	// Commit local storage before switching the active account. Cancelled or failed
-	// switches leave both the old session and the old saved credential intact.
-	if remember {
-		if err := persistAccount(login); err != nil {
-			return "", fmt.Errorf("保存登录凭据失败，账号未切换: %w", err)
-		}
-	} else if err := utils.RemoveTokenFSM(); err != nil {
-		return "", fmt.Errorf("移除旧登录凭据失败，账号未切换: %w", err)
-	}
-	useAccount(login)
-	sessionDoNotRemember = !remember
-	welcomeAccount(login.Profile)
-	return login.Token, nil
-}
-
-func promptAccountLogin(ctx context.Context) (accountLogin, error) {
-	ui.Page("账号登录", "选择登录方式；输入 /back 返回首页，取消时保留当前账号")
-	for {
-		method := ui.SelectID("登录方式", []ui.MenuOption{
-			{ID: "1", Label: "用户名与密码登录", Description: "密码仅用于此次登录，不保存到本机"},
-			{ID: "2", Label: "API Token 登录", Description: "隐藏输入，验证通过后登录"},
-			{ID: "0", Label: "取消"},
-		}, "")
-		if method == "0" {
-			return accountLogin{}, errors.New("已取消登录")
-		}
-		api, err := newAccountAPI()
+	storedToken, err := utils.LoadTokenFromFSM()
+	if err == nil {
+		sessionAuthToken = strings.TrimSpace(storedToken)
+		token, err = checkUserAndWelcome(sessionAuthToken)
 		if err != nil {
-			return accountLogin{}, err
+			ui.Warn(loc.Text(loc.KeyLoginCheckUserFailed) + ": " + err.Error())
+			if removeErr := utils.RemoveTokenFSM(); removeErr != nil {
+				ui.Warn(loc.Sprintf(loc.KeyTokenRemoveFailed, removeErr))
+			}
+			sessionAuthToken = ""
+			token = chooseLoginMethod()
+			sessionAuthToken = token
 		}
-		var login accountLogin
-		if method == "1" {
-			username := requiredAccountInput(loc.Text(loc.KeyLoginUsername), false)
-			password := requiredAccountInput(loc.Text(loc.KeyLoginPassword), true)
-			ui.Info("正在验证账号…")
-			login, err = api.login(ctx, username, password)
-		} else {
-			token := requiredAccountInput(loc.Text(loc.KeyTokenPrompt), true)
-			ui.Info("正在验证 API Token…")
-			var profile accountProfile
-			profile, err = api.check(ctx, token)
-			login = accountLogin{Token: token, Profile: profile}
+		if persist && token != "" {
+			if err := utils.SaveTokenToFSM(token); err != nil {
+				ui.Warn(loc.Sprintf(loc.KeyTokenSaveFailed, err))
+			}
 		}
-		if err == nil {
-			return login, nil
+		return token, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		ui.Warn(loc.Sprintf(loc.KeyTokenLoadFailedReprompt, err))
+		if removeErr := utils.RemoveTokenFSM(); removeErr != nil {
+			ui.Warn(loc.Sprintf(loc.KeyTokenRemoveFailed, removeErr))
 		}
-		ui.Error("登录未完成: " + err.Error())
-		if ctx.Err() != nil {
-			return accountLogin{}, ctx.Err()
+	}
+
+	token = chooseLoginMethod()
+	sessionAuthToken = token
+	if persist {
+		if err := utils.SaveTokenToFSM(token); err != nil {
+			ui.Warn(loc.Sprintf(loc.KeyTokenSaveFailed, err))
 		}
+	}
+	return token, nil
+}
+
+func chooseLoginMethod() string {
+	index, _ := ui.Select(loc.Text(loc.KeyLoginMethodPrompt), []string{
+		loc.Text(loc.KeyLoginMethodUsername),
+		loc.Text(loc.KeyLoginMethodToken),
+	})
+	switch index {
+	case 0:
+		return loginWithPassword()
+	default:
+		return readAuthToken()
 	}
 }
 
-func requiredAccountInput(prompt string, secret bool) string {
-	for {
-		var value string
-		if secret {
-			value = ui.PasswordInfo(prompt)
+func loginWithPassword() string {
+	username := strings.TrimSpace(ui.InputInfo(loc.Text(loc.KeyLoginUsername)))
+	for username == "" {
+		ui.Warn(loc.Text(loc.KeyLoginUsernameEmpty))
+		username = strings.TrimSpace(ui.InputInfo(loc.Text(loc.KeyLoginUsername)))
+	}
+	password := ui.PasswordInfo(loc.Text(loc.KeyLoginPassword))
+
+	client, err := sh.NewSafeClient(sh.ServerPublicKey, sh.ClientPrivateKey, &sh.ClientConfig{Timeout: 15 * time.Second})
+	if err != nil {
+		ui.Error(loc.Text(loc.KeyLoginCreateClientFailed) + ": " + err.Error())
+		return readAuthToken()
+	}
+
+	endpoint, err := builderEndpointURL(defines.DefaultAuthServerAddress(), "/get-token")
+	if err != nil {
+		ui.Error(loc.Text(loc.KeyLoginGetTokenFailed) + ": " + err.Error())
+		return readAuthToken()
+	}
+	respBody, err := client.PostJSON(endpoint, map[string]any{
+		"username": username,
+		"password": password,
+	})
+	if err != nil {
+		ui.Error(loc.Text(loc.KeyLoginGetTokenFailed) + ": " + err.Error())
+		return readAuthToken()
+	}
+
+	var getTokenResp struct {
+		Success               bool   `json:"Success"`
+		Message               string `json:"Message"`
+		BuilderApiKey         string `json:"builderApiKey"`
+		BuilderApiKeyExpireAt string `json:"builderApiKeyExpireAt"`
+	}
+	if err := json.Unmarshal(respBody, &getTokenResp); err != nil {
+		ui.Error(loc.Text(loc.KeyLoginParseResponseFailed) + ": " + err.Error())
+		return readAuthToken()
+	}
+	if !getTokenResp.Success {
+		msg := strings.TrimSpace(getTokenResp.Message)
+		if msg == "" {
+			msg = loc.Text(loc.KeyLoginGetTokenFailed)
 		} else {
-			value = ui.InputInfo(prompt)
+			msg = loc.Text(loc.KeyLoginGetTokenFailed) + ": " + msg
 		}
-		if strings.TrimSpace(value) != "" {
-			if secret {
-				return value
-			}
-			return strings.TrimSpace(value)
+		ui.Error(msg)
+		return readAuthToken()
+	}
+
+	ui.Info(loc.Text(loc.KeyLoginGetTokenSuccess))
+
+	token, err := checkUserAndWelcome(getTokenResp.BuilderApiKey)
+	if err != nil {
+		ui.Warn(loc.Text(loc.KeyLoginCheckUserFailed) + ": " + err.Error())
+	}
+	return token
+}
+
+func checkUserAndWelcome(token string) (string, error) {
+	client, err := sh.NewSafeClient(sh.ServerPublicKey, sh.ClientPrivateKey, &sh.ClientConfig{Timeout: 15 * time.Second})
+	if err != nil {
+		return token, err
+	}
+
+	endpoint, err := builderEndpointURL(defines.DefaultAuthServerAddress(), "/check-user")
+	if err != nil {
+		return token, err
+	}
+	respBody, err := client.PostJSON(endpoint, map[string]any{
+		"builderApiKey": token,
+	})
+	if err != nil {
+		return token, err
+	}
+
+	var checkResp struct {
+		Success  bool    `json:"Success"`
+		Message  string  `json:"Message"`
+		UserName string  `json:"userName"`
+		Balance  float64 `json:"balance"`
+	}
+	if err := json.Unmarshal(respBody, &checkResp); err != nil {
+		return token, err
+	}
+	if !checkResp.Success {
+		msg := strings.TrimSpace(checkResp.Message)
+		if msg == "" {
+			msg = "用户验证失败"
 		}
-		ui.Warn("输入不能为空，请重新输入或输入 /back 返回")
+		return "", errors.New(msg)
+	}
+
+	ui.Info(loc.Sprintf(loc.KeyLoginWelcome, checkResp.UserName) + " " + loc.Sprintf(loc.KeyLoginBalance, checkResp.Balance))
+
+	return token, nil
+}
+
+func readAuthToken() string {
+	for {
+		token := strings.TrimSpace(ui.InputInfo(loc.Text(loc.KeyTokenPrompt)))
+		if token != "" {
+			return token
+		}
+		ui.Warn(loc.Text(loc.KeyTokenEmpty))
 	}
 }

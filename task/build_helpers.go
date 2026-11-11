@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/schollz/progressbar/v3"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
 )
 

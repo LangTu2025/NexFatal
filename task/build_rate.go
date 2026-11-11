@@ -3,8 +3,8 @@ package task
 import (
 	"context"
 
-	"github.com/LangTu2025/NexFatal/control"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	"github.com/xingbaiawa/NovaBuilder/control"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 	"go.uber.org/ratelimit"
 )
 

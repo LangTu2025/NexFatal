@@ -9,9 +9,9 @@ import (
 	bwo_chunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
 	bwodefine "github.com/TriM-Organization/bedrock-world-operator/define"
 	wsdefine "github.com/Yeah114/WaterStructure/define"
-	"github.com/LangTu2025/NexFatal/control"
-	builderutils "github.com/LangTu2025/NexFatal/utils"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	"github.com/xingbaiawa/NovaBuilder/control"
+	builderutils "github.com/xingbaiawa/NovaBuilder/utils"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
 )

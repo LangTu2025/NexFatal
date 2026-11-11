@@ -8,9 +8,9 @@ import (
 
 	bwo_chunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
 	wsdefine "github.com/Yeah114/WaterStructure/define"
-	"github.com/LangTu2025/NexFatal/control"
-	"github.com/LangTu2025/NexFatal/utils/chunk_fill"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	"github.com/xingbaiawa/NovaBuilder/control"
+	"github.com/xingbaiawa/NovaBuilder/utils/chunk_fill"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"go.uber.org/ratelimit"
 )

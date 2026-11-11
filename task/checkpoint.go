@@ -8,9 +8,9 @@ import (
 	"time"
 
 	wsstructure "github.com/Yeah114/WaterStructure/structure"
-	"github.com/LangTu2025/NexFatal/defines"
-	"github.com/LangTu2025/NexFatal/utils"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	"github.com/xingbaiawa/NovaBuilder/defines"
+	"github.com/xingbaiawa/NovaBuilder/utils"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 )
 
 // BuildTaskInterruptData 保存一次构建异常中断后可恢复的完整快照。

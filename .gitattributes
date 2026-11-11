@@ -1,7 +1,0 @@
-* text=auto
-*.go text eol=lf
-*.mod text eol=lf
-*.sum text eol=lf
-*.yml text eol=lf
-*.properties text eol=lf
-*.bat text eol=crlf

@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LangTu2025/NexFatal/constants"
-	"github.com/LangTu2025/NexFatal/control"
+	"github.com/xingbaiawa/NovaBuilder/constants"
+	"github.com/xingbaiawa/NovaBuilder/control"
 )
 
 const (

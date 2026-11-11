@@ -3,8 +3,8 @@ package main
 import (
 	"strings"
 
-	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
-	"github.com/LangTu2025/NexFatal/control"
+	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
+	"github.com/xingbaiawa/NovaBuilder/control"
 )
 
 func showTaskError(err error, cancelledMessage, fallbackMessage string) {

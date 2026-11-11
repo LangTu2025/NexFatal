@@ -9,10 +9,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
-	"github.com/LangTu2025/NexFatal/defines"
-	"github.com/LangTu2025/NexFatal/utils"
-	safehttp "github.com/LangTu2025/NexFatal/utils/safe_http"
+	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
+	"github.com/xingbaiawa/NovaBuilder/defines"
+	safehttp "github.com/xingbaiawa/NovaBuilder/utils/safe_http"
 )
 
 type InitChargeResponse struct {
@@ -152,11 +151,7 @@ func (c *BuilderCharger) IsFree() bool {
 }
 
 func builderEndpointURL(authServer, apiPath string) (string, error) {
-	canonical, err := utils.CanonicalAuthServer(authServer)
-	if err != nil {
-		return "", err
-	}
-	u, err := url.Parse(canonical)
+	u, err := url.Parse(strings.TrimSpace(authServer))
 	if err != nil {
 		return "", err
 	}

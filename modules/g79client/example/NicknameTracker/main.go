@@ -21,3 +21,5 @@ func main() {
 	}
 	fmt.Printf("昵称=%s 的位置: room_id=%s, server_no=%s, server_id=%s\n", nickname, loc.RoomID, loc.ServerNo, loc.ServerID)
 }
+
+

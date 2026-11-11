@@ -82,3 +82,4 @@ func TestFuHongV4_FromFile_ParsesContainerCommandAndSignNBT(t *testing.T) {
 		t.Fatalf("expected FrontText.Text hello, got %v", signNBT["FrontText"])
 	}
 }
+

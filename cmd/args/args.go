@@ -9,8 +9,8 @@ import (
 
 	wsdefine "github.com/Yeah114/WaterStructure/define"
 	wsstructure "github.com/Yeah114/WaterStructure/structure"
-	"github.com/LangTu2025/NexFatal/defines"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	"github.com/xingbaiawa/NovaBuilder/defines"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 )
 
 // Parse 解析命令行参数，并返回控制配置、构建配置和是否直接运行。

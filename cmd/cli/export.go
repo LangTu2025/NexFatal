@@ -6,24 +6,21 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
-	"github.com/LangTu2025/NexFatal/control"
-	"github.com/LangTu2025/NexFatal/defines"
-	taskpkg "github.com/LangTu2025/NexFatal/task"
-	"github.com/LangTu2025/NexFatal/utils"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
 	bwodefine "github.com/TriM-Organization/bedrock-world-operator/define"
 	structure_define "github.com/Yeah114/WaterStructure/define"
 	"github.com/schollz/progressbar/v3"
+	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
+	"github.com/xingbaiawa/NovaBuilder/defines"
+	"github.com/xingbaiawa/NovaBuilder/control"
+	taskpkg "github.com/xingbaiawa/NovaBuilder/task"
+	"github.com/xingbaiawa/NovaBuilder/utils"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 )
 
 func openExportFlow(ctx context.Context) {
-	ui.Page("开始导出", "选择租赁服 → 设置导出区域 → 确认并保存；输入 /back 返回首页")
-	ui.Step(1, 3, "目标服务器")
 	serverConfig, err := pickServerConfig()
 	if err != nil {
 		fmt.Printf(loc.Text(loc.KeyExportSelectServerConfigFailed), err)
@@ -34,7 +31,6 @@ func openExportFlow(ctx context.Context) {
 		return
 	}
 
-	ui.Step(2, 3, "配置导出区域")
 	exportTasks, err := collectExportTasks()
 	if err != nil {
 		fmt.Printf(loc.Text(loc.KeyExportConfigureTasksFailed), err)
@@ -45,12 +41,6 @@ func openExportFlow(ctx context.Context) {
 		return
 	}
 
-	ui.Step(3, 3, "确认导出")
-	ui.Summary("任务概览", []ui.Field{
-		{Label: "服务器", Value: serverCodeText(serverConfig.RentalServerCode)},
-		{Label: "任务数", Value: fmt.Sprint(len(exportTasks))},
-		{Label: "默认输出位置", Value: utils.GetExportFileDir()},
-	})
 	if !ui.ConfirmInfoWithDefault(loc.Text(loc.KeyExportRunNow), true) {
 		return
 	}
@@ -94,14 +84,13 @@ func collectExportTasks() ([]defines.ExportTaskConfig, error) {
 }
 
 func collectExportTask() (defines.ExportTaskConfig, error) {
-	ui.Section("导出设置", "设置文件名、起止坐标及维度")
 	task := *defines.NewExportTaskConfig()
 
 	defaultName := filepath.Join(
 		utils.GetExportFileDir(),
 		fmt.Sprintf("NexFatal_Export_%s.mcworld", time.Now().Format("20060102_150405")),
 	)
-	task.FilePath = strings.Trim(strings.TrimSpace(ui.InputInfoWithDefault(loc.Text(loc.KeyExportFilePathPrompt), defaultName)), "\"'")
+	task.FilePath = strings.TrimSpace(ui.InputInfoWithDefault(loc.Text(loc.KeyExportFilePathPrompt), defaultName))
 	if task.FilePath == "" {
 		return task, errors.New(loc.Text(loc.KeyExportFilePathEmpty))
 	}
@@ -149,7 +138,8 @@ func readExportBlockPos(prompt string) (defines.BlockPos, error) {
 }
 
 func parseBlockCoordinate(input string) (int32, error) {
-	value, err := strconv.ParseInt(strings.TrimSpace(input), 10, 32)
+	var value int64
+	_, err := fmt.Sscan(strings.TrimSpace(input), &value)
 	return int32(value), err
 }
 

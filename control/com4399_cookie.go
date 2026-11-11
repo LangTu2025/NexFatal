@@ -16,17 +16,16 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
-	"github.com/LangTu2025/NexFatal/constants"
-	builderutils "github.com/LangTu2025/NexFatal/utils"
-	httpproxy "github.com/LangTu2025/NexFatal/utils/proxy"
-	safehttp "github.com/LangTu2025/NexFatal/utils/safe_http"
 	"github.com/Yeah114/g79client/account/com4399"
 	"github.com/Yeah114/g79client/account/mpay"
 	x19sdk "github.com/Yeah114/g79client/account/x19/sdk"
+	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
+	builderutils "github.com/xingbaiawa/NovaBuilder/utils"
+	httpproxy "github.com/xingbaiawa/NovaBuilder/utils/proxy"
+	safehttp "github.com/xingbaiawa/NovaBuilder/utils/safe_http"
 )
 
-const defaultBuilderUserCenter = constants.UserCenterURL
+const defaultBuilderUserCenter = "https://user.aurelrune.com"
 
 const (
 	defaultCheckEnterRoleID = ""

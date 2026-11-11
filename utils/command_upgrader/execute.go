@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/LangTu2025/NexFatal/utils/command_upgrader/mc_command_parser"
+	"github.com/xingbaiawa/NovaBuilder/utils/command_upgrader/mc_command_parser"
 )
 
 var newExecuteKeywords = map[string]struct{}{

@@ -20,11 +20,11 @@ import (
 	structure_define "github.com/Yeah114/WaterStructure/define"
 	"github.com/mholt/archiver/v3"
 	"github.com/mitchellh/mapstructure"
-	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
-	"github.com/LangTu2025/NexFatal/defines"
-	"github.com/LangTu2025/NexFatal/control"
-	builderutils "github.com/LangTu2025/NexFatal/utils"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
+	"github.com/xingbaiawa/NovaBuilder/defines"
+	"github.com/xingbaiawa/NovaBuilder/control"
+	builderutils "github.com/xingbaiawa/NovaBuilder/utils"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 	mcnbt "github.com/xingbaiawa/StarShuttler/core/minecraft/nbt"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/block_actors"
@@ -237,7 +237,7 @@ func (e *ExportTask) Start(ctx context.Context) error {
 	dimension := bwodefine.Dimension(dimensionID)
 
 	outputPath := cleanExportOutputPath(e.FilePath)
-	worldDir, err := os.MkdirTemp("", "NexFatal_export_world_*")
+	worldDir, err := os.MkdirTemp("", "NovaBuilder_export_world_*")
 	if err != nil {
 		return loc.Errf(loc.KeyExportCreateTempWorldDirFailed, err)
 	}

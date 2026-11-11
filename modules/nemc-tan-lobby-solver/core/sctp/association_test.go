@@ -3796,3 +3796,4 @@ func TestConfigMTU(t *testing.T) {
 	require.NoError(t, a2.Close())
 	require.NoError(t, conn2.Close())
 }
+

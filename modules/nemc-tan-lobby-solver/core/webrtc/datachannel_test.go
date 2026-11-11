@@ -484,3 +484,4 @@ func TestDataChannelParameters(t *testing.T) { //nolint:cyclop
 		closeReliabilityParamTest(t, offerPC, answerPC, done)
 	})
 }
+

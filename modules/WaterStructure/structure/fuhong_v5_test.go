@@ -32,3 +32,4 @@ func TestFuHongV5EncodeDecodeRoundTrip(t *testing.T) {
 		t.Fatalf("roundtrip mismatch got %q want %q", decoded, plain)
 	}
 }
+

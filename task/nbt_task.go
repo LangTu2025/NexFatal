@@ -10,9 +10,9 @@ import (
 	wsdefine "github.com/Yeah114/WaterStructure/define"
 	wsstructure "github.com/Yeah114/WaterStructure/structure"
 	"github.com/schollz/progressbar/v3"
-	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
-	"github.com/LangTu2025/NexFatal/control"
-	loc "github.com/LangTu2025/NexFatal/utils/localization"
+	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
+	"github.com/xingbaiawa/NovaBuilder/control"
+	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"go.uber.org/ratelimit"
 )

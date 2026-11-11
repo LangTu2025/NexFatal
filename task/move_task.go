@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/LangTu2025/NexFatal/defines"
-	"github.com/LangTu2025/NexFatal/control"
+	"github.com/xingbaiawa/NovaBuilder/defines"
+	"github.com/xingbaiawa/NovaBuilder/control"
 )
 
 const TaskTypeMove TaskType = "move"
