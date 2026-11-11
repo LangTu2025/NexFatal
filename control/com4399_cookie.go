@@ -16,16 +16,17 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Yeah114/g79client/account/com4399"
-	"github.com/Yeah114/g79client/account/mpay"
-	x19sdk "github.com/Yeah114/g79client/account/x19/sdk"
 	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
+	"github.com/LangTu2025/NexFatal/constants"
 	builderutils "github.com/LangTu2025/NexFatal/utils"
 	httpproxy "github.com/LangTu2025/NexFatal/utils/proxy"
 	safehttp "github.com/LangTu2025/NexFatal/utils/safe_http"
+	"github.com/Yeah114/g79client/account/com4399"
+	"github.com/Yeah114/g79client/account/mpay"
+	x19sdk "github.com/Yeah114/g79client/account/x19/sdk"
 )
 
-const defaultBuilderUserCenter = "https://user.novabuilder.pro"
+const defaultBuilderUserCenter = constants.UserCenterURL
 
 const (
 	defaultCheckEnterRoleID = ""

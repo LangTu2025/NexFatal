@@ -23,7 +23,7 @@ Windows 可运行 `build.bat --no-pause` 编译 Android、Linux、Windows 和 ma
 - 建筑导入支持扫描文件，也可直接粘贴包含空格或引号的路径。
 - 服务器配置与任务组均可创建、查看、修改、重命名和删除；同名保存会先询问是否覆盖。
 - 启动首页不需要联网；选择“公告与更新”时联网检查。实际登录和建筑任务需要可用的认证服务、游戏服务器及对应权限。
-- 当前默认认证服务沿用 NovaBuilder 的 `https://user.novabuilder.pro`，应用仓库与版本检查指向 `LangTu2025/NexFatal`。
+- 当前默认用户中心为 `https://user.aurelrune.com`，应用仓库与版本检查指向 `LangTu2025/NexFatal`。
 
 ## 用户中心
 

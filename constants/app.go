@@ -13,5 +13,5 @@ const (
 	LatestAPIURL = "https://api.github.com/repos/LangTu2025/NexFatal/releases/latest"
 	// UserCenterURL 是默认用户中心地址。
 	// UserCenterURL = "http://localhost:5173"
-	UserCenterURL = "https://user.novabuilder.pro"
+	UserCenterURL = "https://user.aurelrune.com"
 )

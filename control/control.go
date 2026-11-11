@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	wsdefine "github.com/Yeah114/WaterStructure/define"
 	"github.com/LangTu2025/NexFatal/cmd/cli/ui"
 	"github.com/LangTu2025/NexFatal/constants"
 	"github.com/LangTu2025/NexFatal/defines"
@@ -18,6 +17,7 @@ import (
 	"github.com/LangTu2025/NexFatal/utils/command_upgrader"
 	loc "github.com/LangTu2025/NexFatal/utils/localization"
 	safehttp "github.com/LangTu2025/NexFatal/utils/safe_http"
+	wsdefine "github.com/Yeah114/WaterStructure/define"
 	"github.com/xingbaiawa/StarShuttler/client"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
 	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
@@ -47,7 +47,7 @@ type Control struct {
 var ErrOperatorTimeout = errors.New("机器人未在规定时间内获得管理员权限")
 var authUnknownErrorDetailPattern = regexp.MustCompile(`Unknown error \(status=\d+,\s*body=.*\)`)
 
-const defaultAdvertisementUserCenter = "https://user.novabuilder.pro"
+const defaultAdvertisementUserCenter = constants.UserCenterURL
 
 type builderAdvertisementResponse struct {
 	Success bool     `json:"Success"`
