@@ -501,20 +501,44 @@ func (c *Control) loadNBTStructure(dimensionName, structureName string, pos prot
 	return c.SendSettingsDimensionCommand(dimensionName, command)
 }
 
-// UpdateCommandBlock 通过命令方块更新包写入命令和方块实体数据。
+// PrepareCommandBlockAsync 提前放置命令方块本体，不等待逐块命令回包。
+// 一组方块准备完成后再执行传送同步，随后连续写入更新包并统一回读校验。
+func (c *Control) PrepareCommandBlockAsync(pos protocol.BlockPos, blockName string, blockStates map[string]any, blockNBT map[string]any) error {
+	if c.API == nil {
+		return loc.Err(loc.KeyControlAPINotInitialized)
+	}
+	block, err := parseCommandBlockForWrite(blockName, blockStates, blockNBT)
+	if err != nil {
+		return err
+	}
+	if err := c.API.SetBlock().SetBlockAsync(pos, block.BlockName(), block.BlockStatesString()); err != nil {
+		return loc.Errf(loc.KeyControlWriteCommandBlockFailed, err)
+	}
+	return nil
+}
+
+func parseCommandBlockForWrite(blockName string, blockStates map[string]any, blockNBT map[string]any) (*nbt_parser_block.CommandBlock, error) {
+	block, err := nbt_parser_block.ParseBlock(nil, blockName, blockStates, blockNBT)
+	if err != nil {
+		return nil, loc.Errf(loc.KeyControlParseCommandBlockFailed, err)
+	}
+	commandBlock, ok := block.(*nbt_parser_block.CommandBlock)
+	if !ok {
+		return nil, loc.Err(loc.KeyControlTargetNotCommandBlock)
+	}
+	return commandBlock, nil
+}
+
+// UpdateCommandBlock 只发送命令方块更新包，不重复 setblock，也不等待命令回包。
+// 调用方须先完成 PrepareCommandBlockAsync 和传送同步，再统一回读校验结果。
 func (c *Control) UpdateCommandBlock(pos protocol.BlockPos, blockName string, blockStates map[string]any, blockNBT map[string]any) error {
 	if c.Resources == nil {
 		return loc.Err(loc.KeyControlResourcesNotInitialized)
 	}
 
-	block, err := nbt_parser_block.ParseBlock(nil, blockName, blockStates, blockNBT)
+	commandBlock, err := parseCommandBlockForWrite(blockName, blockStates, blockNBT)
 	if err != nil {
-		return loc.Errf(loc.KeyControlParseCommandBlockFailed, err)
-	}
-
-	commandBlock, ok := block.(*nbt_parser_block.CommandBlock)
-	if !ok {
-		return loc.Err(loc.KeyControlTargetNotCommandBlock)
+		return err
 	}
 
 	var mode uint32 = packet.CommandBlockImpulse
@@ -526,10 +550,6 @@ func (c *Control) UpdateCommandBlock(pos protocol.BlockPos, blockName string, bl
 	}
 
 	command := command_upgrader.NormalizeCommandBlockCommand(commandBlock.NBT.Command)
-	if err := c.API.SetBlock().SetBlock(pos, commandBlock.BlockName(), commandBlock.BlockStatesString()); err != nil {
-		return loc.Errf(loc.KeyControlWriteCommandBlockFailed, err)
-	}
-
 	if err := c.Resources.WritePacket(&packet.CommandBlockUpdate{
 		Block:              true,
 		Position:           pos,

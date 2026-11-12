@@ -27,7 +27,11 @@ func (c *Control) TeleportForCommandBlocks(ctx context.Context, dimensionName st
 	}
 	return teleportWithPlayerAuthInput(ctx, pos, c.Resources.BotInfo().EntityRuntimeID,
 		c.Resources.PacketListener(),
-		func() error { return c.Teleport(dimensionName, pos) },
+		// 实际传送由 MovePlayer 回包确认，不再额外等待 CommandOutput
+		// 或发送两次空命令等待；位置仍使用服务器报告的真实坐标。
+		func() error {
+			return c.SendSettingsCommandAsync(fmt.Sprintf("tp @s %d %d %d", pos[0], pos[1], pos[2]))
+		},
 		c.Resources.WritePacket,
 	)
 }

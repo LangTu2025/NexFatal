@@ -56,11 +56,7 @@ func (b *BuildTask) writeCommandBlockGroups(ctx context.Context, ctrl *game_cont
 		if err := ctx.Err(); err != nil {
 			return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
 		}
-		position, err := b.moveToCommandBlockGroup(ctx, ctrl, group.teleportPos)
-		if err != nil {
-			return placed, loc.Errf(loc.KeyBuildCommandBatchTeleportFailed, group.teleportPos.X(), group.teleportPos.Y(), group.teleportPos.Z(), err)
-		}
-		written, err := b.writeCommandBlockGroup(ctx, ctrl, position, group.tasks, mode, progress, bar)
+		written, err := b.writeCommandBlockGroup(ctx, ctrl, group.tasks, mode, progress, bar)
 		if err != nil {
 			return placed, err
 		}
@@ -98,14 +94,64 @@ func (b *BuildTask) prepareCommandBlockWrites(ctx context.Context, ctrl *game_co
 	return nil
 }
 
-func (b *BuildTask) writeCommandBlockGroup(ctx context.Context, ctrl *game_control.Control, position [3]float32, tasks []nbtPlacementTask, mode commandBlockWriteMode, progress *buildProgressReporter, bar *progressbar.ProgressBar) (int, error) {
+type commandBlockGroupIO struct {
+	prepare func(nbtPlacementTask) error
+	move    func(protocol.BlockPos) ([3]float32, error)
+	write   func(nbtPlacementTask) error
+	verify  func([]nbtPlacementTask) (commandBlockVerificationResult, error)
+}
+
+func (b *BuildTask) writeCommandBlockGroup(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, mode commandBlockWriteMode, progress *buildProgressReporter, bar *progressbar.ProgressBar) (int, error) {
+	return b.writeCommandBlockGroupWithIO(ctx, tasks, mode, progress, bar, commandBlockGroupIO{
+		prepare: func(task nbtPlacementTask) error {
+			return ctrl.PrepareCommandBlockAsync(task.pos, task.blockName, task.blockStates, task.nbtData)
+		},
+		move:  func(pos protocol.BlockPos) ([3]float32, error) { return b.moveToCommandBlockGroup(ctx, ctrl, pos) },
+		write: func(task nbtPlacementTask) error { return b.writeCommandBlockNBT(ctrl, task) },
+		verify: func(tasks []nbtPlacementTask) (commandBlockVerificationResult, error) {
+			return b.verifyCommandBlocks(ctx, ctrl, tasks)
+		},
+	})
+}
+
+func (b *BuildTask) writeCommandBlockGroupWithIO(ctx context.Context, tasks []nbtPlacementTask, mode commandBlockWriteMode, progress *buildProgressReporter, bar *progressbar.ProgressBar, io commandBlockGroupIO) (int, error) {
 	pending := append([]nbtPlacementTask(nil), tasks...)
 	placed := 0
 	for len(pending) > 0 {
+		// 本体放置一组连续发送，不逐块等待回包。TP 放在这些命令之后，
+		// 确保更新包发送前已完成本组的放置提交与传送同步。
+		prepared := make([]nbtPlacementTask, 0, len(pending))
+		for _, task := range pending {
+			if err := ctx.Err(); err != nil {
+				return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
+			}
+			if err := io.prepare(task); err != nil {
+				if mode == lenientCommandBlockWrite {
+					reportSkippedNBTTask(loc.Text(loc.KeyBuildCommandBlockKind), task, err)
+					if bar != nil {
+						bar.Add(1)
+					}
+					continue
+				}
+				return placed, loc.Errf(loc.KeyBuildCommandBatchWriteFailed, 1, task.pos.X(), task.pos.Y(), task.pos.Z(), err)
+			}
+			prepared = append(prepared, task)
+		}
+		if len(prepared) == 0 {
+			return placed, nil
+		}
+		if err := ctx.Err(); err != nil {
+			return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
+		}
+		target := prepared[0].pos
+		position, err := io.move(target)
+		if err != nil {
+			return placed, loc.Errf(loc.KeyBuildCommandBatchTeleportFailed, target.X(), target.Y(), target.Z(), err)
+		}
 		// 命令方块更新包没有稳定的逐块确认，所以写完后通过子区块回读校验。
 		// 未读到或数据不一致的方块会一直重发更新包并重新校验，直到成功或任务被取消。
-		wrote := make([]nbtPlacementTask, 0, len(pending))
-		for _, task := range pending {
+		wrote := make([]nbtPlacementTask, 0, len(prepared))
+		for _, task := range prepared {
 			if err := ctx.Err(); err != nil {
 				return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
 			}
@@ -113,7 +159,7 @@ func (b *BuildTask) writeCommandBlockGroup(ctx context.Context, ctrl *game_contr
 			// 写入前用刚同步的实际坐标检查，超出范围则重新传送并同步。
 			if !withinCommandBlockWriteReach(position, task.pos) {
 				var err error
-				position, err = b.moveToCommandBlockGroup(ctx, ctrl, task.pos)
+				position, err = io.move(task.pos)
 				if err != nil {
 					return placed, loc.Errf(loc.KeyBuildCommandBatchTeleportFailed, task.pos.X(), task.pos.Y(), task.pos.Z(), err)
 				}
@@ -121,7 +167,7 @@ func (b *BuildTask) writeCommandBlockGroup(ctx context.Context, ctrl *game_contr
 					return placed, fmt.Errorf("机器人传送后仍不在命令方块 (%d, %d, %d) 的 6.5 格写入范围内", task.pos.X(), task.pos.Y(), task.pos.Z())
 				}
 			}
-			if err := b.writeCommandBlockNBT(ctrl, task); err != nil {
+			if err := io.write(task); err != nil {
 				if mode == lenientCommandBlockWrite {
 					reportSkippedNBTTask(loc.Text(loc.KeyBuildCommandBlockKind), task, err)
 					if bar != nil {
@@ -137,7 +183,10 @@ func (b *BuildTask) writeCommandBlockGroup(ctx context.Context, ctrl *game_contr
 			return placed, nil
 		}
 
-		verification, err := b.verifyCommandBlocks(ctx, ctrl, wrote)
+		if err := ctx.Err(); err != nil {
+			return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
+		}
+		verification, err := io.verify(wrote)
 		if err != nil {
 			if mode == lenientCommandBlockWrite {
 				reportSkippedNBTBatch(loc.Text(loc.KeyBuildCommandBlockKind), wrote, err, bar)
