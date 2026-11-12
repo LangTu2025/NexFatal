@@ -9,6 +9,7 @@ import (
 func LoginLocalLobby(cfg Config) (*Client, error) {
 	session, err := local_lobby.Login(local_lobby.Config{
 		Context:           cfg.Context,
+		AuthTransport:     cfg.AuthTransport,
 		AuthServerAddress: cfg.AuthServerAddress,
 		AuthServerToken:   cfg.AuthServerToken,
 		ServerCode:        cfg.RentalServerCode,

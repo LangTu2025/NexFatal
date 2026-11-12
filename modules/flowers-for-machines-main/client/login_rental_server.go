@@ -30,6 +30,7 @@ func LoginRentalServer(cfg Config) (client *Client, err error) {
 	}
 	authClient, err := auth.CreateClientContext(cfg.Context, &auth.ClientOptions{
 		AuthServer: cfg.AuthServerAddress,
+		Transport:  cfg.AuthTransport,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("LoginRentalServer: %w", err)

@@ -14,7 +14,7 @@ import (
 	"github.com/xingbaiawa/NovaBuilder/defines"
 )
 
-func TestDefaultFlowersEndpointDoesNotChangeBuilderRequests(t *testing.T) {
+func TestFlowersUsesConfiguredAuthenticationService(t *testing.T) {
 	original := defines.DefaultAuthServerAddress()
 	defer defines.SetDefaultAuthServerAddress(original)
 	defines.SetDefaultAuthServerAddress(constants.UserCenterURL)
@@ -22,11 +22,17 @@ func TestDefaultFlowersEndpointDoesNotChangeBuilderRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.AuthServerAddress != "https://auth.aurelrune.com" {
+	if cfg.AuthServerAddress != constants.UserCenterURL || cfg.AuthTransport == nil {
 		t.Fatalf("Flowers endpoint: %s", cfg.AuthServerAddress)
 	}
 	if defines.DefaultAuthServerAddress() != constants.UserCenterURL {
 		t.Fatal("Flowers changed the user center endpoint")
+	}
+	for _, address := range []string{"https://auth.aurelrune.com", "https://api.liliya233.uk"} {
+		cfg, err := flowersConnectionConfig(defines.ControlConfig{AuthServerAddress: address, AuthServerToken: "test-token", RentalServerCode: "123456"})
+		if err != nil || cfg.AuthServerAddress != address {
+			t.Fatalf("configured service was replaced: %s, %v", cfg.AuthServerAddress, err)
+		}
 	}
 }
 

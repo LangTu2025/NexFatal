@@ -3,7 +3,6 @@ package safe_http
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -13,7 +12,7 @@ import (
 	"time"
 )
 
-// SafeClient 是带加密信封处理能力的 HTTP 客户端。
+// SafeClient 对 user.aurelrune.com 使用加密信封，其他地址使用普通 HTTP。
 type SafeClient struct {
 	client *http.Client
 	crypto *Crypto
@@ -47,8 +46,10 @@ func NewSafeClient(serverPublicPEM, clientPrivatePEM string, cfg *ClientConfig) 
 	if cfg != nil && cfg.Timeout > 0 {
 		timeout = cfg.Timeout
 	}
+	httpClient := newHTTPClient(timeout)
+	httpClient.Transport = newDomainTransport(crypto, httpClient.Transport)
 	return &SafeClient{
-		client: newHTTPClient(timeout),
+		client: httpClient,
 		crypto: crypto,
 	}, nil
 }
@@ -86,17 +87,17 @@ func fallbackDNSDial(ctx context.Context, network, address string) (net.Conn, er
 	return nil, errors.New("no fallback DNS servers configured")
 }
 
-// PostJSON 以 JSON 方式发送加密 POST 请求，并返回解密后的响应。
+// PostJSON 发送 JSON，并按目标域名决定是否加密。
 func (c *SafeClient) PostJSON(url string, body any) ([]byte, error) {
 	return c.PostJSONWithHeadersContext(context.Background(), url, body, nil)
 }
 
-// PostJSONWithHeaders 以 JSON 方式发送加密 POST 请求，并附加额外请求头。
+// PostJSONWithHeaders 发送 JSON，并附加额外请求头。
 func (c *SafeClient) PostJSONWithHeaders(url string, body any, headers map[string]string) ([]byte, error) {
 	return c.PostJSONWithHeadersContext(context.Background(), url, body, headers)
 }
 
-// PostJSONWithHeadersContext 以 JSON 方式发送加密 POST 请求，并附加额外请求头。
+// PostJSONWithHeadersContext 发送 JSON，保留上下文及额外请求头。
 func (c *SafeClient) PostJSONWithHeadersContext(ctx context.Context, url string, body any, headers map[string]string) ([]byte, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -106,18 +107,12 @@ func (c *SafeClient) PostJSONWithHeadersContext(ctx context.Context, url string,
 		return nil, err
 	}
 
-	encrypted, err := c.crypto.Encrypt(jsonBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBufferString(encrypted))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonBytes))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Client-Public-Key", base64.StdEncoding.EncodeToString([]byte(c.crypto.ClientPublicKey)))
 	for key, value := range headers {
 		key = strings.TrimSpace(key)
 		if key == "" {
@@ -137,17 +132,16 @@ func (c *SafeClient) PostJSONWithHeadersContext(ctx context.Context, url string,
 		return nil, err
 	}
 
-	return c.decodeBody(respBody)
+	return respBody, nil
 }
 
-// Get 发送加密 GET 请求，并返回解密后的响应和 HTTP 状态码。
+// Get 按目标域名处理响应信封，并返回 HTTP 状态码。
 func (c *SafeClient) Get(url string) ([]byte, int, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, 0, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Client-Public-Key", base64.StdEncoding.EncodeToString([]byte(c.crypto.ClientPublicKey)))
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -160,8 +154,7 @@ func (c *SafeClient) Get(url string) ([]byte, int, error) {
 		return nil, 0, err
 	}
 
-	plaintext, err := c.decodeBody(respBody)
-	return plaintext, resp.StatusCode, err
+	return respBody, resp.StatusCode, nil
 }
 
 // Crypto 返回客户端正在使用的加密器。

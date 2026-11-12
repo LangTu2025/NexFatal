@@ -14,6 +14,4 @@ const (
 	// UserCenterURL 是默认用户中心地址。
 	// UserCenterURL = "http://localhost:5173"
 	UserCenterURL = "https://user.aurelrune.com"
-	// GameAuthURL is the native Flowers authentication service.
-	GameAuthURL = "https://auth.aurelrune.com"
 )

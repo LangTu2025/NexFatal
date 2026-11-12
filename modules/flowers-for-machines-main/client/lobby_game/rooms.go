@@ -89,7 +89,7 @@ func SearchRooms(ctx context.Context, client *auth.Client, token, roomNumber str
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+client.SessionToken())
-	response, err := http.DefaultClient.Do(req)
+	response, err := client.HTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("联机大厅房间搜索失败: %w", err)
 	}

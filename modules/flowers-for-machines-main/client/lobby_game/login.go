@@ -3,6 +3,7 @@ package lobby_game
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/OmineDev/flowers-for-machines/core/bunker/auth"
@@ -12,6 +13,7 @@ import (
 )
 
 type Config struct {
+	AuthTransport                                                  http.RoundTripper
 	Context                                                        context.Context
 	AuthServerAddress, AuthServerToken, ServerCode, ServerPasscode string
 	// SelectRoom is only called when several rooms have the same display number.
@@ -36,7 +38,7 @@ func Login(cfg Config) (*Session, error) {
 	if !ok || !validEntityID(target) {
 		return nil, fmt.Errorf("LoginLobbyGame: 无效的联机大厅房间号或 entity ID %q", cfg.ServerCode)
 	}
-	authClient, err := auth.CreateClientContext(parent, &auth.ClientOptions{AuthServer: cfg.AuthServerAddress})
+	authClient, err := auth.CreateClientContext(parent, &auth.ClientOptions{AuthServer: cfg.AuthServerAddress, Transport: cfg.AuthTransport})
 	if err != nil {
 		return nil, fmt.Errorf("LoginLobbyGame: %w", err)
 	}

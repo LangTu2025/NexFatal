@@ -3,6 +3,7 @@ package domain_game
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/OmineDev/flowers-for-machines/core/bunker/auth"
@@ -11,6 +12,7 @@ import (
 )
 
 type Config struct {
+	AuthTransport                                                  http.RoundTripper
 	Context                                                        context.Context
 	AuthServerAddress, AuthServerToken, ServerCode, ServerPasscode string
 }
@@ -33,7 +35,7 @@ func Login(cfg Config) (*Session, error) {
 	if !ok || code == "" {
 		return nil, fmt.Errorf("LoginDomainGame: invalid mountain code %q", cfg.ServerCode)
 	}
-	authClient, err := auth.CreateClientContext(parent, &auth.ClientOptions{AuthServer: cfg.AuthServerAddress})
+	authClient, err := auth.CreateClientContext(parent, &auth.ClientOptions{AuthServer: cfg.AuthServerAddress, Transport: cfg.AuthTransport})
 	if err != nil {
 		return nil, fmt.Errorf("LoginDomainGame: %w", err)
 	}

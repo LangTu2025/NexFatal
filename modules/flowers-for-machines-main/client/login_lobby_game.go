@@ -6,6 +6,7 @@ import "github.com/OmineDev/flowers-for-machines/client/lobby_game"
 func LoginLobbyGame(cfg Config) (*Client, error) {
 	session, err := lobby_game.Login(lobby_game.Config{
 		Context:           cfg.Context,
+		AuthTransport:     cfg.AuthTransport,
 		AuthServerAddress: cfg.AuthServerAddress,
 		AuthServerToken:   cfg.AuthServerToken,
 		ServerCode:        cfg.RentalServerCode,

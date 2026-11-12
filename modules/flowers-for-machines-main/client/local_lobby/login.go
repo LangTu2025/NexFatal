@@ -3,6 +3,7 @@ package local_lobby
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 )
 
 type Config struct {
+	AuthTransport                                                  http.RoundTripper
 	Context                                                        context.Context
 	AuthServerAddress, AuthServerToken, ServerCode, ServerPasscode string
 	OwnerHint                                                      string
@@ -42,7 +44,7 @@ func Login(cfg Config) (*Session, error) {
 	}
 	termlog.LoginInfo("开始执行本地联机登录序列")
 	termlog.LoginInfo(fmt.Sprintf("正在连接到验证服务器: %s", cfg.AuthServerAddress))
-	authClient, err := auth.CreateClientContext(parent, &auth.ClientOptions{AuthServer: cfg.AuthServerAddress})
+	authClient, err := auth.CreateClientContext(parent, &auth.ClientOptions{AuthServer: cfg.AuthServerAddress, Transport: cfg.AuthTransport})
 	if err != nil {
 		return nil, fmt.Errorf("LoginLocalLobby: %w", err)
 	}
@@ -55,7 +57,7 @@ func Login(cfg Config) (*Session, error) {
 	loginCtx, cancel := context.WithTimeout(parent, 120*time.Second)
 	defer cancel()
 	tunnel, resp, err := tanservice.DialContext(loginCtx, room, cfg.ServerPasscode,
-		tanauth.NewAccessWrapperWithSession(cfg.AuthServerAddress, cfg.AuthServerToken, "", "", cfg.OwnerHint, authClient.SessionToken()))
+		tanauth.NewAccessWrapperWithSession(cfg.AuthServerAddress, cfg.AuthServerToken, "", "", cfg.OwnerHint, authClient.SessionToken()).WithHTTPClient(authClient.HTTPClient()))
 	if err != nil {
 		return nil, fmt.Errorf("LoginLocalLobby: 建立本地联机隧道失败: %w", err)
 	}

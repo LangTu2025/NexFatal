@@ -10,6 +10,7 @@ import (
 func LoginDomainGame(cfg Config) (*Client, error) {
 	session, err := domain_game.Login(domain_game.Config{
 		Context:           cfg.Context,
+		AuthTransport:     cfg.AuthTransport,
 		AuthServerAddress: cfg.AuthServerAddress,
 		AuthServerToken:   cfg.AuthServerToken,
 		ServerCode:        cfg.RentalServerCode,

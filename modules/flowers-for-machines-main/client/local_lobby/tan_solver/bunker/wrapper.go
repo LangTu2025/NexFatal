@@ -1,6 +1,17 @@
 package bunker
 
-import "fmt"
+import (
+	"fmt"
+	"net/http"
+)
+
+// WithHTTPClient reuses the authentication session's HTTP transport.
+func (aw *AccessWrapper) WithHTTPClient(client *http.Client) *AccessWrapper {
+	if client != nil {
+		aw.client.httpClient = client
+	}
+	return aw
+}
 
 // Authenticator ..
 type Authenticator interface {

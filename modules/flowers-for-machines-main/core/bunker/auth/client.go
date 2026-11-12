@@ -20,16 +20,19 @@ import (
 
 type secretLoadingTransport struct {
 	secret string
+	base   http.RoundTripper
 }
 
 func (s secretLoadingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", s.secret))
-	return http.DefaultTransport.RoundTrip(req)
+	out := req.Clone(req.Context())
+	out.Header.Set("Authorization", fmt.Sprintf("Bearer %s", s.secret))
+	return s.base.RoundTrip(out)
 }
 
 type ClientOptions struct {
 	AuthServer          string
 	RespondUserOverride string
+	Transport           http.RoundTripper
 }
 
 func MakeDefaultClientOptions() *ClientOptions {
@@ -54,6 +57,11 @@ func (client *Client) SessionToken() string {
 		return ""
 	}
 	return client.sessionToken
+}
+
+// HTTPClient shares the session and transport with room search and local lobbies.
+func (client *Client) HTTPClient() *http.Client {
+	return &client.client
 }
 
 func parsedError(message string) error {
@@ -97,7 +105,12 @@ func CreateClientContext(ctx context.Context, options *ClientOptions) (*Client, 
 	if err != nil {
 		return nil, err
 	}
-	secret_res, err := http.DefaultClient.Do(req)
+	transport := options.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	bootstrapClient := &http.Client{Transport: transport, Timeout: 20 * time.Second}
+	secret_res, err := bootstrapClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to contact with API: %w", err)
 	}
@@ -107,7 +120,7 @@ func CreateClientContext(ctx context.Context, options *ClientOptions) (*Client, 
 	if secret_res.StatusCode == 503 {
 		return nil, errors.New("API server is down")
 	} else if secret_res.StatusCode != 200 {
-		return nil, parsedError(secret_body)
+		return nil, fmt.Errorf("认证服务 %s/api/new 返回 HTTP %d: %w", strings.TrimRight(options.AuthServer, "/"), secret_res.StatusCode, parsedError(secret_body))
 	}
 	if secret_body == "" {
 		return nil, errors.New("API returned an empty session token")
@@ -115,6 +128,7 @@ func CreateClientContext(ctx context.Context, options *ClientOptions) (*Client, 
 	authclient := &Client{
 		client: http.Client{Timeout: 30 * time.Second, Transport: secretLoadingTransport{
 			secret: secret_body,
+			base:   transport,
 		}},
 		sessionToken:  secret_body,
 		ClientOptions: options,

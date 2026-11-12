@@ -6,6 +6,7 @@ import (
 	"github.com/OmineDev/flowers-for-machines/core/bunker/auth"
 	"github.com/OmineDev/flowers-for-machines/core/minecraft"
 	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/packet"
+	"net/http"
 )
 
 // ------------------------- Config -------------------------
@@ -13,6 +14,7 @@ import (
 // Config ..
 type Config struct {
 	Context               context.Context
+	AuthTransport         http.RoundTripper
 	AuthServerAddress     string
 	AuthServerToken       string
 	RentalServerCode      string
