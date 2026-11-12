@@ -272,6 +272,8 @@ func (r *Resources) handlePacket(pk packet.Packet) {
 		r.constant.onAvailableCommands(p)
 	case *packet.CraftingData:
 		r.constant.onCraftingData(p)
+	case *packet.StructureTemplateDataResponse:
+		r.structureRequest.onStructureTemplateDataResponse(p)
 	}
 	// for other implements
 	r.listener.onPacket(pk)

@@ -377,7 +377,7 @@ func (e *ExportTask) Start(ctx context.Context) error {
 			return err
 		}
 
-		if e.Charger != nil && e.checkpoint.ChargedArea != areaIndex {
+		if e.Charger != nil && e.checkpoint.ChargedArea < areaIndex {
 			volume := exportVolume(area)
 			latestCount := int(volume / 500)
 			if latestCount > 0 {
@@ -395,7 +395,7 @@ func (e *ExportTask) Start(ctx context.Context) error {
 		NBTs := map[bwodefine.ChunkPos][]map[string]any{}
 		var responseErr error
 		processResponse := func(resp *packet.SubChunk) []bwodefine.SubChunkPos {
-			// 子区块实体 NBT 会跟在子区块二进制后面，需要和子区块一起解码并按区块归档。
+			// Match laobanbennf: subchunks contain blocks; structure requests supply NBT.
 			subChunkStartPos := resp.Position
 			nextUnfetched := make([]bwodefine.SubChunkPos, 0)
 			for _, entry := range resp.SubChunkEntries {
@@ -478,6 +478,43 @@ func (e *ExportTask) Start(ctx context.Context) error {
 			unfetchedSubChunksPos = nextUnfetched
 		}
 
+		// 新版协议不再从子区块尾部读取 NBT。每个区块按当前导出高度发起一次
+		// StructureRequest，响应完成后再落盘，避免同一区块被多个子区块覆盖。
+		minChunkX, maxChunkX := orderedInt32Range(area.Start.X()>>4, area.End.X()>>4)
+		minChunkZ, maxChunkZ := orderedInt32Range(area.Start.Z()>>4, area.End.Z()>>4)
+		minY, maxY := orderedInt32Range(area.Start.Y(), area.End.Y())
+		for chunkX := minChunkX; chunkX <= maxChunkX; chunkX++ {
+			for chunkZ := minChunkZ; chunkZ <= maxChunkZ; chunkZ++ {
+				chunkPos := bwodefine.ChunkPos{chunkX, chunkZ}
+				if _, ok := NBTs[chunkPos]; !ok {
+					NBTs[chunkPos] = make([]map[string]any, 0)
+				}
+				for yStart := minY; yStart <= maxY; {
+					yEnd := min(yStart+383, maxY)
+					blockEntities, err := e.requestStructureBlockEntities(
+						protocol.BlockPos{chunkX * 16, yStart, chunkZ * 16},
+						protocol.BlockPos{16, yEnd - yStart + 1, 16},
+					)
+					if err != nil {
+						if e.everySubChunkDecodeNBTFailedCallback != nil {
+							e.everySubChunkDecodeNBTFailedCallback(
+								bwodefine.SubChunkPos{chunkX, yStart >> 4, chunkZ},
+								err,
+							)
+						}
+						return err
+					} else {
+						for _, blockEntity := range blockEntities {
+							if blockEntityWithinRange(blockEntity, e.StartPos, e.EndPos) {
+								NBTs[chunkPos] = append(NBTs[chunkPos], blockEntity)
+							}
+						}
+					}
+					yStart = yEnd + 1
+				}
+			}
+		}
+
 		// 方块实体列表必须等同区块的全部子区块都保存后再落盘，避免覆盖同区块前面收集到的 NBT。
 		for chunkPos, nbt := range NBTs {
 			if len(nbt) == 0 {
@@ -543,7 +580,7 @@ func (e *ExportTask) saveExportSubChunk(world *bwoworld.BedrockWorld, sourceDime
 	if entry.Result == protocol.SubChunkResultSuccessAllAir {
 		subChunk = bwochunk.NewSubChunk(block.AirRuntimeID)
 	} else {
-		subChunk, nbts, err = decodeSubChunkPayload(entry.RawPayload, sourceDimension.Range())
+		subChunk, err = decodeSubChunkBlocks(entry.RawPayload, sourceDimension.Range())
 	}
 	if err != nil {
 		if e.everySubChunkDecodeNBTFailedCallback != nil {
@@ -909,7 +946,17 @@ func subChunkWindows(area exportArea, radius int32) []subChunkWindow {
 	return windows
 }
 
-// decodeSubChunkPayload 解码网络子区块，并继续读取尾部附加的方块实体 NBT。
+// decodeSubChunkBlocks follows laobanbennf: trailing data is not entity NBT.
+func decodeSubChunkBlocks(data []byte, r bwodefine.Range) (*bwochunk.SubChunk, error) {
+	buf := bytes.NewBuffer(data)
+	subChunk, _, err := bwochunk.DecodeSubChunk(buf, r, bwochunk.NetworkEncoding)
+	if err != nil {
+		return nil, err
+	}
+	return subChunk, nil
+}
+
+// decodeSubChunkPayload is retained for legacy region verification, not export.
 func decodeSubChunkPayload(data []byte, r bwodefine.Range) (*bwochunk.SubChunk, []map[string]any, error) {
 	buf := bytes.NewBuffer(data)
 	subChunk, _, err := bwochunk.DecodeSubChunk(buf, r, bwochunk.NetworkEncoding)

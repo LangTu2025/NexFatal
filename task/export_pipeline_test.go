@@ -9,9 +9,8 @@ import (
 	"testing"
 	"time"
 
-	mcnbt "github.com/OmineDev/flowers-for-machines/core/minecraft/nbt"
 	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol"
-	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/block_actors"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/packet"
 	"github.com/TriM-Organization/bedrock-world-operator/block"
 	bwochunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
 	bwodefine "github.com/TriM-Organization/bedrock-world-operator/define"
@@ -41,24 +40,32 @@ func TestExportPayloadToReimportableWorld(t *testing.T) {
 		t.Fatal("stone mapping unavailable")
 	}
 	sub.SetBlock(1, 0, 1, 0, stone)
-	actor := &block_actors.CommandBlock{Command: "say export-roundtrip", CustomName: "命令", TickDelay: 7, Auto: 1}
-	var tag bytes.Buffer
-	actor.Marshal(protocol.NewWriter(&tag, 0))
-	blockNBT := map[string]any{"id": "CommandBlock", "x": int32(1), "y": int32(0), "z": int32(1), "__tag": tag.String()}
-	nbtPayload, err := mcnbt.MarshalEncoding(blockNBT, mcnbt.NetworkLittleEndian)
-	if err != nil {
-		t.Fatal(err)
-	}
+	blockNBT := map[string]any{"id": "CommandBlock", "x": int32(1), "y": int32(0), "z": int32(1), "Command": "say export-roundtrip", "CustomName": "命令", "TickDelay": int32(7), "auto": byte(1)}
 	// The source is the Nether; the resulting selection must still be readable
 	// by the normal WaterStructure import reader.
 	source := bwodefine.Dimension(bwodefine.DimensionIDNether)
-	payload := append(bwochunk.EncodeSubChunk(sub, source.Range(), 0, bwochunk.NetworkEncoding), nbtPayload...)
+	// Export must ignore opaque trailing bytes and obtain NBT separately, as
+	// implemented by the user-provided laobanbennf source.
+	payload := append(bwochunk.EncodeSubChunk(sub, source.Range(), 0, bwochunk.NetworkEncoding), []byte{0xff, 0x01, 0xfe}...)
 	export := NewExportTask()
 	nbts, err := export.saveExportSubChunk(world, source, bwodefine.SubChunkPos{0, 0, 0}, protocol.SubChunkEntry{Result: protocol.SubChunkResultSuccess, RawPayload: payload})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nbts) != 1 || nbts[0]["Command"] != "say export-roundtrip" {
+	if len(nbts) != 0 {
+		t.Fatal("export still obtains entity NBT from subchunk trailing data")
+	}
+	template := map[string]any{"structure": map[string]any{"palette": map[string]any{"default": map[string]any{"block_position_data": map[string]any{"257": map[string]any{"block_entity_data": blockNBT}}}}}}
+	response := &packet.StructureTemplateDataResponse{StructureName: "nexfatal:export_test", Success: true, ResponseType: packet.StructureTemplateResponseExport, StructureTemplate: template}
+	var wire bytes.Buffer
+	response.Marshal(protocol.NewWriter(&wire, 0))
+	var decoded packet.StructureTemplateDataResponse
+	decoded.Marshal(protocol.NewReader(&wire, 0, false))
+	nbts, err = extractStructureBlockEntities(decoded.StructureTemplate, protocol.BlockPos{0, 0, 0}, protocol.BlockPos{16, 16, 16})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nbts) != 1 || nbts[0]["Command"] != "say export-roundtrip" || nbts[0]["TickDelay"] != int32(7) {
 		t.Fatalf("export NBT lost: %+v", nbts)
 	}
 	if _, err := export.saveExportSubChunk(world, source, bwodefine.SubChunkPos{1, 0, 0}, protocol.SubChunkEntry{Result: protocol.SubChunkResultSuccessAllAir}); err != nil {

@@ -21,7 +21,10 @@ type ExportTaskInterruptData struct {
 	CompletedAreas   int                      `json:"completed_areas"`
 	ChargedArea      int                      `json:"charged_area"`
 	ChunkRadius      int32                    `json:"chunk_radius"`
+	EntityProtocol   string                   `json:"entity_protocol,omitempty"`
 }
+
+const exportEntityProtocol = "structure-template-v1"
 
 func LoadExportInterruptData(path string) (*ExportTaskInterruptData, error) {
 	raw, err := os.ReadFile(path)
@@ -92,6 +95,12 @@ func (e *ExportTask) prepareExportCheckpoint() (string, int32, error) {
 		return "", 0, err
 	}
 	if e.matchesExportCheckpoint(data) {
+		if data.EntityProtocol != exportEntityProtocol {
+			// Older areas only saved subchunk trailing data and must fetch real
+			// structure NBT again. Preserve paid-area progress during migration.
+			data.CompletedAreas = 0
+			data.EntityProtocol = exportEntityProtocol
+		}
 		e.checkpoint = data
 		return data.WorldDir, data.ChunkRadius, nil
 	}
@@ -106,7 +115,7 @@ func (e *ExportTask) prepareExportCheckpoint() (string, int32, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	data = &ExportTaskInterruptData{Version: 1, Config: e.exportConfig(), WorldDir: dir, ChargedArea: -1}
+	data = &ExportTaskInterruptData{Version: 1, Config: e.exportConfig(), WorldDir: dir, ChargedArea: -1, EntityProtocol: exportEntityProtocol}
 	if e.control != nil {
 		data.TargetServerCode = e.control.Config.RentalServerCode
 	}

@@ -33,6 +33,12 @@ NovaBuilder 用户中心登录、余额和计费继续使用原来的 /api/build
 
 本地 RakNet 集成测试覆盖租赁服和山头：模拟服务器忽略前两次探测，并改写命令回包 UUID，校验重复探测、回包处理、命令来源和缓存交接。
 
+## 导出源码来源
+
+按用户指定的 D:/LangTu/laobanbennf/task/export_task.go 迁入导出协议：SubChunk 只解码方块本体，方块实体使用 StructureTemplateDataRequest 单独请求，按 16×最多384×16 分片，使用原版结构名、Settings、5 秒超时、索引坐标还原和选区过滤。对应 StructureRequestCallback 从该版本的 StarShuttler 复制到 Flowers，接入初始化、结构响应分发及成功/取消后的回调清理；仅调整模块导入路径及当前控制器适配。
+
+保留已实现的断点、暂停、取消、控制器复用和 mcworld 写出保护。旧断点会重新获取方块实体，保留已计费区域记录；结构请求失败不会将该区域记为完成。旧子区块尾部 NBT 解码仅供区域校验的兼容路径使用，不参与新版导出。测试包含原版提取/范围测试、结构响应报文往返、Flowers 回调分发、旧断点迁移以及导出文件重新导入，未运行真实网易服务器的付费导出。
+
 ## __tag 解码来源
 
 方块实体解码结构、物品、附魔和可选字段来自用户指定的 D:/LangTu/laobanbennf/modules/StarShuttler/core/minecraft/protocol，迁入 Flowers 的协议目录，保留原 NOTE、测试样本及作者说明。根据原始样本修复长度前缀、条件字段及活塞坐标写回，容器物品及其标签不会被简化为普通物品。

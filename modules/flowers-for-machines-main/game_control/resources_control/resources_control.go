@@ -32,6 +32,7 @@ type Resources struct {
 	listener *PacketListener
 	// constant 是常量数据包的简要记录实现
 	constant                 *ConstantPacket
+	structureRequest         *StructureRequestCallback
 	permissionMu             sync.RWMutex
 	botHasOperatorPermission bool
 	botPermissionObserved    bool
@@ -47,11 +48,12 @@ type Resources struct {
 func NewResourcesControl(client *client.Client) *Resources {
 	clientCtx := client.Conn().Context()
 	resourcesControl := &Resources{
-		client:    client,
-		commands:  NewCommandRequestCallback(clientCtx),
-		itemStack: NewItemStackOperationManager(clientCtx),
-		container: NewContainerManager(clientCtx),
-		listener:  NewPacketListener(clientCtx),
+		client:           client,
+		commands:         NewCommandRequestCallback(clientCtx),
+		itemStack:        NewItemStackOperationManager(clientCtx),
+		container:        NewContainerManager(clientCtx),
+		listener:         NewPacketListener(clientCtx),
+		structureRequest: NewStructureRequestCallback(),
 	}
 
 	inventory := NewInventories()
@@ -167,4 +169,9 @@ func (r *Resources) PacketListener() *PacketListener {
 // ConstantPacket 返回常量数据包的有关实现
 func (r *Resources) ConstantPacket() *ConstantPacket {
 	return r.constant
+}
+
+// StructureRequest matches the structure-response dispatch in StarShuttler.
+func (r *Resources) StructureRequest() *StructureRequestCallback {
+	return r.structureRequest
 }
