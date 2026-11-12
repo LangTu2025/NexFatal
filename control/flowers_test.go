@@ -14,7 +14,7 @@ import (
 	"github.com/xingbaiawa/NovaBuilder/defines"
 )
 
-func TestFlowersUsesConfiguredAuthenticationService(t *testing.T) {
+func TestFlowersDoesNotSendSessionRequestsToBuilderUserCentre(t *testing.T) {
 	original := defines.DefaultAuthServerAddress()
 	defer defines.SetDefaultAuthServerAddress(original)
 	defines.SetDefaultAuthServerAddress(constants.UserCenterURL)
@@ -22,7 +22,7 @@ func TestFlowersUsesConfiguredAuthenticationService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.AuthServerAddress != constants.UserCenterURL || cfg.AuthTransport == nil {
+	if cfg.AuthServerAddress != constants.GameAuthURL || cfg.AuthTransport == nil {
 		t.Fatalf("Flowers endpoint: %s", cfg.AuthServerAddress)
 	}
 	if defines.DefaultAuthServerAddress() != constants.UserCenterURL {

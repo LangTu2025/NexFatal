@@ -10,14 +10,20 @@ import (
 	"github.com/OmineDev/flowers-for-machines/client"
 	"github.com/OmineDev/flowers-for-machines/client/lobby_game"
 	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
+	"github.com/xingbaiawa/NovaBuilder/constants"
 	"github.com/xingbaiawa/NovaBuilder/defines"
 	safehttp "github.com/xingbaiawa/NovaBuilder/utils/safe_http"
 )
 
-// Flowers receives the service root; it owns /api/new and /api/phoenix/login.
+// NovaBuilder's builderapi user centre is not a Flowers session endpoint.
+// Keep the configured user centre intact for login, billing and announcements.
 func flowersConnectionConfig(cfg defines.ControlConfig) (client.Config, error) {
 	cfg.Normalize()
-	return flowersConfigForService(cfg, cfg.AuthServerAddress)
+	serviceURL := cfg.AuthServerAddress
+	if safehttp.RequiresEncryption(serviceURL) {
+		serviceURL = constants.GameAuthURL
+	}
+	return flowersConfigForService(cfg, serviceURL)
 }
 
 func flowersConfigForService(cfg defines.ControlConfig, serviceURL string) (client.Config, error) {

@@ -12,7 +12,9 @@
 
 用户中心登录、余额、公告及导入器计费保留 NovaBuilder 原源码的调用点、请求参数与响应解析，RSA/AES 信封算法及密钥也沿用原源码。按最新要求，共用 HTTP 传输层只对 user.aurelrune.com 使用加密信封；auth.aurelrune.com 及其他域名直接发送普通 HTTP/JSON，不添加加密公钥头，也不展开响应信封。这里的“不加密”指不额外使用 SafeHttp 信封，HTTPS 自身的 TLS 仍正常使用。
 
-Flowers 恢复使用 ControlConfig.AuthServerAddress 中选定的认证地址，与 NovaBuilder 的地址选择方式保持一致，不再固定覆盖成 auth.aurelrune.com。默认地址为 https://user.aurelrune.com；原有 -A 及保存的 server 文件仍可切换认证服务，允许选择 user.aurelrune.com、auth.aurelrune.com 和 NovaBuilder 原支持的域名。租赁服、山头、联机大厅、本地联机的会话创建、登录、搜索、隧道认证及 MCP 校验共享同一传输策略，保留 Bearer 会话头。
+NovaBuilder 的用户中心初始化只调用 builderapi，源码中的 CreateClient 不请求 /api/new。用户中心地址 https://user.aurelrune.com 只用于加密的 builderapi 登录、校验、公告和计费；它不能直接作为 Flowers 的会话根地址。Flowers 默认使用 https://auth.aurelrune.com 请求 /api/new、/api/phoenix/login、房间搜索和 MCP 校验，使用原生 HTTP/JSON 及 Bearer 会话头，不加 SafeHttp 信封。配置为其他原生认证服务时继续使用所选地址。地址在初始化前确定，不对用户中心尝试 Flowers 接口，也不依赖 404 后回退。
+
+这里保留 NovaBuilder 的用户中心协议和界面流程；游戏登录则按用户要求使用 Flowers，跳过 NovaBuilder 原版的 Cookie 和本地 g79 认证。这两个部分不能以“同一地址”或“同一种 Token”替代各自的协议。
 
 FBToken 不存在或无效属于认证服务拒绝令牌，停止构建的自动重试并提示实际服务地址。用户中心 builderApiKey 不保证能被其他认证服务识别为 FBToken，应使用所选服务认可的令牌；客户端不会伪造令牌，也不转发用户中心密码。真实完整进服需要有效账号、提供 Flowers API 的认证服务、游戏服务器和管理员权限，本地模拟测试不等同于真实账号验收。
 
