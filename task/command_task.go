@@ -8,16 +8,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/block_actors"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/packet"
+	nbt_parser_block "github.com/OmineDev/flowers-for-machines/nbt_parser/block"
 	bwodefine "github.com/TriM-Organization/bedrock-world-operator/define"
 	"github.com/schollz/progressbar/v3"
 	"github.com/xingbaiawa/NovaBuilder/control"
 	"github.com/xingbaiawa/NovaBuilder/utils"
 	"github.com/xingbaiawa/NovaBuilder/utils/command_upgrader"
 	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
-	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol"
-	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/block_actors"
-	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/packet"
-	nbt_parser_block "github.com/OmineDev/flowers-for-machines/nbt_parser/block"
 )
 
 type commandBlockWriteMode int
@@ -56,10 +56,11 @@ func (b *BuildTask) writeCommandBlockGroups(ctx context.Context, ctrl *game_cont
 		if err := ctx.Err(); err != nil {
 			return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
 		}
-		if err := b.moveToCommandBlockGroup(ctx, ctrl, group.teleportPos); err != nil {
+		position, err := b.moveToCommandBlockGroup(ctx, ctrl, group.teleportPos)
+		if err != nil {
 			return placed, loc.Errf(loc.KeyBuildCommandBatchTeleportFailed, group.teleportPos.X(), group.teleportPos.Y(), group.teleportPos.Z(), err)
 		}
-		written, err := b.writeCommandBlockGroup(ctx, ctrl, group.tasks, mode, progress, bar)
+		written, err := b.writeCommandBlockGroup(ctx, ctrl, position, group.tasks, mode, progress, bar)
 		if err != nil {
 			return placed, err
 		}
@@ -97,7 +98,7 @@ func (b *BuildTask) prepareCommandBlockWrites(ctx context.Context, ctrl *game_co
 	return nil
 }
 
-func (b *BuildTask) writeCommandBlockGroup(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, mode commandBlockWriteMode, progress *buildProgressReporter, bar *progressbar.ProgressBar) (int, error) {
+func (b *BuildTask) writeCommandBlockGroup(ctx context.Context, ctrl *game_control.Control, position [3]float32, tasks []nbtPlacementTask, mode commandBlockWriteMode, progress *buildProgressReporter, bar *progressbar.ProgressBar) (int, error) {
 	pending := append([]nbtPlacementTask(nil), tasks...)
 	placed := 0
 	for len(pending) > 0 {
@@ -107,6 +108,18 @@ func (b *BuildTask) writeCommandBlockGroup(ctx context.Context, ctrl *game_contr
 		for _, task := range pending {
 			if err := ctx.Err(); err != nil {
 				return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
+			}
+			// 服务器坐标包含眼部高度，边界目标可能超出按整数坐标计算的分组。
+			// 写入前用刚同步的实际坐标检查，超出范围则重新传送并同步。
+			if !withinCommandBlockWriteReach(position, task.pos) {
+				var err error
+				position, err = b.moveToCommandBlockGroup(ctx, ctrl, task.pos)
+				if err != nil {
+					return placed, loc.Errf(loc.KeyBuildCommandBatchTeleportFailed, task.pos.X(), task.pos.Y(), task.pos.Z(), err)
+				}
+				if !withinCommandBlockWriteReach(position, task.pos) {
+					return placed, fmt.Errorf("机器人传送后仍不在命令方块 (%d, %d, %d) 的 6.5 格写入范围内", task.pos.X(), task.pos.Y(), task.pos.Z())
+				}
 			}
 			if err := b.writeCommandBlockNBT(ctrl, task); err != nil {
 				if mode == lenientCommandBlockWrite {
@@ -152,11 +165,11 @@ func (b *BuildTask) writeCommandBlockGroup(ctx context.Context, ctrl *game_contr
 	return placed, nil
 }
 
-func (b *BuildTask) moveToCommandBlockGroup(ctx context.Context, ctrl *game_control.Control, pos protocol.BlockPos) error {
+func (b *BuildTask) moveToCommandBlockGroup(ctx context.Context, ctrl *game_control.Control, pos protocol.BlockPos) ([3]float32, error) {
 	if err := ctx.Err(); err != nil {
-		return loc.Errf(loc.KeyBuildImportCancelled, err)
+		return [3]float32{}, loc.Errf(loc.KeyBuildImportCancelled, err)
 	}
-	return ctrl.Teleport(b.Config.DimensionName, pos)
+	return ctrl.TeleportForCommandBlocks(ctx, b.Config.DimensionName, pos)
 }
 
 func (b *BuildTask) writeCommandBlockNBT(ctrl *game_control.Control, task nbtPlacementTask) error {
@@ -418,9 +431,10 @@ type commandBlockBatch struct {
 }
 
 // commandBlockBatches 按写入距离限制给命令方块分组。
-// 1.21.93 中命令方块更新包只接受机器人附近约 7 格范围内的目标。
+// 服务器要求机器人处在命令方块 6.5 格的实际距离内；使用欧氏距离，
+// 不能只分别比较三个坐标轴，否则斜向目标会超出服务器的写入范围。
 func commandBlockBatches(tasks []nbtPlacementTask) []commandBlockBatch {
-	const reach = int32(7)
+	const reach = 6.5
 	groups := make([]commandBlockBatch, 0)
 	for _, task := range tasks {
 		added := false
@@ -442,8 +456,17 @@ func commandBlockBatches(tasks []nbtPlacementTask) []commandBlockBatch {
 	return groups
 }
 
-func withinWriteReach(from protocol.BlockPos, target protocol.BlockPos, reach int32) bool {
-	return absInt32(from.X()-target.X()) <= reach &&
-		absInt32(from.Y()-target.Y()) <= reach &&
-		absInt32(from.Z()-target.Z()) <= reach
+func withinWriteReach(from protocol.BlockPos, target protocol.BlockPos, reach float64) bool {
+	dx := float64(from.X()) - float64(target.X())
+	dy := float64(from.Y()) - float64(target.Y())
+	dz := float64(from.Z()) - float64(target.Z())
+	return dx*dx+dy*dy+dz*dz <= reach*reach
+}
+
+// 使用传送后同步的实际坐标检查写入距离，包括服务器报告的眼部高度。
+func withinCommandBlockWriteReach(position [3]float32, target protocol.BlockPos) bool {
+	dx := float64(position[0]) - float64(target.X())
+	dy := float64(position[1]) - float64(target.Y())
+	dz := float64(position[2]) - float64(target.Z())
+	return dx*dx+dy*dy+dz*dz <= 6.5*6.5
 }
