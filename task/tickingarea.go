@@ -15,7 +15,7 @@ import (
 	"github.com/xingbaiawa/NovaBuilder/control"
 	"github.com/xingbaiawa/NovaBuilder/utils"
 	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/packet"
 )
 
 type tickingAreaEntry struct {

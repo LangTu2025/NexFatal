@@ -6,27 +6,25 @@ require (
 	github.com/TriM-Organization/bedrock-world-operator v1.6.0
 	github.com/Yeah114/WaterStructure v0.0.0
 	github.com/Yeah114/blocks v0.0.0-20260321042356-9e0912b68e66
-	github.com/Yeah114/g79client v0.0.0-00010101000000-000000000000
 	github.com/mholt/archiver/v3 v3.5.1
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pterm/pterm v0.12.82
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/xingbaiawa/NovaBuilder/utils/safe_http v0.0.0
-	github.com/xingbaiawa/StarShuttler v0.0.0
 	go.uber.org/ratelimit v0.3.1
-	golang.org/x/net v0.53.0
 	golang.org/x/term v0.42.0
 )
+
+require golang.org/x/net v0.53.0 // indirect
 
 require (
 	atomicgo.dev/cursor v0.2.0 // indirect
 	atomicgo.dev/keyboard v0.2.9 // indirect
 	atomicgo.dev/schedule v0.1.0 // indirect
-	github.com/Happy2018new/nemc-tan-lobby-solver v0.0.0 // indirect
 	github.com/Happy2018new/worldupgrader v1.3.0 // indirect
+	github.com/OmineDev/flowers-for-machines v0.0.0
 	github.com/TriM-Organization/merry-memory v0.3.0 // indirect
 	github.com/Yeah114/bdump v0.0.0-00010101000000-000000000000 // indirect
-	github.com/Yeah114/unmcpk v0.0.0-00010101000000-000000000000 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/bongnv/go-container v0.1.0 // indirect
@@ -45,7 +43,7 @@ require (
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/pgzip v1.2.5 // indirect
 	github.com/lithammer/fuzzysearch v1.1.8 // indirect
-	github.com/mattn/go-runewidth v0.0.16 // indirect
+	github.com/mattn/go-runewidth v0.0.16
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/muhammadmuzzammil1998/jsonc v1.0.0 // indirect
 	github.com/nwaples/rardecode v1.1.0 // indirect
@@ -86,12 +84,6 @@ replace github.com/Yeah114/blocks => ./modules/WaterStructure/modules/blocks
 
 replace github.com/Yeah114/bdump => ./modules/WaterStructure/modules/bdump
 
-replace github.com/Yeah114/g79client => ./modules/g79client
-
-replace github.com/Yeah114/unmcpk => ./modules/unmcpk
-
-replace github.com/xingbaiawa/StarShuttler => ./modules/StarShuttler
-
-replace github.com/Happy2018new/nemc-tan-lobby-solver => ./modules/nemc-tan-lobby-solver
-
 replace github.com/xingbaiawa/NovaBuilder/utils/safe_http => ./utils/safe_http
+
+replace github.com/OmineDev/flowers-for-machines => ./modules/flowers-for-machines-main

@@ -14,10 +14,10 @@ import (
 	"github.com/xingbaiawa/NovaBuilder/utils"
 	"github.com/xingbaiawa/NovaBuilder/utils/command_upgrader"
 	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/block_actors"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
-	nbt_parser_block "github.com/xingbaiawa/StarShuttler/nbt_parser/block"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/block_actors"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/packet"
+	nbt_parser_block "github.com/OmineDev/flowers-for-machines/nbt_parser/block"
 )
 
 type commandBlockWriteMode int

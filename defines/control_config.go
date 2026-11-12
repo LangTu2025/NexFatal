@@ -16,7 +16,6 @@ type ControlConfig struct {
 	AuthServerToken            string            `json:"-"`
 	AuthServerTokenVolatile    bool              `json:"-"`
 	ForcePromptAuthServerToken bool              `json:"-"`
-	LoginCookie                string            `json:"-"`
 	ConsoleWorldPos            wsdefine.BlockPos `json:"-"`
 	ServerKind                 string            `json:"server_kind,omitempty"`
 	RentalServerCode           string            `json:"rental_server_code"`

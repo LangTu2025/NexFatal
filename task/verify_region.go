@@ -12,8 +12,8 @@ import (
 	"github.com/xingbaiawa/NovaBuilder/control"
 	builderutils "github.com/xingbaiawa/NovaBuilder/utils"
 	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/packet"
 )
 
 const (

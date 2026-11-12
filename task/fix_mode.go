@@ -15,8 +15,8 @@ import (
 	game_control "github.com/xingbaiawa/NovaBuilder/control"
 	builderutils "github.com/xingbaiawa/NovaBuilder/utils"
 	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
-	ssutils "github.com/xingbaiawa/StarShuttler/utils"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/packet"
+	ssutils "github.com/OmineDev/flowers-for-machines/utils"
 )
 
 type fixModeRepairRequest struct {

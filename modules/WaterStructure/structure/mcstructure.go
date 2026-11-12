@@ -644,7 +644,7 @@ func (m *MCStructure) ToMCWorld(
 	}
 
 	for chunkX := range chunkXNum {
-		posList := make([]define.ChunkPos, chunkZNum)
+		posList := make([]define.ChunkPos, 0, chunkZNum)
 		for chunkZ := range chunkZNum {
 			posList = append(posList, define.ChunkPos{int32(chunkX), int32(chunkZ)})
 		}
@@ -665,7 +665,7 @@ func (m *MCStructure) ToMCWorld(
 				}
 				// 计算绝对坐标并覆盖 x/y/z
 				absX := int32(bwoPos[0]*16) + bpos.X() + startSubChunkPos.X()*16
-				absY := bpos.Y() + startSubChunkPos.Y()*16
+				absY := bpos.Y() + 64 + startSubChunkPos.Y()*16
 				absZ := int32(bwoPos[1]*16) + bpos.Z() + startSubChunkPos.Z()*16
 				m["x"] = absX
 				m["y"] = absY

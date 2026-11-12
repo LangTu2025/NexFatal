@@ -9,7 +9,7 @@ import (
 	bwo_chunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
 	wsdefine "github.com/Yeah114/WaterStructure/define"
 	"github.com/xingbaiawa/NovaBuilder/defines"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol"
 )
 
 const iceLightSafeDistance = 6

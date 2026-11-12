@@ -1,0 +1,1 @@
+本目录的 __tag 解码器及 NBT 物品、附魔、可选字段格式来自用户指定的 D:/LangTu/laobanbennf/modules/StarShuttler/core/minecraft/protocol。保留原 NOTE 和作者说明，协议接口迁移至 Flowers。长度字段按声明范围读取，活塞坐标解码后写回结果。

@@ -74,7 +74,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
-          GOGARBLE: github.com/xingbaiawa/NovaBuilder,github.com/Yeah114/WaterStructure,github.com/Yeah114/blocks,github.com/Yeah114/bdump,github.com/xingbaiawa/StarShuttler
+          GOGARBLE: github.com/xingbaiawa/NovaBuilder,github.com/Yeah114/WaterStructure,github.com/Yeah114/blocks,github.com/Yeah114/bdump,github.com/OmineDev/flowers-for-machines
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

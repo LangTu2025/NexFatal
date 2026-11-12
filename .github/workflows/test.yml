@@ -1,0 +1,24 @@
+name: Import pipeline checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - name: Main application
+        run: |
+          go test ./...
+          go vet ./...
+      - name: Flowers login, NBT and protocol regression
+        working-directory: modules/flowers-for-machines-main
+        run: |
+          go test ./client ./client/domain_game ./client/lobby_game ./client/local_lobby ./core/bunker/auth ./game_control/... ./nbt_assigner/... ./nbt_parser/... ./core/minecraft/protocol/...
+          go vet ./client ./client/domain_game ./client/lobby_game ./client/local_lobby ./core/bunker/auth ./game_control/... ./nbt_assigner/... ./nbt_parser/... ./core/minecraft/protocol/...

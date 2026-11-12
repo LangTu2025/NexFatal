@@ -13,7 +13,7 @@ import (
 	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
 	"github.com/xingbaiawa/NovaBuilder/control"
 	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol"
 	"go.uber.org/ratelimit"
 )
 

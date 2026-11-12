@@ -11,7 +11,7 @@ import (
 	"github.com/xingbaiawa/NovaBuilder/control"
 	"github.com/xingbaiawa/NovaBuilder/utils/chunk_fill"
 	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol"
 	"go.uber.org/ratelimit"
 )
 

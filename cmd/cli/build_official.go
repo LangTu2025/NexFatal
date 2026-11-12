@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
-	game_control "github.com/xingbaiawa/NovaBuilder/control"
 	"github.com/xingbaiawa/NovaBuilder/defines"
 	taskpkg "github.com/xingbaiawa/NovaBuilder/task"
 	"github.com/xingbaiawa/NovaBuilder/utils"
@@ -21,13 +20,6 @@ func openBuildFlow(ctx context.Context) {
 		fmt.Printf(loc.Text(loc.KeyBuildSelectServerConfigFailed), err)
 		return
 	}
-
-	loginCookie, err := game_control.SelectLoginCookie(ctx, serverConfig.AuthServerAddress, serverConfig.AuthServerToken)
-	if err != nil {
-		showTaskError(err, loc.Text(loc.KeyBuildCancelled), err.Error())
-		return
-	}
-	serverConfig.LoginCookie = loginCookie
 
 	interruptData, _, err := handleBuildInterrupt(serverConfig)
 	if err != nil {

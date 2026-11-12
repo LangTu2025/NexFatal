@@ -8,7 +8,7 @@ import (
 
 	"github.com/schollz/progressbar/v3"
 	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/packet"
 )
 
 func commandOK(resp *packet.CommandOutput) bool {

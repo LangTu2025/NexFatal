@@ -10,6 +10,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/OmineDev/flowers-for-machines/client"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/packet"
+	"github.com/OmineDev/flowers-for-machines/game_control/game_interface"
+	"github.com/OmineDev/flowers-for-machines/game_control/resources_control"
+	"github.com/OmineDev/flowers-for-machines/nbt_assigner"
+	"github.com/OmineDev/flowers-for-machines/nbt_assigner/nbt_cache"
+	"github.com/OmineDev/flowers-for-machines/nbt_assigner/nbt_console"
+	nbt_parser_block "github.com/OmineDev/flowers-for-machines/nbt_parser/block"
+	nbt_hash "github.com/OmineDev/flowers-for-machines/nbt_parser/hash"
+	nbt_parser_interface "github.com/OmineDev/flowers-for-machines/nbt_parser/interface"
+	flowersutils "github.com/OmineDev/flowers-for-machines/utils"
 	wsdefine "github.com/Yeah114/WaterStructure/define"
 	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
 	"github.com/xingbaiawa/NovaBuilder/constants"
@@ -18,30 +30,19 @@ import (
 	"github.com/xingbaiawa/NovaBuilder/utils/command_upgrader"
 	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
 	safehttp "github.com/xingbaiawa/NovaBuilder/utils/safe_http"
-	"github.com/xingbaiawa/StarShuttler/client"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol/packet"
-	"github.com/xingbaiawa/StarShuttler/game_control/game_interface"
-	"github.com/xingbaiawa/StarShuttler/game_control/resources_control"
-	"github.com/xingbaiawa/StarShuttler/nbt_assigner"
-	"github.com/xingbaiawa/StarShuttler/nbt_assigner/nbt_cache"
-	"github.com/xingbaiawa/StarShuttler/nbt_assigner/nbt_console"
-	nbt_parser_block "github.com/xingbaiawa/StarShuttler/nbt_parser/block"
-	nbt_hash "github.com/xingbaiawa/StarShuttler/nbt_parser/hash"
-	nbt_parser_interface "github.com/xingbaiawa/StarShuttler/nbt_parser/interface"
-	flowersutils "github.com/xingbaiawa/StarShuttler/utils"
 )
 
 // Control 封装一次任务运行需要使用的游戏连接和 NBT 操作台状态。
 type Control struct {
-	Config    defines.ControlConfig
-	Client    *client.Client
-	Resources *resources_control.Resources
-	API       *game_interface.GameInterface
-	Console   *nbt_console.Console
-	Cache     *nbt_cache.NBTCacheSystem
-	Assigner  *nbt_assigner.NBTAssigner
-	taskID    int
+	Config           defines.ControlConfig
+	Client           *client.Client
+	Resources        *resources_control.Resources
+	API              *game_interface.GameInterface
+	Console          *nbt_console.Console
+	Cache            *nbt_cache.NBTCacheSystem
+	Assigner         *nbt_assigner.NBTAssigner
+	cancelConnection func() bool
+	taskID           int
 }
 
 var ErrOperatorTimeout = errors.New("机器人未在规定时间内获得管理员权限")
@@ -78,6 +79,12 @@ func (c *Control) GetTaskID() int {
 
 // EnsureConnected 确保机器人已经连接到目标服务器。
 func (c *Control) EnsureConnected(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c.Client != nil && c.Client.Conn().Context().Err() != nil {
+		_ = c.Close()
+	}
 	if c.Client == nil {
 		if err := c.connectBot(ctx); err != nil {
 			return err
@@ -101,52 +108,29 @@ func (c *Control) connectBot(ctx context.Context) error {
 	default:
 	}
 
-	loginCookieProvider := newLoginCookieProvider(
-		c.Config.LoginCookie,
-		c.Config.AuthServerAddress,
-		c.Config.AuthServerToken,
-	)
-	cfg := client.Config{
-		AuthServerAddress:    strings.TrimRight(c.Config.AuthServerAddress, "/") + "/api/phoenix",
-		AuthServerToken:      c.Config.AuthServerToken,
-		RentalServerCode:     c.Config.RentalServerCode,
-		RentalServerPasscode: c.Config.RentalServerPasscode,
-		LoginCookieFallback:  loginCookieProvider.LoginCookie,
+	cfg, err := flowersConnectionConfig(c.Config)
+	if err != nil {
+		return err
 	}
-
-	var cl *client.Client
-	for {
-		var err error
-		cl, err = client.ConnectRentalServer(cfg)
-		if err == nil {
-			break
-		}
-
-		err = scrubConnectError(err)
-		if !loginCookieProvider.PrepareForBannedRetry(err) {
-			return loc.Errf(loc.KeyControlConnectBotFailed, err)
-		}
-		select {
-		case <-ctx.Done():
+	cl, err := loginFlowers(ctx, cfg)
+	if err != nil {
+		if ctx.Err() != nil {
 			return ctx.Err()
-		default:
 		}
-	}
-
-	if err := client.CompleteChallenge(cl); err != nil {
 		return loc.Errf(loc.KeyControlConnectBotFailed, scrubConnectError(err))
 	}
-
+	stop := context.AfterFunc(ctx, func() { _ = cl.Conn().Close() })
+	c.cancelConnection = stop
 	c.Client = cl
 	c.Resources = resources_control.NewResourcesControl(cl)
 	api, err := game_interface.NewGameInterface(c.Resources, nil)
 	if err != nil {
+		_ = c.Close()
 		return loc.Errf(loc.KeyControlConnectBotFailed, err)
 	}
-	api.Commands().SetLobbyAICommands(c.isLobbyServer())
-	api.Commands().SetDomainWSCommands(c.isDomainServer())
+
 	c.API = api
-	cl.StartLinkConnection()
+
 	return nil
 }
 
@@ -186,12 +170,19 @@ func scrubConnectError(err error) error {
 
 // Close 关闭机器人连接，并尽量踢出机器人释放服务器占用。
 func (c *Control) Close() error {
+	if c.cancelConnection != nil {
+		c.cancelConnection()
+		c.cancelConnection = nil
+	}
 	if c.Client == nil || c.Client.Conn() == nil {
 		return nil
 	}
 	c.disconnectBot()
 	_ = c.Client.Conn().SetDeadline(time.Now().Add(2 * time.Second))
-	return c.Client.Close()
+	err := c.Client.Conn().Close()
+	c.Client, c.Resources, c.API = nil, nil, nil
+	c.Console, c.Cache, c.Assigner = nil, nil, nil
+	return err
 }
 
 func (c *Control) disconnectBot() {
@@ -222,13 +213,12 @@ func (c *Control) EnsureOperator(ctx context.Context, timeout ...time.Duration) 
 	operatorProbeCommand := buildTellrawCommand(fmt.Sprintf("导入器 %s %s 运行中", constants.Name, constants.Version))
 	advertisementCommands := c.preTaskAdvertisementCommands(ctx)
 	for {
-		if c.isLobbyServer() {
-			if err := c.API.Commands().SendAICommand(operatorProbeCommand, false); err == nil {
-				c.sendAdditionalTellraws(advertisementCommands, true)
-				return nil
-			} else if errors.Is(err, context.Canceled) {
+		if c.hasOperatorPermission() {
+			if err := c.API.Commands().SendSettingsCommand(operatorProbeCommand, false); err != nil {
 				return err
 			}
+			c.sendAdditionalTellraws(advertisementCommands, true)
+			return nil
 		}
 
 		timeoutSeconds := 10 * time.Second
@@ -292,7 +282,7 @@ func (c *Control) sendAdditionalTellraws(commands []string, useAI bool) {
 			continue
 		}
 		if useAI {
-			_ = c.API.Commands().SendAICommand(command, false)
+			_ = c.API.Commands().SendSettingsCommand(command, false)
 			continue
 		}
 		_, _, _ = c.API.Commands().SendWSCommandWithTimeout(command, 3*time.Second)
@@ -355,48 +345,7 @@ func builderAdvertisementEndpoint(authServerAddress string) (string, error) {
 }
 
 func (c *Control) hasOperatorPermission() bool {
-	if c == nil {
-		return false
-	}
-
-	if c.Client != nil && c.Client.Conn() != nil {
-		if c.Client.Conn().GameData().PlayerPermissions >= int32(packet.PermissionLevelOperator) {
-			return true
-		}
-	}
-
-	if c.Resources == nil || c.Resources.UQHolder() == nil || c.Resources.UQHolder().Micro() == nil {
-		return false
-	}
-
-	micro := c.Resources.UQHolder().Micro()
-	players := micro.GetPlayersInfo()
-	bot := micro.GetBotBasicInfo()
-	if players == nil || bot == nil {
-		return false
-	}
-
-	player, found := players.GetPlayerByUniqueID(bot.GetBotUniqueID())
-	if !found {
-		player, found = players.GetPlayerByName(bot.GetBotName())
-	}
-	if !found || player == nil {
-		return false
-	}
-
-	if permissions, found := player.GetPlayerPermissions(); found && permissions >= byte(packet.PermissionLevelOperator) {
-		return true
-	}
-	if permissions, found := player.GetCommandPermissions(); found && permissions >= byte(packet.CommandPermissionLevelAdmin) {
-		return true
-	}
-	if abilities, found := player.GetAbilities(); found && abilities&protocol.AbilityOperatorCommands != 0 {
-		return true
-	}
-	if values, found := player.GetValues(); found && values&protocol.AbilityOperatorCommands != 0 {
-		return true
-	}
-	return false
+	return c != nil && c.Resources != nil && c.Resources.BotHasOperatorPermission()
 }
 
 // PlaceSimpleBlock 通过 setblock 放置普通方块。
@@ -650,7 +599,7 @@ func (c *Control) SendSettingsCommandWithTimeout(command string, timeout time.Du
 	if !c.isLobbyServer() {
 		return c.API.Commands().SendWSCommandWithTimeout(strings.TrimSpace(command), timeout)
 	}
-	return c.API.Commands().SendSettingsCommandWithTimeout(strings.TrimSpace(command), false, timeout)
+	return c.API.Commands().SendWSCommandWithTimeout(strings.TrimSpace(command), timeout)
 }
 
 // SendSettingsDimensionCommand 发送带维度包装的 SettingsCommand，并等待更改同步。

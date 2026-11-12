@@ -10,8 +10,8 @@ import (
 	bwo_chunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
 	wsdefine "github.com/Yeah114/WaterStructure/define"
 	"github.com/xingbaiawa/NovaBuilder/control"
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
-	"github.com/xingbaiawa/StarShuttler/mapping"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol"
+	"github.com/OmineDev/flowers-for-machines/mapping"
 	"go.uber.org/ratelimit"
 )
 

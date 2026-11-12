@@ -3,7 +3,7 @@ package task
 import (
 	"testing"
 
-	"github.com/xingbaiawa/StarShuttler/core/minecraft/protocol"
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol"
 )
 
 func TestSelectLightCandidatesKeepsMinimumSpacing(t *testing.T) {
