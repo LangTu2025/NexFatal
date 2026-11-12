@@ -143,7 +143,7 @@ func (data BuildTaskInterruptData) Valid() bool {
 	if data.CurrentChunkIndex < 0 || data.CurrentChunkIndex > data.TotalChunks {
 		return false
 	}
-	if data.CompletedRegions < 0 || data.TotalRegions < 0 {
+	if data.CompletedRegions < 0 || data.TotalRegions < 0 || data.CompletedRegions > data.TotalRegions {
 		return false
 	}
 	return true
@@ -198,6 +198,18 @@ func (b *BuildTask) matchesInterruptData(interruptData BuildTaskInterruptData) b
 	cfg.Normalize()
 	current := b.Config
 	current.Normalize()
+	if b.interruptTargetServerCode != "" && interruptData.TargetServerCode != "" {
+		left, right := *defines.NewControlConfig(), *defines.NewControlConfig()
+		left.RentalServerCode, right.RentalServerCode = b.interruptTargetServerCode, interruptData.TargetServerCode
+		left.Normalize()
+		right.Normalize()
+		if !strings.EqualFold(left.RentalServerCode, right.RentalServerCode) {
+			return false
+		}
+	}
+	if cfg.ImportNBT != current.ImportNBT || cfg.AutoCleanBlock != current.AutoCleanBlock || cfg.CleanMode != current.CleanMode || cfg.ClearDroppedItems != current.ClearDroppedItems || cfg.AutoPlaceDenyBlock != current.AutoPlaceDenyBlock || cfg.AutoPlaceBorder != current.AutoPlaceBorder || cfg.AutoPlaceLight != current.AutoPlaceLight || cfg.LightSpacing != current.LightSpacing || cfg.VerifyRegion != current.VerifyRegion {
+		return false
+	}
 
 	if !sameBuildPath(cfg.FilePath, current.FilePath) {
 		return false

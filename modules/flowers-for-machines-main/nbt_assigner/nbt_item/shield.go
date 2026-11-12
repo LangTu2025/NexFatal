@@ -24,6 +24,31 @@ type Shield struct {
 	items []nbt_parser_item.Shield
 }
 
+// Keep StarShuttler's banner -> recipe 3311 -> legacy result sequence.
+// One banner slot can only be consumed once in a transaction. Shields with
+// the same pattern but different damage/components are made in later rounds.
+func (s *Shield) bannerPlan() ([]nbt_parser_item.Banner, map[uint64]int) {
+	banners := make([]nbt_parser_item.Banner, 0, len(s.items))
+	indexes := make(map[uint64]int)
+	for index, shield := range s.items {
+		banner := nbt_parser_item.Banner{DefaultItem: nbt_parser_item.DefaultItem{Basic: nbt_parser_item.ItemBasicData{Name: "minecraft:banner", Count: 1, Metadata: int16(shield.NBT.Base)}}, NBT: nbt_parser_item.BannerNBT{Patterns: shield.NBT.Patterns, Type: nbt_parser_general.BannerTypeNormal}}
+		for _, pattern := range shield.NBT.Patterns {
+			if pattern.Pattern == mapping.BannerPatternOminous {
+				banner.NBT.Type = nbt_parser_general.BannerTypeOminous
+				banner.NBT.Patterns = nil
+				break
+			}
+		}
+		hash := nbt_hash.NBTItemNBTHash(&banner)
+		if _, exists := indexes[hash]; exists {
+			continue
+		}
+		indexes[hash] = index
+		banners = append(banners, banner)
+	}
+	return banners, indexes
+}
+
 func (s *Shield) Append(item ...nbt_parser_interface.Item) {
 	for _, value := range item {
 		val, ok := value.(*nbt_parser_item.Shield)
@@ -41,42 +66,18 @@ func (s *Shield) Make() (resultSlot map[uint64]resources_control.SlotID, err err
 	}
 
 	// Prepare
-	bannerNBTHashToIndex := make(map[uint64]int)
+	plannedBanners, bannerNBTHashToIndex := s.bannerPlan()
 	bannerItems := make([]nbt_parser_item.Banner, len(s.items))
 	banners := Banner{
 		api:             s.api,
-		items:           make([]nbt_parser_item.Banner, len(s.items)),
+		items:           plannedBanners,
 		maxSlotCanUse:   BannerMaxSlotCanUse,
 		maxBannerToMake: ShieldMaxBannerToMake,
 	}
 
 	// Step 1: Convert shields to banners
-	for index, shield := range s.items {
-		banner := nbt_parser_item.Banner{
-			DefaultItem: nbt_parser_item.DefaultItem{
-				Basic: nbt_parser_item.ItemBasicData{
-					Name:     "minecraft:banner",
-					Count:    1,
-					Metadata: int16(shield.NBT.Base),
-				},
-			},
-			NBT: nbt_parser_item.BannerNBT{
-				Patterns: shield.NBT.Patterns,
-				Type:     nbt_parser_general.BannerTypeNormal,
-			},
-		}
-
-		for _, val := range shield.NBT.Patterns {
-			if val.Pattern == mapping.BannerPatternOminous {
-				banner.NBT.Type = nbt_parser_general.BannerTypeOminous
-				banner.NBT.Patterns = nil
-				break
-			}
-		}
-
-		banners.items[index] = banner
-		bannerItems[index] = banner
-		bannerNBTHashToIndex[nbt_hash.NBTItemNBTHash(&banner)] = index
+	for _, banner := range plannedBanners {
+		bannerItems[bannerNBTHashToIndex[nbt_hash.NBTItemNBTHash(&banner)]] = banner
 	}
 
 	// Step 2: Make banners

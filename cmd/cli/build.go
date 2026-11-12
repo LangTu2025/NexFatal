@@ -25,10 +25,14 @@ import (
 )
 
 func runBuildQueue(ctx context.Context, serverConfig defines.ControlConfig, tasks []defines.BuildTaskConfig) error {
+	return runBuildQueueWithFixMode(ctx, serverConfig, tasks, true)
+}
+
+func runBuildQueueWithFixMode(ctx context.Context, serverConfig defines.ControlConfig, tasks []defines.BuildTaskConfig, enterFixMode bool) error {
 	if len(tasks) <= 1 {
 		for i, cfg := range tasks {
 			fmt.Printf(loc.Text(loc.KeyBuildTaskStartIndexed)+"\n", i+1, len(tasks), cfg.FilePath)
-			if err := runBuildRetryLoop(ctx, serverConfig, cfg, i+1); err != nil {
+			if err := runBuildRetryLoop(ctx, serverConfig, cfg, i+1, enterFixMode); err != nil {
 				return err
 			}
 		}
@@ -59,10 +63,13 @@ func runBuildQueue(ctx context.Context, serverConfig defines.ControlConfig, task
 		}
 		builtTasks = append(builtTasks, buildTask)
 	}
-	return taskpkg.RunMultiBuildFixMode(ctx, ctrl, builtTasks)
+	if enterFixMode {
+		return taskpkg.RunMultiBuildFixMode(ctx, ctrl, builtTasks)
+	}
+	return nil
 }
 
-func runBuildRetryLoop(ctx context.Context, serverConfig defines.ControlConfig, cfg defines.BuildTaskConfig, taskID int) error {
+func runBuildRetryLoop(ctx context.Context, serverConfig defines.ControlConfig, cfg defines.BuildTaskConfig, taskID int, enterFixMode ...bool) error {
 	const (
 		retryBaseDelay = 5 * time.Second
 		retryMaxDelay  = 1 * time.Hour
@@ -93,7 +100,7 @@ func runBuildRetryLoop(ctx context.Context, serverConfig defines.ControlConfig, 
 		}
 
 		preparedTask.TaskID = taskID
-		runErr := runBuildWithControl(ctx, serverConfig, preparedTask, charger)
+		runErr := runBuildWithControl(ctx, serverConfig, preparedTask, charger, enterFixMode...)
 		if runErr == nil || retryShouldStop(runErr) {
 			return runErr
 		}
@@ -106,7 +113,7 @@ func runBuildRetryLoop(ctx context.Context, serverConfig defines.ControlConfig, 
 			delay = retryMaxDelay
 		}
 
-		retryStartChunk, ok, checkpointErr := taskpkg.RecommendedRetryStartChunk(preparedTask)
+		retryStartChunk, ok, checkpointErr := taskpkg.RecommendedRetryStartChunk(preparedTask, serverConfig.RentalServerCode)
 		if checkpointErr != nil {
 			return errors.Join(runErr, checkpointErr)
 		}
@@ -156,7 +163,7 @@ func makeBuildTask(cfg defines.BuildTaskConfig, charger defines.Charger, taskID 
 	return buildTask
 }
 
-func runBuildWithControl(ctx context.Context, serverConfig defines.ControlConfig, cfg defines.BuildTaskConfig, charger defines.Charger) error {
+func runBuildWithControl(ctx context.Context, serverConfig defines.ControlConfig, cfg defines.BuildTaskConfig, charger defines.Charger, enterFixMode ...bool) error {
 	ctrl := game_control.NewControl(serverConfig)
 	ctrl.Config.ConsoleWorldPos = cfg.ConsolePosition()
 
@@ -165,6 +172,8 @@ func runBuildWithControl(ctx context.Context, serverConfig defines.ControlConfig
 	var runErr error
 	if cfg.FixModeOnly {
 		runErr = buildTask.RunFixMode(ctx, ctrl)
+	} else if len(enterFixMode) > 0 && !enterFixMode[0] {
+		runErr = buildTask.Start(ctx, ctrl)
 	} else {
 		runErr = buildTask.Run(ctx, ctrl)
 	}

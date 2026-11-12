@@ -33,11 +33,10 @@ func (v *virtualInventories) allItemInstances(windowID resources_control.WindowI
 	result := make(map[resources_control.SlotID]protocol.ItemInstance)
 
 	mapping, inventoryExisted := v.api.GetAllItemStack(windowID)
-	if !inventoryExisted {
-		return nil
-	}
-	for slotID, item := range mapping {
-		result[slotID] = utils.DeepCopyItemInstance(*item)
+	if inventoryExisted {
+		for slotID, item := range mapping {
+			result[slotID] = utils.DeepCopyItemInstance(*item)
+		}
 	}
 
 	for location, item := range v.items {

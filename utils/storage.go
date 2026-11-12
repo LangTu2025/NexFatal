@@ -47,6 +47,11 @@ func GetBuildInterruptFilePath() string {
 	return filepath.Join(GetBuildInterruptDir(), "build_interrupt.json")
 }
 
+func GetExportInterruptFilePath() string {
+	return filepath.Join(GetBuildInterruptDir(), "export_interrupt.json")
+}
+func GetExportWorkDir() string { return filepath.Join(GetStoragePath(), "export_work") }
+
 // EnsureStorageDirs 确保运行所需的存储目录已经创建
 func EnsureStorageDirs() error {
 	if err := os.MkdirAll(GetStoragePath(), 0755); err != nil {

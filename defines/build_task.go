@@ -75,6 +75,7 @@ type buildTaskConfigJSON struct {
 	AutoPlaceLight      bool              `json:"light"`
 	LightSpacing        int               `json:"light_spacing"`
 	LegacyWriteProgress *bool             `json:"write_progress,omitempty"`
+	FixModeOnly         bool              `json:"fix_mode_only,omitempty"`
 }
 
 // NewBuildTaskConfig 创建带默认值的构建任务配置。
@@ -190,6 +191,7 @@ func (c BuildTaskConfig) MarshalJSON() ([]byte, error) {
 		VerifyRegion:       &c.VerifyRegion,
 		AutoPlaceLight:     c.AutoPlaceLight,
 		LightSpacing:       boundedLightSpacing(c.LightSpacing),
+		FixModeOnly:        c.FixModeOnly,
 	})
 }
 
@@ -222,6 +224,7 @@ func (c *BuildTaskConfig) UnmarshalJSON(data []byte) error {
 	}
 	c.AutoPlaceLight = payload.AutoPlaceLight
 	c.LightSpacing = payload.LightSpacing
+	c.FixModeOnly = payload.FixModeOnly
 	c.Normalize()
 	return nil
 }

@@ -232,7 +232,8 @@ func runSavedTaskGroup(ctx context.Context, taskFilePath string, entries []taskG
 	}
 
 	if len(buildTasks) > 0 {
-		if err := runBuildQueue(ctx, serverConfig, buildTasks); err != nil {
+		// A repair chat loop runs until canceled; mixed groups must reach exports.
+		if err := runBuildQueueWithFixMode(ctx, serverConfig, buildTasks, len(exportTasks) == 0); err != nil {
 			ui.Error(fmt.Sprintf("导入任务执行失败: %v", err))
 			return
 		}

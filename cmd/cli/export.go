@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,8 +13,8 @@ import (
 	structure_define "github.com/Yeah114/WaterStructure/define"
 	"github.com/schollz/progressbar/v3"
 	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
-	"github.com/xingbaiawa/NovaBuilder/defines"
 	"github.com/xingbaiawa/NovaBuilder/control"
+	"github.com/xingbaiawa/NovaBuilder/defines"
 	taskpkg "github.com/xingbaiawa/NovaBuilder/task"
 	"github.com/xingbaiawa/NovaBuilder/utils"
 	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
@@ -138,8 +138,7 @@ func readExportBlockPos(prompt string) (defines.BlockPos, error) {
 }
 
 func parseBlockCoordinate(input string) (int32, error) {
-	var value int64
-	_, err := fmt.Sscan(strings.TrimSpace(input), &value)
+	value, err := strconv.ParseInt(strings.TrimSpace(input), 10, 32)
 	return int32(value), err
 }
 
@@ -176,7 +175,7 @@ func wireExportCallbacks(exportTask *taskpkg.ExportTask, index, total int) {
 
 	exportTask.SetStartCallback(func(size structure_define.Size) {
 		totalChunks = countExportChunks(startPos, endPos)
-		loc.Printf(loc.KeyExportTaskStartDetail, size.Width+1, size.Height+1, size.Length+1, totalChunks)
+		loc.Printf(loc.KeyExportTaskStartDetail, size.Width, size.Height, size.Length, totalChunks)
 		if totalChunks > 0 {
 			chunkBar = progressbar.NewOptions(totalChunks,
 				progressbar.OptionSetDescription("导出进度"),
@@ -216,7 +215,7 @@ func wireExportCallbacks(exportTask *taskpkg.ExportTask, index, total int) {
 }
 
 func countExportChunks(start, end defines.BlockPos) int {
-	width := int(math.Abs(float64(end.X()-start.X()))) + 1
-	length := int(math.Abs(float64(end.Z()-start.Z()))) + 1
-	return ((width + 15) / 16) * ((length + 15) / 16)
+	minX, maxX := min(start.X(), end.X())>>4, max(start.X(), end.X())>>4
+	minZ, maxZ := min(start.Z(), end.Z())>>4, max(start.Z(), end.Z())>>4
+	return int(int64(maxX)-int64(minX)+1) * int(int64(maxZ)-int64(minZ)+1)
 }

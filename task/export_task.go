@@ -18,6 +18,7 @@ import (
 	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol"
 	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/block_actors"
 	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/packet"
+	"github.com/TriM-Organization/bedrock-world-operator/block"
 	bwochunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
 	bwodefine "github.com/TriM-Organization/bedrock-world-operator/define"
 	bwoworld "github.com/TriM-Organization/bedrock-world-operator/world"
@@ -40,7 +41,7 @@ const (
 
 // ExportTask 将世界区域导出为 mcworld 文件。
 type ExportTask struct {
-	control       game_control.Control
+	control       *game_control.Control
 	id            int
 	TaskType      TaskType         `json:"type"`
 	FilePath      string           `json:"file_path"`
@@ -57,10 +58,13 @@ type ExportTask struct {
 	everyChunkNBTSaveFailedCallback      func(chunkPos bwodefine.ChunkPos, err error)
 	finishedCallback                     func(path string)
 
-	stateMu sync.Mutex
-	ctx     context.Context
-	cancel  context.CancelFunc
-	running bool
+	stateMu    sync.Mutex
+	ctx        context.Context
+	cancel     context.CancelFunc
+	running    bool
+	paused     bool
+	resumeWait chan struct{}
+	checkpoint *ExportTaskInterruptData
 }
 
 // NewExportTask 返回使用默认输出设置的导出任务。
@@ -99,7 +103,7 @@ func (e *ExportTask) SetControl(c *defines.ControlRef) {
 	if !ok {
 		panic(ErrInvalidControl)
 	}
-	e.control = *ctrl
+	e.control = ctrl
 	e.id = e.control.GetTaskID()
 }
 
@@ -176,6 +180,8 @@ func (e *ExportTask) setContext(ctx context.Context) {
 	}
 	e.ctx, e.cancel = context.WithCancel(ctx)
 	e.running = true
+	e.paused = false
+	e.resumeWait = nil
 	e.stateMu.Unlock()
 }
 
@@ -188,10 +194,23 @@ func (e *ExportTask) clearContext() {
 	}
 	e.ctx = nil
 	e.running = false
+	e.releasePause()
 }
 
 func (e *ExportTask) waitForContext() error {
-	ctx := e.taskContext()
+	e.stateMu.Lock()
+	ctx, waiting := e.ctx, e.resumeWait
+	e.stateMu.Unlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if waiting != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-waiting:
+		}
+	}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -204,12 +223,13 @@ func (e *ExportTask) waitForContext() error {
 func (e *ExportTask) Start(ctx context.Context) error {
 	e.setContext(ctx)
 	defer e.clearContext()
+	ctx = e.taskContext()
 
 	if err := e.waitForContext(); err != nil {
 		return err
 	}
 
-	ctrl := &e.control
+	ctrl := e.control
 	if ctrl == nil {
 		return loc.Errf(loc.KeyControlRequired)
 	}
@@ -218,6 +238,9 @@ func (e *ExportTask) Start(ctx context.Context) error {
 	}
 	if ctrl.Config.ServerKind != defines.ServerKindRental {
 		return loc.Err(loc.KeyExportOnlyRentalSupported)
+	}
+	for axis := range 3 {
+		e.StartPos[axis], e.EndPos[axis] = orderedInt32Range(e.StartPos[axis], e.EndPos[axis])
 	}
 
 	if err := ctrl.EnsureConnected(ctx); err != nil {
@@ -237,24 +260,33 @@ func (e *ExportTask) Start(ctx context.Context) error {
 	dimension := bwodefine.Dimension(dimensionID)
 
 	outputPath := cleanExportOutputPath(e.FilePath)
-	worldDir, err := os.MkdirTemp("", "NovaBuilder_export_world_*")
+	worldDir, savedRadius, err := e.prepareExportCheckpoint()
 	if err != nil {
 		return loc.Errf(loc.KeyExportCreateTempWorldDirFailed, err)
 	}
-	defer os.RemoveAll(worldDir)
 
 	bedrockWorld, err := bwoworld.Open(worldDir, nil)
 	if err != nil {
 		return loc.Errf(loc.KeyExportCreateWorldFailed, err)
 	}
+	worldClosed := false
 	defer func() {
-		_ = bedrockWorld.CloseWorld()
+		if !worldClosed {
+			_ = bedrockWorld.CloseWorld()
+		}
 	}()
 
 	subChunkRequest := ctrl.API.SubChunkRequest()
 	chunkRadius, err := subChunkRequest.SetChunkRadius(32)
 	if err != nil {
 		return loc.Errf(loc.KeyExportSetChunkRadiusFailed, err)
+	}
+	if savedRadius > 0 {
+		chunkRadius = savedRadius
+	}
+	e.checkpoint.ChunkRadius = chunkRadius
+	if err := e.saveExportCheckpoint(); err != nil {
+		return err
 	}
 
 	// 子区块请求依赖机器人附近的加载范围；每次请求前先移动到窗口中心，避免远距离请求空包。
@@ -320,23 +352,40 @@ func (e *ExportTask) Start(ctx context.Context) error {
 
 	if e.startCallback != nil {
 		e.startCallback(structure_define.Size{
-			Width:  int(e.EndPos.X()-e.StartPos.X()) - 1,
-			Height: int(e.EndPos.Y()-e.StartPos.Y()) - 1,
-			Length: int(e.EndPos.Z()-e.StartPos.Z()) - 1,
+			Width:  int(e.EndPos.X()-e.StartPos.X()) + 1,
+			Height: int(e.EndPos.Y()-e.StartPos.Y()) + 1,
+			Length: int(e.EndPos.Z()-e.StartPos.Z()) + 1,
 		})
 	}
 
-	for _, area := range areas {
+	exportedChunks := make(map[bwodefine.ChunkPos]bool)
+	for areaIndex, area := range areas {
+		if areaIndex < e.checkpoint.CompletedAreas {
+			for _, pos := range subChunkPositionsForArea(area) {
+				chunkPos := bwodefine.ChunkPos{pos.X(), pos.Z()}
+				if !exportedChunks[chunkPos] {
+					exportedChunks[chunkPos] = true
+					if e.everyChunkExportCallback != nil {
+						e.everyChunkExportCallback(chunkPos)
+					}
+				}
+			}
+			continue
+		}
 		// 大区域按请求半径拆开处理，每个窗口独立移动、读取并保存到临时世界。
 		if err := e.waitForContext(); err != nil {
 			return err
 		}
 
-		if e.Charger != nil {
+		if e.Charger != nil && e.checkpoint.ChargedArea != areaIndex {
 			volume := exportVolume(area)
 			latestCount := int(volume / 500)
 			if latestCount > 0 {
 				if err := e.Charger.Charge(latestCount); err != nil {
+					return err
+				}
+				e.checkpoint.ChargedArea = areaIndex
+				if err := e.saveExportCheckpoint(); err != nil {
 					return err
 				}
 			}
@@ -344,6 +393,7 @@ func (e *ExportTask) Start(ctx context.Context) error {
 
 		windows := subChunkWindows(area, 6)
 		NBTs := map[bwodefine.ChunkPos][]map[string]any{}
+		var responseErr error
 		processResponse := func(resp *packet.SubChunk) []bwodefine.SubChunkPos {
 			// 子区块实体 NBT 会跟在子区块二进制后面，需要和子区块一起解码并按区块归档。
 			subChunkStartPos := resp.Position
@@ -359,29 +409,24 @@ func (e *ExportTask) Start(ctx context.Context) error {
 					subChunkPos.Z(),
 				}
 				switch entry.Result {
-				case protocol.SubChunkResultSuccess:
-					subChunk, nbts, err := decodeSubChunkPayload(entry.RawPayload, dimension.Range())
+				case protocol.SubChunkResultSuccess, protocol.SubChunkResultSuccessAllAir:
+					nbts, err := e.saveExportSubChunk(bedrockWorld, dimension, subChunkPos, entry)
 					if err != nil {
-						if e.everySubChunkDecodeNBTFailedCallback != nil {
-							e.everySubChunkDecodeNBTFailedCallback(subChunkPos, err)
-						}
-						continue
-					}
-					if err := bedrockWorld.SaveSubChunk(dimension, subChunkPos, subChunk); err != nil {
-						if e.everySubChunkSaveFailedCallback != nil {
-							e.everySubChunkSaveFailedCallback(subChunkPos, err)
-						}
+						responseErr = errors.Join(responseErr, err)
 						continue
 					}
 					if _, ok := NBTs[chunkPos]; !ok {
 						NBTs[chunkPos] = make([]map[string]any, 0)
-						if e.everyChunkExportCallback != nil {
+						if !exportedChunks[chunkPos] && e.everyChunkExportCallback != nil {
 							e.everyChunkExportCallback(chunkPos)
 						}
+						exportedChunks[chunkPos] = true
 					}
 					NBTs[chunkPos] = append(NBTs[chunkPos], nbts...)
 				case protocol.SubChunkResultChunkNotFound:
 					nextUnfetched = append(nextUnfetched, subChunkPos)
+				default:
+					responseErr = errors.Join(responseErr, fmt.Errorf("export subchunk %v returned result %d", subChunkPos, entry.Result))
 				}
 			}
 			return nextUnfetched
@@ -398,6 +443,9 @@ func (e *ExportTask) Start(ctx context.Context) error {
 			}
 			for _, resp := range responses {
 				unfetchedSubChunksPos = append(unfetchedSubChunksPos, processResponse(resp)...)
+			}
+			if responseErr != nil {
+				return responseErr
 			}
 		}
 
@@ -424,6 +472,9 @@ func (e *ExportTask) Start(ctx context.Context) error {
 			for _, resp := range retryResponses {
 				nextUnfetched = append(nextUnfetched, processResponse(resp)...)
 			}
+			if responseErr != nil {
+				return responseErr
+			}
 			unfetchedSubChunksPos = nextUnfetched
 		}
 
@@ -432,18 +483,21 @@ func (e *ExportTask) Start(ctx context.Context) error {
 			if len(nbt) == 0 {
 				continue
 			}
-			if err := bedrockWorld.SaveNBT(dimension, chunkPos, nbt); err != nil {
+			existingNBT, err := bedrockWorld.LoadNBT(bwodefine.DimensionIDOverworld, chunkPos)
+			if err != nil {
+				return err
+			}
+			if err := bedrockWorld.SaveNBT(bwodefine.DimensionIDOverworld, chunkPos, mergeExportNBT(existingNBT, nbt)); err != nil {
 				if e.everyChunkNBTSaveFailedCallback != nil {
 					e.everyChunkNBTSaveFailedCallback(chunkPos, err)
 				}
-				continue
+				return err
 			}
 		}
-	}
-
-	// CloseWorld 会写入世界文件，这里避免重复关闭共享数据库句柄。
-	if err := bedrockWorld.CloseWorld(); err != nil {
-		return loc.Errf(loc.KeyExportCloseWorldFailed, err)
+		e.checkpoint.CompletedAreas = areaIndex + 1
+		if err := e.saveExportCheckpoint(); err != nil {
+			return err
+		}
 	}
 
 	worldName := fmt.Sprintf("%s@[%d,%d,%d]~[%d,%d,%d]",
@@ -455,6 +509,10 @@ func (e *ExportTask) Start(ctx context.Context) error {
 	if err := bedrockWorld.UpdateLevelDat(); err != nil {
 		return loc.Errf(loc.KeyExportUpdateLevelDatFailed, err)
 	}
+	if err := bedrockWorld.CloseWorld(); err != nil {
+		return loc.Errf(loc.KeyExportCloseWorldFailed, err)
+	}
+	worldClosed = true
 
 	if err := packWorldAsMCWorld(worldDir, outputPath); err != nil {
 		return err
@@ -465,6 +523,9 @@ func (e *ExportTask) Start(ctx context.Context) error {
 		// storage 副本只是便捷缓存，请求的输出文件已经生成。
 		ui.Warn(fmt.Sprintf("copy to building dir failed: %v", err))
 	}
+	if err := e.finishExportCheckpoint(); err != nil {
+		return err
+	}
 
 	if e.finishedCallback != nil {
 		e.finishedCallback(outputPath)
@@ -472,14 +533,65 @@ func (e *ExportTask) Start(ctx context.Context) error {
 	return nil
 }
 
-// Pause 暂不支持暂停导出任务。
-func (e *ExportTask) Pause() error {
-	return errors.New("not implemented")
+// Selection files use the overworld storage convention read by WaterStructure,
+// even when the source selection is in the Nether or End. World positions and
+// NBT remain intact, so they can be placed in any target import dimension.
+func (e *ExportTask) saveExportSubChunk(world *bwoworld.BedrockWorld, sourceDimension bwodefine.Dimension, pos bwodefine.SubChunkPos, entry protocol.SubChunkEntry) ([]map[string]any, error) {
+	var subChunk *bwochunk.SubChunk
+	var nbts []map[string]any
+	var err error
+	if entry.Result == protocol.SubChunkResultSuccessAllAir {
+		subChunk = bwochunk.NewSubChunk(block.AirRuntimeID)
+	} else {
+		subChunk, nbts, err = decodeSubChunkPayload(entry.RawPayload, sourceDimension.Range())
+	}
+	if err != nil {
+		if e.everySubChunkDecodeNBTFailedCallback != nil {
+			e.everySubChunkDecodeNBTFailedCallback(pos, err)
+		}
+		return nil, err
+	}
+	if err = world.SaveSubChunk(bwodefine.DimensionIDOverworld, pos, subChunk); err != nil {
+		if e.everySubChunkSaveFailedCallback != nil {
+			e.everySubChunkSaveFailedCallback(pos, err)
+		}
+		return nil, err
+	}
+	return nbts, nil
 }
 
-// Resume 暂不支持恢复导出任务。
+// Pause 在当前请求结束后暂停，不丢弃已读取的区块。
+func (e *ExportTask) Pause() error {
+	e.stateMu.Lock()
+	defer e.stateMu.Unlock()
+	if !e.running {
+		return errors.New("导出任务尚未运行")
+	}
+	if !e.paused {
+		e.paused = true
+		e.resumeWait = make(chan struct{})
+	}
+	return nil
+}
+
+// Resume 继续本次已暂停的导出。
 func (e *ExportTask) Resume() error {
-	return errors.New("not implemented")
+	e.stateMu.Lock()
+	defer e.stateMu.Unlock()
+	if !e.running {
+		return errors.New("导出任务尚未运行")
+	}
+	e.releasePause()
+	return nil
+}
+
+// releasePause is called while holding stateMu.
+func (e *ExportTask) releasePause() {
+	if e.resumeWait != nil {
+		close(e.resumeWait)
+		e.resumeWait = nil
+	}
+	e.paused = false
 }
 
 // Stop 取消正在运行的导出上下文。
@@ -491,6 +603,7 @@ func (e *ExportTask) Stop() error {
 		e.cancel = nil
 	}
 	e.running = false
+	e.releasePause()
 	return nil
 }
 
@@ -501,29 +614,21 @@ func (e *ExportTask) IsRunning() bool {
 	return e.running
 }
 
-// IsPaused 在暂停能力实现前始终返回 false。
+// IsPaused 返回当前导出的暂停状态。
 func (e *ExportTask) IsPaused() bool {
-	return false
-}
-
-// MakeInterruptJSON 预留给后续可恢复导出使用。
-func (e *ExportTask) MakeInterruptJSON() (string, error) {
-	return "", nil
-}
-
-// RestoreInterruptJSON 预留给后续可恢复导出使用。
-func (e *ExportTask) RestoreInterruptJSON(string) error {
-	return nil
+	e.stateMu.Lock()
+	defer e.stateMu.Unlock()
+	return e.paused
 }
 
 func (e *ExportTask) moveExportBot(pos defines.BlockPos) error {
 	if err := e.waitForContext(); err != nil {
 		return err
 	}
-	m := NewMoveTask()
-	m.Pos = pos
-	m.SetControl(&defines.ControlRef{Any: &e.control})
-	if err := m.Start(e.taskContext()); err != nil {
+	if e.control == nil {
+		return loc.Errf(loc.KeyControlRequired)
+	}
+	if err := e.control.Teleport(e.DimensionName, protocol.BlockPos{pos.X(), pos.Y(), pos.Z()}); err != nil {
 		return loc.Errf(loc.KeyExportMoveBotFailed, err)
 	}
 	return nil
@@ -591,6 +696,9 @@ func copyRegularFile(src, dst string) (int64, error) {
 	if !sourceFileStat.Mode().IsRegular() {
 		return 0, fmt.Errorf("%s is not a regular file", src)
 	}
+	if destinationStat, err := os.Stat(dst); err == nil && os.SameFile(sourceFileStat, destinationStat) {
+		return sourceFileStat.Size(), nil
+	}
 	source, err := os.Open(src)
 	if err != nil {
 		return 0, err
@@ -613,6 +721,30 @@ var ErrInvalidControl = errors.New("invalid control")
 type exportArea struct {
 	Start defines.BlockPos
 	End   defines.BlockPos
+}
+
+// Several export windows may intersect the same chunk. Merge block entities
+// by world position so saving a later window cannot erase an earlier one.
+func mergeExportNBT(existing, incoming []map[string]any) []map[string]any {
+	result := make([]map[string]any, 0, len(existing)+len(incoming))
+	indexes := make(map[[3]int32]int)
+	for _, group := range [][]map[string]any{existing, incoming} {
+		for _, value := range group {
+			x, xok := value["x"].(int32)
+			y, yok := value["y"].(int32)
+			z, zok := value["z"].(int32)
+			if xok && yok && zok {
+				key := [3]int32{x, y, z}
+				if index, ok := indexes[key]; ok {
+					result[index] = value
+					continue
+				}
+				indexes[key] = len(result)
+			}
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 type subChunkWindow struct {
@@ -884,9 +1016,18 @@ func packWorldAsMCWorld(worldDir, outputPath string) error {
 		return loc.Errf(loc.KeyExportCreateOutputDirFailed, err)
 	}
 
-	zipPath := strings.TrimSuffix(outputPath, filepath.Ext(outputPath)) + ".zip"
-	_ = os.RemoveAll(zipPath)
-	_ = os.RemoveAll(outputPath)
+	tmp, err := os.CreateTemp(outputDir, ".nexfatal-export-*.zip")
+	if err != nil {
+		return err
+	}
+	zipPath := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Remove(zipPath); err != nil {
+		return err
+	}
+	defer os.Remove(zipPath)
 
 	entries, err := os.ReadDir(worldDir)
 	if err != nil {

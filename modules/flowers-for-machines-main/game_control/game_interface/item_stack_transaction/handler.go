@@ -42,11 +42,11 @@ func (i *itemStackOperationHandler) handleMove(
 	}
 
 	// Get item runtime ID
-	srcRID, err := i.virtualInventories.loadAndSetStackNetworkID(op.Source, requestID)
+	srcRID, err := i.virtualInventories.loadStackNetworkID(op.Source)
 	if err != nil {
 		return nil, fmt.Errorf("handleMove: %v", err)
 	}
-	dstRID, err := i.virtualInventories.loadAndSetStackNetworkID(op.Destination, requestID)
+	dstRID, err := i.virtualInventories.loadStackNetworkID(op.Destination)
 	if err != nil {
 		return nil, fmt.Errorf("handleMove: %v", err)
 	}
@@ -98,6 +98,13 @@ func (i *itemStackOperationHandler) handleMove(
 	}
 	err = i.virtualInventories.setItemCount(op.Destination, dstResultCount)
 	if err != nil {
+		return nil, fmt.Errorf("handleMove: %v", err)
+	}
+	// Match StarShuttler: publish request IDs after moving the original stack.
+	if err = i.virtualInventories.setStackNetworkID(op.Source, requestID); err != nil {
+		return nil, fmt.Errorf("handleMove: %v", err)
+	}
+	if err = i.virtualInventories.setStackNetworkID(op.Destination, requestID); err != nil {
 		return nil, fmt.Errorf("handleMove: %v", err)
 	}
 

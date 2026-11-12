@@ -86,8 +86,11 @@ func NewBuildTask(cfg defines.BuildTaskConfig) *BuildTask {
 }
 
 // RecommendedRetryStartChunk 返回自动重试时基于断点快照建议恢复的区块序号。
-func RecommendedRetryStartChunk(cfg defines.BuildTaskConfig) (int, bool, error) {
+func RecommendedRetryStartChunk(cfg defines.BuildTaskConfig, targetServer ...string) (int, bool, error) {
 	task := NewBuildTask(cfg)
+	if len(targetServer) > 0 {
+		task.SetInterruptTargetServerCode(targetServer[0])
+	}
 	interruptData, err := LoadBuildInterruptData(utils.GetBuildInterruptFilePath())
 	if err != nil {
 		return 0, false, err
