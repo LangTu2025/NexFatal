@@ -52,7 +52,7 @@ func LoginRentalServer(cfg Config) (client *Client, err error) {
 	}
 
 	client = &Client{connection: conn, authClient: authClient}
-	err = NewChallengeSolver(client).CopeChallengeContext(cfg.Context)
+	err = NewChallengeSolver(client).CopeChallenge()
 	if err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("LoginRentalServer: %w", err)

@@ -1,7 +1,6 @@
 package client
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -13,74 +12,128 @@ import (
 	"github.com/google/uuid"
 )
 
-// CopeChallenge preserves the existing API.
+// CopeChallenge ..
 func (m *MCPCheckChallengesSolver) CopeChallenge() error {
-	return m.CopeChallengeContext(context.Background())
+	err := m.solveMCPCheckChallenges()
+	if err != nil {
+		return fmt.Errorf("CopeChallenge: %v", err)
+	}
+	return nil
 }
 
-func (m *MCPCheckChallengesSolver) CopeChallengeContext(parent context.Context) error {
-	if parent == nil {
-		parent = context.Background()
-	}
-	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
-	defer cancel()
-	conn := m.client.connection
-	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
-	defer stop()
-	deadline, _ := ctx.Deadline()
-	if err := conn.SetReadDeadline(deadline); err != nil {
-		return err
-	}
-	defer conn.SetReadDeadline(time.Time{})
-	var cached []packet.Packet
-	var requestID uuid.UUID
-	sent := false
-	for {
-		if err := ctx.Err(); err != nil {
-			return err
+// solveMCPCheckChallenges ..
+func (m *MCPCheckChallengesSolver) solveMCPCheckChallenges() error {
+	// prepare
+	var (
+		pk               packet.Packet             = nil
+		err              error                     = nil
+		challengeTimeout bool                      = false
+		challengeError   chan struct{}             = make(chan struct{})
+		challengeSolved  chan struct{}             = make(chan struct{})
+		cachedPkt        chan packet.Packet        = make(chan packet.Packet, 32767)
+		commandOutput    chan packet.CommandOutput = make(chan packet.CommandOutput, 1)
+		timer            *time.Timer               = time.NewTimer(time.Second * 30)
+	)
+	defer timer.Stop()
+
+	// read packet and process
+	go func() {
+		for {
+			// challenge timeout
+			if challengeTimeout {
+				return
+			}
+
+			// read packet
+			pk, err = m.client.connection.ReadPacket()
+			if !challengeTimeout && err != nil {
+				close(challengeError)
+				return
+			}
+
+			// for each incoming packet
+			switch p := pk.(type) {
+			case *packet.PyRpc:
+				olderStates := m.client.getCheckNumEverPassed
+				if err = m.onPyRpc(p); err != nil {
+					close(challengeError)
+					return
+				}
+				if !olderStates && m.client.getCheckNumEverPassed {
+					close(challengeSolved)
+				}
+			case *packet.CommandOutput:
+				commandOutput <- *p
+				return
+			default:
+				cachedPkt <- pk
+			}
 		}
-		pk, err := conn.ReadPacket()
+	}()
+
+	// wait for the challenge to end
+	select {
+	case <-challengeSolved:
+		err = m.waitMCPCheckChallengesDown(commandOutput)
+		close(cachedPkt)
 		if err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			return fmt.Errorf("MCP challenge: %w", err)
+			return fmt.Errorf("solveMCPCheckChallenges: %v", err)
 		}
-		if rpc, ok := pk.(*packet.PyRpc); ok {
-			if err := m.onPyRpc(ctx, rpc); err != nil {
-				return err
-			}
-		} else if response, ok := pk.(*packet.CommandOutput); ok && sent && response.CommandOrigin.UUID == requestID {
-			packets := make(chan packet.Packet, len(cached))
-			for _, p := range cached {
-				packets <- p
-			}
-			close(packets)
-			m.client.cachedPacket = packets
+		m.client.cachedPacket = cachedPkt
+		return nil
+	case <-challengeError:
+		close(challengeSolved)
+		close(cachedPkt)
+		return fmt.Errorf("solveMCPCheckChallenges: %v", err)
+	case <-timer.C:
+		challengeTimeout = true
+		return fmt.Errorf("solveMCPCheckChallenges: Failed to pass the MCPC check challenges, please try again later")
+	}
+}
+
+// waitMCPCheckChallengesDown ..
+func (m *MCPCheckChallengesSolver) waitMCPCheckChallengesDown(commandOutput chan packet.CommandOutput) error {
+	ticker := time.NewTicker(time.Second / 20)
+	defer ticker.Stop()
+
+	for {
+		commandOrigin := protocol.CommandOrigin{
+			Origin:    protocol.CommandOriginAutomationPlayer,
+			UUID:      uuid.New(),
+			RequestID: "96045347-a6a3-4114-94c0-1bc4cc561694",
+		}
+		if m.client.IsDomainGame() {
+			commandOrigin.Origin = protocol.CommandOriginPlayer
+			commandOrigin.PlayerUniqueID = m.client.connection.GameData().EntityUniqueID
+		}
+		request := &packet.CommandRequest{
+			CommandLine:   "list",
+			CommandOrigin: commandOrigin,
+			Internal:      false,
+			// PhoenixBuilder specific changes.
+			// Author: LNSSPsd
+			UnLimited: false,
+			// PhoenixBuilder specific changes.
+			// Author: Liliya233
+			Version: 44,
+		}
+		err := m.client.connection.WritePacket(request)
+
+		if err != nil {
+			return fmt.Errorf("waitMCPCheckChallengesDown: %v", err)
+		}
+
+		select {
+		case <-commandOutput:
+			close(commandOutput)
 			return nil
-		} else {
-			if len(cached) >= 32767 {
-				return fmt.Errorf("MCP challenge packet buffer exceeded")
-			}
-			cached = append(cached, pk)
-		}
-		if m.client.getCheckNumEverPassed && !sent {
-			requestID = uuid.New()
-			origin := protocol.CommandOrigin{Origin: protocol.CommandOriginAutomationPlayer, UUID: requestID, RequestID: "96045347-a6a3-4114-94c0-1bc4cc561694"}
-			if m.client.IsDomainGame() {
-				origin.Origin = protocol.CommandOriginPlayer
-				origin.PlayerUniqueID = conn.GameData().EntityUniqueID
-			}
-			if err := conn.WritePacket(&packet.CommandRequest{CommandLine: "list", CommandOrigin: origin, Version: 44}); err != nil {
-				return err
-			}
-			sent = true
+		case <-ticker.C:
 		}
 	}
 }
 
 // onPyRpc ..
-func (m *MCPCheckChallengesSolver) onPyRpc(ctx context.Context, p *packet.PyRpc) error {
+func (m *MCPCheckChallengesSolver) onPyRpc(p *packet.PyRpc) error {
 	// prepare
 	conn := m.client.connection
 	client := m.client.authClient
@@ -98,7 +151,7 @@ func (m *MCPCheckChallengesSolver) onPyRpc(ctx context.Context, p *packet.PyRpc)
 	switch c := content.(type) {
 	case *py_rpc.StartType:
 		// get data and send packet
-		c.Content, err = client.TransferDataContext(ctx, c.Content)
+		c.Content, err = client.TransferData(c.Content)
 		if err != nil {
 			return fmt.Errorf("onPyRpc: %v", err)
 		}
@@ -119,7 +172,7 @@ func (m *MCPCheckChallengesSolver) onPyRpc(ctx context.Context, p *packet.PyRpc)
 			c.SecondArg.Arg,
 			conn.GameData().EntityUniqueID,
 		})
-		ret, err := client.TransferCheckNumContext(ctx, string(arg))
+		ret, err := client.TransferCheckNum(string(arg))
 		if err != nil {
 			return fmt.Errorf("onPyRpc: %v", err)
 		}

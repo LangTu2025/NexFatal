@@ -27,6 +27,12 @@ NovaBuilder 用户中心登录、余额和计费继续使用原来的 /api/build
 
 按服务端源码修正前缀后的线上探测：代理会话请求返回 200，使用测试服务器号进行加密登录，返回“SearchRentalServerByName: 找不到服务器”，已越过原先的 FBToken 校验错误。此探测未执行建筑导入或扣费；完整进服、MCP 和建筑任务仍需在实际目标服务器验证。
 
+## MCP 校验来源
+
+租赁服和山头共用的 client/mcp_challenge_solve.go 直接复制用户指定的 D:/LangTu/网易3.10/flowers-for-machines-main 备份，与备份逐字节一致。登录入口恢复调用原始 CopeChallenge：StartType / CheckNum 处理后，每 50ms 发送 list 探测，收到命令回包即交接缓存，不再只发送一次或额外限制回包 UUID。大厅独立的 MCP 实现、进服初始化和底层连接也已与备份比对，无需更改；用户中心加密代理及 HTTP 传输接入继续保留。
+
+本地 RakNet 集成测试覆盖租赁服和山头：模拟服务器忽略前两次探测，并改写命令回包 UUID，校验重复探测、回包处理、命令来源和缓存交接。
+
 ## __tag 解码来源
 
 方块实体解码结构、物品、附魔和可选字段来自用户指定的 D:/LangTu/laobanbennf/modules/StarShuttler/core/minecraft/protocol，迁入 Flowers 的协议目录，保留原 NOTE、测试样本及作者说明。根据原始样本修复长度前缀、条件字段及活塞坐标写回，容器物品及其标签不会被简化为普通物品。

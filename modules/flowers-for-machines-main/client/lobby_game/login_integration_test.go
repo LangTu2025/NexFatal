@@ -36,7 +36,24 @@ func TestLobbyGameLoginEndToEnd(t *testing.T) {
 	}
 }
 
+// Rental and DomainGame use the shared Flowers MCP solver, unlike LobbyGame.
+// The peer ignores early probes and rewrites the response origin, as permitted
+// by the original solver. A single probe or UUID filter would time out here.
+func TestRentalAndDomainGameMCPAfterDelayedCommandOutput(t *testing.T) {
+	for _, scenario := range []string{"rental-delayed", "domain-delayed"} {
+		t.Run(scenario, func(t *testing.T) { testLobbyGameLoginEndToEnd(t, scenario) })
+	}
+}
+
 func testLobbyGameLoginEndToEnd(t *testing.T, scenario string) {
+	rental := scenario == "rental-delayed"
+	domain := scenario == "domain-delayed"
+	wantCode := "LobbyGame:4682670425802129213"
+	if rental {
+		wantCode = "123456"
+	} else if domain {
+		wantCode = "DomainGame:test-invite"
+	}
 	listener, err := raknet.Listen("127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -57,12 +74,16 @@ func testLobbyGameLoginEndToEnd(t *testing.T, scenario string) {
 		t.Fatal(err)
 	}
 	chain, _ := json.Marshal(map[string]any{"chain": []string{identityJWT}})
+	wantPasscode := "000000"
+	if domain {
+		wantPasscode = ""
+	}
 	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/new":
 			_, _ = w.Write([]byte("test-session"))
 		case "/api/phoenix/lobby_search":
-			if scenario == "direct" {
+			if scenario == "direct" || rental || domain {
 				t.Error("direct entity ID unexpectedly triggered search")
 			}
 			var request struct {
@@ -86,7 +107,7 @@ func testLobbyGameLoginEndToEnd(t *testing.T, scenario string) {
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 				t.Error(err)
 			}
-			if request.ServerCode != "LobbyGame:4682670425802129213" || request.ServerPassword != "000000" {
+			if request.ServerCode != wantCode || request.ServerPassword != wantPasscode {
 				t.Errorf("wrong auth input: %+v", request)
 			}
 			outfit := 4
@@ -124,19 +145,23 @@ func testLobbyGameLoginEndToEnd(t *testing.T, scenario string) {
 			return
 		}
 		defer conn.Close()
-		peerDone <- serveLobbyPeer(conn, key, signer, finishPeer)
+		peerDone <- serveLobbyPeer(conn, key, signer, finishPeer, scenario)
 	}()
 	type result struct {
 		c   *client.Client
 		err error
 	}
 	done := make(chan result, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
 	go func() {
 		target := "联机大厅:4682670425802129213"
-		if scenario != "direct" {
+		if rental || domain {
+			target = wantCode
+		} else if scenario != "direct" {
 			target = "联机大厅:7973"
 		}
-		c, err := client.LoginRentalServer(client.Config{AuthServerAddress: authServer.URL, AuthServerToken: "fb-token", RentalServerCode: target, RentalServerPasscode: "000000", LobbyGameRoomSelector: func(_ context.Context, rooms []lobby_game.RoomCandidate) (int, error) {
+		c, err := client.LoginRentalServer(client.Config{Context: ctx, AuthServerAddress: authServer.URL, AuthServerToken: "fb-token", RentalServerCode: target, RentalServerPasscode: "000000", LobbyGameRoomSelector: func(_ context.Context, rooms []lobby_game.RoomCandidate) (int, error) {
 			if scenario != "multiple-rooms" || len(rooms) != 2 || rooms[0].OwnerName != "Alice" || rooms[1].OwnerName != "Bob" {
 				t.Errorf("unexpected room choice: %+v", rooms)
 			}
@@ -150,11 +175,16 @@ func testLobbyGameLoginEndToEnd(t *testing.T, scenario string) {
 			t.Fatal(got.err)
 		}
 		defer got.c.Conn().Close()
-		if !got.c.IsLobbyGame() || got.c.IsDomainGame() || got.c.IsLocalLobby() {
+		if got.c.IsLobbyGame() != (!rental && !domain) || got.c.IsDomainGame() != domain || got.c.IsLocalLobby() {
 			t.Fatal("incorrect target flags")
 		}
-		if got.c.Conn().IdentityData().Uid != 123 || got.c.Conn().GameData().EntityUniqueID != 456 {
+		if got.c.Conn().GameData().EntityUniqueID != 456 {
 			t.Fatal("identity or game data was lost")
+		}
+		// Rental/DomainGame prepend their client claim to this single-token
+		// mock chain; only LobbyGame uses its identity directly.
+		if !rental && !domain && got.c.Conn().IdentityData().Uid != 123 {
+			t.Fatal("LobbyGame identity was lost")
 		}
 		var cached bool
 		for p := range got.c.CachedPacket() {
@@ -182,7 +212,7 @@ func testLobbyGameLoginEndToEnd(t *testing.T, scenario string) {
 	}
 }
 
-func serveLobbyPeer(conn net.Conn, key *ecdsa.PrivateKey, signer jose.Signer, finish <-chan struct{}) (err error) {
+func serveLobbyPeer(conn net.Conn, key *ecdsa.PrivateKey, signer jose.Signer, finish <-chan struct{}, scenario string) (err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			err = fmt.Errorf("mock peer: %v", p)
@@ -201,7 +231,13 @@ func serveLobbyPeer(conn net.Conn, key *ecdsa.PrivateKey, signer jose.Signer, fi
 	}
 	pool := packet.ListAllPackets()
 	initNames := []string{"e", "SyncUsingMod", "SyncVipSkinUuid", "ClientLoadAddonsFinishedFromGac", "ModEventC2S", "arenaGamePlayerFinishLoad", "ModEventC2S"}
+	if scenario == "rental-delayed" {
+		initNames = initNames[1:]
+	} else if scenario == "domain-delayed" {
+		initNames = []string{"e", "SyncUsingMod", "ClientLoadAddonsFinishedFromGac", "arenaGamePlayerFinishLoad", "ModEventC2S", "ClientInitUIFinishedEventFromGac"}
+	}
 	initCount := 0
+	probeCount := 0
 	startAnswered, checkAnswered := false, false
 	for {
 		batch, err := decoder.Decode()
@@ -289,7 +325,7 @@ func serveLobbyPeer(conn net.Conn, key *ecdsa.PrivateKey, signer jose.Signer, fi
 					if name != initNames[initCount] {
 						return fmt.Errorf("init packet %d = %s, want %s", initCount, name, initNames[initCount])
 					}
-					if name == "SyncUsingMod" {
+					if name == "SyncUsingMod" && scenario != "rental-delayed" {
 						args := value[1].([]any)
 						if !strings.Contains(fmt.Sprint(args), "test-mod") {
 							return fmt.Errorf("auth component lost")
@@ -313,10 +349,28 @@ func serveLobbyPeer(conn net.Conn, key *ecdsa.PrivateKey, signer jose.Signer, fi
 				if !startAnswered || !checkAnswered || initCount != len(initNames) {
 					return fmt.Errorf("command sent before initialization/challenge completed")
 				}
-				if p.CommandOrigin.Origin != protocol.CommandOriginAutomationPlayer {
+				wantOrigin := uint32(protocol.CommandOriginAutomationPlayer)
+				if scenario == "domain-delayed" {
+					wantOrigin = protocol.CommandOriginPlayer
+					if p.CommandOrigin.PlayerUniqueID != 456 {
+						return fmt.Errorf("incorrect DomainGame player ID")
+					}
+				}
+				if p.CommandOrigin.Origin != wantOrigin {
 					return fmt.Errorf("incorrect LobbyGame command origin")
 				}
-				if err := send(&packet.CommandOutput{CommandOrigin: p.CommandOrigin, SuccessCount: 1}); err != nil {
+				origin := p.CommandOrigin
+				if scenario == "rental-delayed" || scenario == "domain-delayed" {
+					if p.CommandLine != "list" {
+						return fmt.Errorf("incorrect original Flowers MCP probe: %+v", p)
+					}
+					probeCount++
+					if probeCount < 3 {
+						continue
+					}
+					origin.UUID = [16]byte{}
+				}
+				if err := send(&packet.CommandOutput{CommandOrigin: origin, SuccessCount: 1}); err != nil {
 					return err
 				}
 				// Close after the client verifies handoff; RakNet remote close detection

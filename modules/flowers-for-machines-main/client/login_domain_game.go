@@ -25,7 +25,7 @@ func LoginDomainGame(cfg Config) (*Client, error) {
 		cachedPacket: session.CachedPacket,
 		domainGame:   true,
 	}
-	if err := NewChallengeSolver(client).CopeChallengeContext(cfg.Context); err != nil {
+	if err := NewChallengeSolver(client).CopeChallenge(); err != nil {
 		_ = session.Connection.Close()
 		return nil, fmt.Errorf("LoginDomainGame: %w", err)
 	}
