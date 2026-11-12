@@ -43,10 +43,24 @@ func TestAllFlowersTargetsEncryptUserCentreRequests(t *testing.T) {
 				if req.URL.Hostname() != "user.aurelrune.com" || req.Header.Get("X-Client-Public-Key") == "" {
 					t.Fatal("wrong host or missing encryption key")
 				}
-				body := "session-token"
-				if req.URL.Path != "/api/new" {
+				const proxyPrefix = "/api/phoenix"
+				if !strings.HasPrefix(req.URL.Path, proxyPrefix+"/api/") {
+					t.Fatalf("request bypassed UC proxy: %s", req.URL.Path)
+				}
+				nativePath := strings.TrimPrefix(req.URL.Path, proxyPrefix)
+				body := []byte(`"session-token"`)
+				if nativePath == "/api/new" {
+					if req.Header.Get("Authorization") != "" || req.Method != http.MethodGet {
+						t.Fatal("incorrect proxy bootstrap")
+					}
+				} else {
 					if req.Header.Get("Authorization") != "Bearer session-token" {
-						t.Fatal("session not forwarded")
+						t.Fatalf("proxy session was not decoded: %q", req.Header.Get("Authorization"))
+					}
+					switch nativePath {
+					case "/api/phoenix/login", "/api/phoenix/lobby_search", "/api/phoenix/tan_lobby_login":
+					default:
+						t.Fatalf("unexpected proxy path %s", nativePath)
 					}
 					var envelope safehttp.Envelope
 					if err := json.NewDecoder(req.Body).Decode(&envelope); err != nil {
@@ -63,19 +77,19 @@ func TestAllFlowersTargetsEncryptUserCentreRequests(t *testing.T) {
 					if payload["password"] != nil {
 						t.Fatal("user-centre password was forwarded")
 					}
-					encrypted, err := safehttp.EncryptPayload([]byte(`{"success":false,"message":"test rejection","error_info":"test rejection"}`), &key.PublicKey)
-					if err != nil {
-						t.Fatal(err)
-					}
-					wire, err := json.Marshal(encrypted)
-					if err != nil {
-						t.Fatal(err)
-					}
-					body = string(wire)
+					body = []byte(`{"success":false,"message":"test rejection","error_info":"test rejection"}`)
 				}
-				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+				encrypted, err := safehttp.EncryptPayload(body, &key.PublicKey)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wire, err := json.Marshal(encrypted)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(wire)))}, nil
 			})
-			cfg, err := flowersConfigForService(defines.ControlConfig{AuthServerToken: "test-key", RentalServerCode: target}, constants.UserCenterURL)
+			cfg, err := flowersConnectionConfig(defines.ControlConfig{AuthServerAddress: constants.UserCenterURL, AuthServerToken: "test-key", RentalServerCode: target})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -91,7 +105,7 @@ func TestAllFlowersTargetsEncryptUserCentreRequests(t *testing.T) {
 	}
 }
 
-func TestDefaultFlowersFlowNeverCallsUserCentreSessionEndpoint(t *testing.T) {
+func TestExplicitNativeServiceRetainsPlainSessionProtocol(t *testing.T) {
 	for _, target := range []string{"123456", "DomainGame:invite", "LobbyGame:4682670425802129213", "LobbyGame:123456", "TanLobby:123456"} {
 		t.Run(target, func(t *testing.T) {
 			requests := 0
@@ -121,7 +135,7 @@ func TestDefaultFlowersFlowNeverCallsUserCentreSessionEndpoint(t *testing.T) {
 				}
 				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
 			})
-			cfg, err := flowersConnectionConfig(defines.ControlConfig{AuthServerAddress: constants.UserCenterURL, AuthServerToken: "test-key", RentalServerCode: target})
+			cfg, err := flowersConnectionConfig(defines.ControlConfig{AuthServerAddress: "https://auth.aurelrune.com", AuthServerToken: "test-key", RentalServerCode: target})
 			if err != nil {
 				t.Fatal(err)
 			}

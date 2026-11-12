@@ -14,6 +14,4 @@ const (
 	// UserCenterURL 是默认用户中心地址。
 	// UserCenterURL = "http://localhost:5173"
 	UserCenterURL = "https://user.aurelrune.com"
-	// GameAuthURL 是 Flowers 原生游戏认证服务，不是 builderapi 用户中心。
-	GameAuthURL = "https://auth.aurelrune.com"
 )

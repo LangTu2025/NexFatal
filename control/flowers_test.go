@@ -14,7 +14,7 @@ import (
 	"github.com/xingbaiawa/NovaBuilder/defines"
 )
 
-func TestFlowersDoesNotSendSessionRequestsToBuilderUserCentre(t *testing.T) {
+func TestFlowersUsesUserCentreProxyPrefix(t *testing.T) {
 	original := defines.DefaultAuthServerAddress()
 	defer defines.SetDefaultAuthServerAddress(original)
 	defines.SetDefaultAuthServerAddress(constants.UserCenterURL)
@@ -22,11 +22,21 @@ func TestFlowersDoesNotSendSessionRequestsToBuilderUserCentre(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.AuthServerAddress != constants.GameAuthURL || cfg.AuthTransport == nil {
+	if cfg.AuthServerAddress != constants.UserCenterURL+"/api/phoenix" || cfg.AuthTransport == nil {
 		t.Fatalf("Flowers endpoint: %s", cfg.AuthServerAddress)
 	}
 	if defines.DefaultAuthServerAddress() != constants.UserCenterURL {
 		t.Fatal("Flowers changed the user center endpoint")
+	}
+	for _, address := range []string{
+		constants.UserCenterURL + "/",
+		constants.UserCenterURL + "/api/phoenix",
+		constants.UserCenterURL + "/api/phoenix/",
+	} {
+		got, err := flowersConnectionConfig(defines.ControlConfig{AuthServerAddress: address, AuthServerToken: "test-token", RentalServerCode: "123456"})
+		if err != nil || got.AuthServerAddress != constants.UserCenterURL+"/api/phoenix" {
+			t.Fatalf("proxy prefix duplicated or removed: %s, %v", got.AuthServerAddress, err)
+		}
 	}
 	for _, address := range []string{"https://auth.aurelrune.com", "https://api.liliya233.uk"} {
 		cfg, err := flowersConnectionConfig(defines.ControlConfig{AuthServerAddress: address, AuthServerToken: "test-token", RentalServerCode: "123456"})

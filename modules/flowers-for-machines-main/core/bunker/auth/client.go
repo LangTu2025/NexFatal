@@ -82,7 +82,7 @@ func assertAndParse[T any](resp *http.Response) (T, error) {
 	_body, _ := io.ReadAll(resp.Body)
 	body := string(_body)
 	if resp.StatusCode != 200 {
-		return ret, parsedError(body)
+		return ret, fmt.Errorf("HTTP %d: %w", resp.StatusCode, parsedError(body))
 	}
 	err := json.Unmarshal([]byte(body), &ret)
 	if err != nil {
@@ -99,15 +99,21 @@ func CreateClientContext(ctx context.Context, options *ClientOptions) (*Client, 
 	if options == nil {
 		return nil, errors.New("认证服务配置不能为空")
 	}
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/new", strings.TrimRight(options.AuthServer, "/")), nil)
-	if err != nil {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	transport := options.Transport
 	if transport == nil {
 		transport = http.DefaultTransport
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/api/new", strings.TrimRight(options.AuthServer, "/")), nil)
+	if err != nil {
+		return nil, err
 	}
 	bootstrapClient := &http.Client{Transport: transport, Timeout: 20 * time.Second}
 	secret_res, err := bootstrapClient.Do(req)
@@ -117,6 +123,11 @@ func CreateClientContext(ctx context.Context, options *ClientOptions) (*Client, 
 	defer secret_res.Body.Close()
 	_secret_body, _ := io.ReadAll(secret_res.Body)
 	secret_body := strings.TrimSpace(string(_secret_body))
+	// The user-centre proxy JSON-encodes native text before encrypting it.
+	var jsonSession string
+	if json.Unmarshal([]byte(secret_body), &jsonSession) == nil {
+		secret_body = strings.TrimSpace(jsonSession)
+	}
 	if secret_res.StatusCode == 503 {
 		return nil, errors.New("API server is down")
 	} else if secret_res.StatusCode != 200 {
@@ -246,7 +257,7 @@ func (client *Client) Auth(
 	}
 	authResponse, err = assertAndParse[AuthResponse](httpResponse)
 	if err != nil {
-		return authResponse, err
+		return authResponse, fmt.Errorf("POST %s/api/phoenix/login: %w", client.AuthServer, err)
 	}
 	// get response
 	if !authResponse.SuccessStates {

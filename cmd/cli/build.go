@@ -184,7 +184,7 @@ func runBuildWithControl(ctx context.Context, serverConfig defines.ControlConfig
 
 func retryShouldStop(err error) bool {
 	var chargeErr *defines.ChargeError
-	return errors.As(err, &chargeErr) || game_control.IsCanceled(err) || game_control.IsOperatorTimeout(err) || game_control.IsAuthenticationRejected(err)
+	return errors.As(err, &chargeErr) || game_control.IsCanceled(err) || game_control.IsOperatorTimeout(err) || game_control.IsAuthenticationRejected(err) || game_control.IsAuthenticationEndpointMissing(err)
 }
 
 func retryKeySignal() <-chan struct{} {

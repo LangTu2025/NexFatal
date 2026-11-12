@@ -8,15 +8,24 @@
 
 ## 认证服务约定
 
-传给 Flowers 的地址是服务根地址，其原生协议使用 GET /api/new 获取会话，POST /api/phoenix/login 登录，并使用 /api/phoenix/transfer_start_type、/api/phoenix/transfer_check_num 完成校验。大厅搜索使用 POST /api/phoenix/lobby_search，本地联机使用 Flowers 内置的隧道实现。用户中心的 builderapi 登录和计费接口与这些游戏认证接口分别承担各自职责。
+按 NexFatalUC 的 panel/src/app/index.ts 和 panel/src/app/routers/phoenix_router.ts 对齐：默认服务根地址为 https://user.aurelrune.com/api/phoenix。它是加密代理前缀，后面必须保留 Flowers 完整的原生接口路径。客户端不直连 auth，也不跳过会话初始化。
+
+| 操作 | 客户端请求用户中心 | 用户中心转发到 auth 的路径 |
+| --- | --- | --- |
+| 创建会话 | GET /api/phoenix/api/new | /api/new |
+| 登录 | POST /api/phoenix/api/phoenix/login | /api/phoenix/login |
+| MCP StartType | GET /api/phoenix/api/phoenix/transfer_start_type | /api/phoenix/transfer_start_type |
+| MCP CheckNum | POST /api/phoenix/api/phoenix/transfer_check_num | /api/phoenix/transfer_check_num |
+| 大厅搜索 | POST /api/phoenix/api/phoenix/lobby_search | /api/phoenix/lobby_search |
+| 本地联机 | POST /api/phoenix/api/phoenix/tan_lobby_login | /api/phoenix/tan_lobby_login |
 
 用户中心登录、余额、公告及导入器计费保留 NovaBuilder 原源码的调用点、请求参数与响应解析，RSA/AES 信封算法及密钥也沿用原源码。按最新要求，共用 HTTP 传输层只对 user.aurelrune.com 使用加密信封；auth.aurelrune.com 及其他域名直接发送普通 HTTP/JSON，不添加加密公钥头，也不展开响应信封。这里的“不加密”指不额外使用 SafeHttp 信封，HTTPS 自身的 TLS 仍正常使用。
 
-NovaBuilder 的用户中心初始化只调用 builderapi，源码中的 CreateClient 不请求 /api/new。用户中心地址 https://user.aurelrune.com 只用于加密的 builderapi 登录、校验、公告和计费；它不能直接作为 Flowers 的会话根地址。Flowers 默认使用 https://auth.aurelrune.com 请求 /api/new、/api/phoenix/login、房间搜索和 MCP 校验，使用原生 HTTP/JSON 及 Bearer 会话头，不加 SafeHttp 信封。配置为其他原生认证服务时继续使用所选地址。地址在初始化前确定，不对用户中心尝试 Flowers 接口，也不依赖 404 后回退。
+用户中心代理先解密客户端请求，替换 query/body 中的 token 和 login_token，并设置下游 Authorization，然后将原生请求转发给 auth.aurelrune.com。下游游戏凭据只由用户中心持有，不复制到客户端。用户中心将下游 JSON 或文本编码后加密返回；客户端解密响应，并将会话的 JSON 字符串还原成不带引号的 Bearer 值。游戏、搜索、隧道和 MCP 请求共用这一传输层。
 
-这里保留 NovaBuilder 的用户中心协议和界面流程；游戏登录则按用户要求使用 Flowers，跳过 NovaBuilder 原版的 Cookie 和本地 g79 认证。这两个部分不能以“同一地址”或“同一种 Token”替代各自的协议。
+NovaBuilder 用户中心登录、余额和计费继续使用原来的 /api/builderapi 接口。游戏及 NBT 使用 Flowers，跳过 Cookie、本地 g79 和 4399。Flowers 不再把用户中心代理返回的共享游戏 Token 写入用户主目录的 fastbuilder/fbtoken，也不会用它覆盖 NexFatal 保存的用户 API Key。
 
-FBToken 不存在或无效属于认证服务拒绝令牌，停止构建的自动重试并提示实际服务地址。用户中心 builderApiKey 不保证能被其他认证服务识别为 FBToken，应使用所选服务认可的令牌；客户端不会伪造令牌，也不转发用户中心密码。真实完整进服需要有效账号、提供 Flowers API 的认证服务、游戏服务器和管理员权限，本地模拟测试不等同于真实账号验收。
+按服务端源码修正前缀后的线上探测：代理会话请求返回 200，使用测试服务器号进行加密登录，返回“SearchRentalServerByName: 找不到服务器”，已越过原先的 FBToken 校验错误。此探测未执行建筑导入或扣费；完整进服、MCP 和建筑任务仍需在实际目标服务器验证。
 
 ## __tag 解码来源
 

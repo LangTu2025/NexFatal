@@ -10,20 +10,14 @@ import (
 	"github.com/OmineDev/flowers-for-machines/client"
 	"github.com/OmineDev/flowers-for-machines/client/lobby_game"
 	"github.com/xingbaiawa/NovaBuilder/cmd/cli/ui"
-	"github.com/xingbaiawa/NovaBuilder/constants"
 	"github.com/xingbaiawa/NovaBuilder/defines"
 	safehttp "github.com/xingbaiawa/NovaBuilder/utils/safe_http"
 )
 
-// NovaBuilder's builderapi user centre is not a Flowers session endpoint.
-// Keep the configured user centre intact for login, billing and announcements.
+// NexFatalUC proxies the complete native Flowers path under /api/phoenix.
 func flowersConnectionConfig(cfg defines.ControlConfig) (client.Config, error) {
 	cfg.Normalize()
-	serviceURL := cfg.AuthServerAddress
-	if safehttp.RequiresEncryption(serviceURL) {
-		serviceURL = constants.GameAuthURL
-	}
-	return flowersConfigForService(cfg, serviceURL)
+	return flowersConfigForService(cfg, cfg.AuthServerAddress)
 }
 
 func flowersConfigForService(cfg defines.ControlConfig, serviceURL string) (client.Config, error) {
@@ -33,6 +27,9 @@ func flowersConfigForService(cfg defines.ControlConfig, serviceURL string) (clie
 		return client.Config{}, errors.New("认证服务地址无效")
 	}
 	u.Path = strings.TrimSuffix(strings.TrimRight(u.Path, "/"), "/api/phoenix")
+	if safehttp.RequiresEncryption(u.String()) {
+		u.Path += "/api/phoenix"
+	}
 	u.RawPath = ""
 	transport, err := safehttp.NewTransport(safehttp.ServerPublicKey, safehttp.ClientPrivateKey, nil)
 	if err != nil {
@@ -75,8 +72,8 @@ func loginFlowers(ctx context.Context, cfg client.Config) (*client.Client, error
 	}
 	cfg.Context = ctx
 	cl, err := client.LoginRentalServer(cfg)
-	if IsAuthenticationRejected(err) {
-		return nil, fmt.Errorf("认证服务 %s 拒绝了当前登录令牌，请确认令牌由该服务签发或重新登录；自动重试无法修复无效令牌: %w", cfg.AuthServerAddress, err)
+	if err != nil {
+		return nil, fmt.Errorf("认证服务 %s: %w", cfg.AuthServerAddress, err)
 	}
 	return cl, err
 }
@@ -88,4 +85,13 @@ func IsAuthenticationRejected(err error) bool {
 	}
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "fbtoken") && (strings.Contains(message, "无效") || strings.Contains(message, "不存在") || strings.Contains(message, "invalid") || strings.Contains(message, "record not found"))
+}
+
+// IsAuthenticationEndpointMissing avoids repeatedly retrying an unavailable API route.
+func IsAuthenticationEndpointMissing(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "http 404") && strings.Contains(message, "/api/phoenix/")
 }
