@@ -98,14 +98,6 @@ func (c *Commands) SendSettingsCommand(command string, dimensional bool) error {
 		}
 		return nil
 	}
-	// LobbyGame accepts the automation-player CommandRequest path used by
-	// SendWSCommand, while its legacy SettingsCommand packet is ignored.
-	if api.Resources.IsLobbyGame() {
-		if err := c.sendCommand(command, protocol.CommandOriginAutomationPlayer); err != nil {
-			return fmt.Errorf("SendSettingsCommand: %v", err)
-		}
-		return nil
-	}
 	if api.Resources.IsLocalLobby() {
 		return c.sendLocalLobbySettingsCommand(command)
 	}
