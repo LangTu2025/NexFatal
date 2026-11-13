@@ -17,7 +17,7 @@ type teleportPacketListener interface {
 }
 
 // TeleportForCommandBlocks 在命令方块写入前同步机器人的位置。
-// TanLobby 复用 Flowers 操作台的命令与同步方式，传送确认由资源层处理。
+// TanLobby 使用显式机器人目标，等待服务器位置包；传送确认由 Flowers 资源层处理。
 func (c *Control) TeleportForCommandBlocks(ctx context.Context, dimensionName string, pos protocol.BlockPos) ([3]float32, error) {
 	if c.Resources == nil {
 		return [3]float32{}, loc.Err(loc.KeyControlResourcesNotInitialized)
@@ -26,7 +26,8 @@ func (c *Control) TeleportForCommandBlocks(ctx context.Context, dimensionName st
 		return [3]float32{}, loc.Err(loc.KeyControlAPINotInitialized)
 	}
 	if c.Resources.IsLocalLobby() {
-		return teleportLocalLobbyForCommandBlocks(ctx, dimensionName, pos, c.API.GetBotInfo().BotName, c.API.Commands(), c.Resources.LocalLobbyPosition)
+		bot := c.Resources.BotInfo()
+		return teleportLocalLobbyForCommandBlocks(ctx, dimensionName, pos, bot.BotName, bot.EntityRuntimeID, c.API.Commands(), c.Resources.PacketListener())
 	}
 	return teleportWithPlayerAuthInput(ctx, pos, c.Resources.BotInfo().EntityRuntimeID,
 		c.Resources.PacketListener(),
