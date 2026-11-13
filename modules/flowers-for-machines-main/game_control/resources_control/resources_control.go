@@ -121,6 +121,10 @@ func (r *Resources) IsDomainGame() bool {
 	return r != nil && r.client != nil && r.client.IsDomainGame()
 }
 
+func (r *Resources) IsLobbyGame() bool {
+	return r != nil && r.client != nil && r.client.IsLobbyGame()
+}
+
 func (r *Resources) BotHasOperatorPermission() bool {
 	if r == nil {
 		return false
