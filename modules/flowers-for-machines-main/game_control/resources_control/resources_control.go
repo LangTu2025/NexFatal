@@ -37,6 +37,7 @@ type Resources struct {
 	botHasOperatorPermission bool
 	botPermissionObserved    bool
 	localLobby               *localLobbyState
+	domainGame               *domainGameState
 }
 
 // NewResourcesControl 基于 client 创建一个新的资源中心。
@@ -65,6 +66,12 @@ func NewResourcesControl(client *client.Client) *Resources {
 	resourcesControl.constant = constantPacket
 	if client.IsLocalLobby() {
 		resourcesControl.localLobby = &localLobbyState{position: client.Conn().GameData().PlayerPosition}
+	}
+	if client.IsDomainGame() {
+		resourcesControl.domainGame = &domainGameState{
+			players:   make(map[string]DomainGamePlayer),
+			dimension: client.Conn().GameData().Dimension,
+		}
 	}
 
 	for {

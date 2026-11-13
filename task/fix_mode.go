@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/packet"
+	ssutils "github.com/OmineDev/flowers-for-machines/utils"
 	bwo_chunk "github.com/TriM-Organization/bedrock-world-operator/chunk"
 	wsdefine "github.com/Yeah114/WaterStructure/define"
 	wsstructure "github.com/Yeah114/WaterStructure/structure"
@@ -15,8 +17,6 @@ import (
 	game_control "github.com/xingbaiawa/NovaBuilder/control"
 	builderutils "github.com/xingbaiawa/NovaBuilder/utils"
 	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
-	"github.com/OmineDev/flowers-for-machines/core/minecraft/protocol/packet"
-	ssutils "github.com/OmineDev/flowers-for-machines/utils"
 )
 
 type fixModeRepairRequest struct {
@@ -361,14 +361,22 @@ func runRepairChatLoop(
 		}
 
 		text, ok := pk.(*packet.Text)
-		if !ok || text == nil || text.TextType != packet.TextTypeChat {
+		if !ok || text == nil {
 			return
 		}
-		if text.SourceName == ctrl.API.GetBotInfo().BotName {
-			return
-		}
-
+		domainGame := ctrl.Resources != nil && ctrl.Resources.IsDomainGame()
+		playerName := cleanPlayerName(text.SourceName)
 		message := strings.TrimSpace(text.Message)
+		if domainGame {
+			playerName, message = domainRepairChatInput(text, ctrl.Resources.DomainGamePlayers(), ctrl.API.GetBotInfo().BotName)
+			if playerName == "" || message == "" {
+				return
+			}
+		} else {
+			if text.TextType != packet.TextTypeChat || text.SourceName == ctrl.API.GetBotInfo().BotName {
+				return
+			}
+		}
 		normalized := strings.TrimRight(strings.TrimSpace(message), ".。")
 		lower := strings.ToLower(normalized)
 		if lower == "exit" || normalized == loc.Text(loc.KeyFixModeDone) {
@@ -381,15 +389,27 @@ func runRepairChatLoop(
 			return
 		}
 
-		playerName := cleanPlayerName(text.SourceName)
-		player, err := readPlayerFixContext(ctrl, playerName)
+		// 山头定位失败时会传送机器人到玩家；定位和修补须共用同一把锁，
+		// 避免两条聊天请求同时移动机器人而串用坐标。
+		if domainGame {
+			fixMu.Lock()
+			defer fixMu.Unlock()
+		}
+		var player playerFixContext
+		var err error
+		if domainGame {
+			player, err = readDomainGamePlayerFixContext(ctx, ctrl, playerName)
+		} else {
+			player, err = readPlayerFixContext(ctrl, playerName)
+		}
 		if err != nil {
 			broadcaster.sendFixModeMessage(ctrl, fmt.Sprintf(loc.Text(loc.KeyFixModeTaskFailed), err))
 			return
 		}
-
-		fixMu.Lock()
-		defer fixMu.Unlock()
+		if !domainGame {
+			fixMu.Lock()
+			defer fixMu.Unlock()
+		}
 
 		if err := handler(ctx, ctrl, player, request); err != nil {
 			broadcaster.sendFixModeMessage(ctrl, fmt.Sprintf(loc.Text(loc.KeyFixModeTaskFailed), err))

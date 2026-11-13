@@ -236,6 +236,7 @@ func (r *Resources) handleContainerClose(p *packet.ContainerClose) {
 // 根据收到的数据包更新客户端的资源数据
 func (r *Resources) handlePacket(pk packet.Packet) {
 	r.observeLocalLobbyPacket(pk)
+	r.observeDomainGamePacket(pk)
 	switch p := pk.(type) {
 	case *packet.AddPlayer:
 		r.observeBotCommandPermissions(p.AbilityData)
