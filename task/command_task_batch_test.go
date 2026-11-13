@@ -96,6 +96,80 @@ func TestCommandBlockBatchDoesNotWriteBeforeSuccessfulTeleport(t *testing.T) {
 	}
 }
 
+func TestTanLobbyCommandBatchKeepsAsynchronousPlacementAndUpdatePaired(t *testing.T) {
+	tasks := commandBatchTasks()
+	var events []string
+	checks := 0
+	io := commandBlockGroupIO{
+		prepareOnWrite: true,
+		prepare: func(task nbtPlacementTask) error {
+			events = append(events, fmt.Sprintf("async-place:%d", task.pos.X()))
+			return nil // No command response is provided.
+		},
+		move: func(pos protocol.BlockPos) ([3]float32, error) {
+			events = append(events, fmt.Sprintf("tp:%d", pos.X()))
+			return commandBatchPosition(pos), nil
+		},
+		write: func(task nbtPlacementTask) error {
+			events = append(events, fmt.Sprintf("update:%d", task.pos.X()))
+			return nil // No per-update confirmation is provided either.
+		},
+		verify: func(written []nbtPlacementTask) (commandBlockVerificationResult, error) {
+			events = append(events, "verify")
+			checks++
+			if checks == 1 {
+				return commandBlockVerificationResult{retry: written[1:2]}, nil
+			}
+			return commandBlockVerificationResult{}, nil
+		},
+	}
+	count, err := (&BuildTask{}).writeCommandBlockGroupWithIO(context.Background(), tasks, strictCommandBlockWrite, nil, nil, io)
+	if err != nil || count != len(tasks) {
+		t.Fatalf("TanLobby batch: count=%d, error=%v", count, err)
+	}
+	want := []string{"tp:0", "async-place:0", "update:0", "async-place:1", "update:1", "async-place:2", "update:2", "verify", "tp:1", "async-place:1", "update:1", "verify"}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("TanLobby packet order:\ngot  %v\nwant %v", events, want)
+	}
+}
+
+func TestTanLobbyCommandBatchStopsBeforePlacingOnTeleportFailure(t *testing.T) {
+	failure := errors.New("teleport failed")
+	io := commandBlockGroupIO{
+		prepareOnWrite: true,
+		move:           func(protocol.BlockPos) ([3]float32, error) { return [3]float32{}, failure },
+		prepare:        func(nbtPlacementTask) error { t.Fatal("placed a block after failed teleport"); return nil },
+		write:          func(nbtPlacementTask) error { t.Fatal("updated a block after failed teleport"); return nil },
+		verify: func([]nbtPlacementTask) (commandBlockVerificationResult, error) {
+			t.Fatal("verified a failed batch")
+			return commandBlockVerificationResult{}, nil
+		},
+	}
+	count, err := (&BuildTask{}).writeCommandBlockGroupWithIO(context.Background(), commandBatchTasks(), strictCommandBlockWrite, nil, nil, io)
+	if count != 0 || err == nil || !errors.Is(err, failure) {
+		t.Fatalf("failed TanLobby batch: count=%d, error=%v", count, err)
+	}
+}
+
+func TestTanLobbyCommandBatchCancellationAfterPlacementPreventsUpdate(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	io := commandBlockGroupIO{
+		prepareOnWrite: true,
+		move:           func(pos protocol.BlockPos) ([3]float32, error) { return commandBatchPosition(pos), nil },
+		prepare:        func(nbtPlacementTask) error { cancel(); return nil },
+		write:          func(nbtPlacementTask) error { t.Fatal("updated a block after cancellation"); return nil },
+		verify: func([]nbtPlacementTask) (commandBlockVerificationResult, error) {
+			t.Fatal("verified a cancelled batch")
+			return commandBlockVerificationResult{}, nil
+		},
+	}
+	count, err := (&BuildTask{}).writeCommandBlockGroupWithIO(ctx, commandBatchTasks(), strictCommandBlockWrite, nil, nil, io)
+	if count != 0 || err == nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled TanLobby batch: count=%d, error=%v", count, err)
+	}
+}
+
 func TestCommandBlockBatchCancellationStopsBeforeNextNetworkStage(t *testing.T) {
 	for _, cancelAt := range []string{"before", "prepare", "write"} {
 		t.Run(cancelAt, func(t *testing.T) {

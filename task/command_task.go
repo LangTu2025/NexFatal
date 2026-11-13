@@ -18,6 +18,7 @@ import (
 	"github.com/xingbaiawa/NovaBuilder/utils"
 	"github.com/xingbaiawa/NovaBuilder/utils/command_upgrader"
 	loc "github.com/xingbaiawa/NovaBuilder/utils/localization"
+	"go.uber.org/ratelimit"
 )
 
 type commandBlockWriteMode int
@@ -103,15 +104,26 @@ func (b *BuildTask) prepareCommandBlockWrites(ctx context.Context, ctrl *game_co
 }
 
 type commandBlockGroupIO struct {
-	prepare func(nbtPlacementTask) error
-	move    func(protocol.BlockPos) ([3]float32, error)
-	write   func(nbtPlacementTask) error
-	verify  func([]nbtPlacementTask) (commandBlockVerificationResult, error)
+	prepareOnWrite bool
+	prepare        func(nbtPlacementTask) error
+	move           func(protocol.BlockPos) ([3]float32, error)
+	write          func(nbtPlacementTask) error
+	verify         func([]nbtPlacementTask) (commandBlockVerificationResult, error)
 }
 
 func (b *BuildTask) writeCommandBlockGroup(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, mode commandBlockWriteMode, progress *buildProgressReporter, bar *progressbar.ProgressBar) (int, error) {
+	localLobby := ctrl.Resources != nil && ctrl.Resources.IsLocalLobby()
+	var commandBlockLimiter ratelimit.Limiter
+	if localLobby {
+		// 对齐 NexusEgo 的异步命令方块分支：每秒 1000 个方块，突发量为 1。
+		commandBlockLimiter = ratelimit.New(1000, ratelimit.WithoutSlack)
+	}
 	return b.writeCommandBlockGroupWithIO(ctx, tasks, mode, progress, bar, commandBlockGroupIO{
+		prepareOnWrite: localLobby,
 		prepare: func(task nbtPlacementTask) error {
+			if commandBlockLimiter != nil {
+				commandBlockLimiter.Take()
+			}
 			return ctrl.PrepareCommandBlockAsync(task.pos, task.blockName, task.blockStates, task.nbtData)
 		},
 		move:  func(pos protocol.BlockPos) ([3]float32, error) { return b.moveToCommandBlockGroup(ctx, ctrl, pos) },
@@ -126,22 +138,24 @@ func (b *BuildTask) writeCommandBlockGroupWithIO(ctx context.Context, tasks []nb
 	pending := append([]nbtPlacementTask(nil), tasks...)
 	placed := 0
 	for len(pending) > 0 {
-		// 本体放置一组连续发送，不逐块等待回包。TP 放在这些命令之后，
-		// 确保更新包发送前已完成本组的放置提交与传送同步。
+		// TanLobby 对齐 NexusEgo：先 TP，再逐个连续提交异步 setblock 和更新包。
+		// 其他连接保持原有的整组预放置方式。两种写入方式均不等待逐块回包。
 		prepared := make([]nbtPlacementTask, 0, len(pending))
 		for _, task := range pending {
 			if err := ctx.Err(); err != nil {
 				return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
 			}
-			if err := io.prepare(task); err != nil {
-				if mode == lenientCommandBlockWrite {
-					reportSkippedNBTTask(loc.Text(loc.KeyBuildCommandBlockKind), task, err)
-					if bar != nil {
-						bar.Add(1)
+			if !io.prepareOnWrite {
+				if err := io.prepare(task); err != nil {
+					if mode == lenientCommandBlockWrite {
+						reportSkippedNBTTask(loc.Text(loc.KeyBuildCommandBlockKind), task, err)
+						if bar != nil {
+							bar.Add(1)
+						}
+						continue
 					}
-					continue
+					return placed, loc.Errf(loc.KeyBuildCommandBatchWriteFailed, 1, task.pos.X(), task.pos.Y(), task.pos.Z(), err)
 				}
-				return placed, loc.Errf(loc.KeyBuildCommandBatchWriteFailed, 1, task.pos.X(), task.pos.Y(), task.pos.Z(), err)
 			}
 			prepared = append(prepared, task)
 		}
@@ -174,6 +188,24 @@ func (b *BuildTask) writeCommandBlockGroupWithIO(ctx context.Context, tasks []nb
 				if !withinCommandBlockWriteReach(position, task.pos) {
 					return placed, fmt.Errorf("机器人传送后仍不在命令方块 (%d, %d, %d) 的 6.5 格写入范围内", task.pos.X(), task.pos.Y(), task.pos.Z())
 				}
+			}
+			if io.prepareOnWrite {
+				if err := ctx.Err(); err != nil {
+					return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
+				}
+				if err := io.prepare(task); err != nil {
+					if mode == lenientCommandBlockWrite {
+						reportSkippedNBTTask(loc.Text(loc.KeyBuildCommandBlockKind), task, err)
+						if bar != nil {
+							bar.Add(1)
+						}
+						continue
+					}
+					return placed, loc.Errf(loc.KeyBuildCommandBatchWriteFailed, 1, task.pos.X(), task.pos.Y(), task.pos.Z(), err)
+				}
+			}
+			if err := ctx.Err(); err != nil {
+				return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
 			}
 			if err := io.write(task); err != nil {
 				if mode == lenientCommandBlockWrite {
