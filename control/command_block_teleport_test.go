@@ -109,6 +109,40 @@ func TestCommandTeleportIgnoresUnrelatedMovement(t *testing.T) {
 	}
 }
 
+func TestCommandTeleportAcceptsLocalLobbyPredictionCorrection(t *testing.T) {
+	listener := &commandTeleportListener{}
+	move := &packet.CorrectPlayerMovePrediction{
+		PredictionType: packet.PredictionTypePlayer,
+		Position:       [3]float32{100.5, 71.62, -19.5},
+		Rotation:       [2]float32{27, 13},
+		Tick:           88,
+	}
+	var input *packet.PlayerAuthInput
+	_, err := teleportWithPlayerAuthInput(context.Background(), protocol.BlockPos{100, 70, -20}, 17, listener,
+		func() error {
+			listener.callback(move, nil)
+			return nil
+		},
+		func(pk packet.Packet) error {
+			var ok bool
+			input, ok = pk.(*packet.PlayerAuthInput)
+			if !ok {
+				t.Fatalf("unexpected sync packet %T", pk)
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if input == nil || input.Position != move.Position || input.Yaw != move.Rotation[0] || input.Pitch != move.Rotation[1] || input.Tick != move.Tick {
+		t.Fatalf("prediction correction was not copied to PlayerAuthInput: %+v", input)
+	}
+	if !input.InputData.Load(packet.InputFlagHandledTeleport) {
+		t.Fatal("missing teleport acknowledgement flag")
+	}
+}
+
 func TestCommandTeleportPropagatesFailuresAndCleansUp(t *testing.T) {
 	failure := errors.New("test failure")
 	for _, kind := range []string{"listen", "teleport", "connection", "input", "cancel", "deadline"} {

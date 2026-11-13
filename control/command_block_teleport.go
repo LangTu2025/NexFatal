@@ -50,7 +50,9 @@ func teleportWithPlayerAuthInput(ctx context.Context, destination protocol.Block
 	completed := make(chan result, 1)
 	var once sync.Once
 	// 先监听再传送，避免快速回包发生在监听器注册之前。
-	id, err := listener.ListenPacket([]uint32{packet.IDMovePlayer}, func(pk packet.Packet, connErr error) {
+	// 租赁服通常回 MovePlayer；TanLobby 使用服务器权威移动时会回
+	// CorrectPlayerMovePrediction。两种包都表示机器人已收到传送结果。
+	id, err := listener.ListenPacket([]uint32{packet.IDMovePlayer, packet.IDCorrectPlayerMovePrediction}, func(pk packet.Packet, connErr error) {
 		if ctx.Err() != nil {
 			return
 		}
@@ -58,14 +60,28 @@ func teleportWithPlayerAuthInput(ctx context.Context, destination protocol.Block
 			once.Do(func() { completed <- result{err: fmt.Errorf("等待机器人传送时连接已关闭: %w", connErr)} })
 			return
 		}
-		move, ok := pk.(*packet.MovePlayer)
-		if !ok || move.EntityRuntimeID != botRuntimeID || move.Mode != packet.MoveModeTeleport {
+		var position [3]float32
+		var pitch, yaw, headYaw float32
+		var tick uint64
+		switch move := pk.(type) {
+		case *packet.MovePlayer:
+			if move.EntityRuntimeID != botRuntimeID || move.Mode != packet.MoveModeTeleport {
+				return
+			}
+			position, pitch, yaw, headYaw, tick = move.Position, move.Pitch, move.Yaw, move.HeadYaw, move.Tick
+		case *packet.CorrectPlayerMovePrediction:
+			if move.PredictionType != packet.PredictionTypePlayer {
+				return
+			}
+			position = move.Position
+			yaw, pitch, tick = move.Rotation[0], move.Rotation[1], move.Tick
+		default:
 			return
 		}
 		// 忽略上一组延迟到达的传送回包；允许方块中心及眼部高度偏移。
 		var distanceSquared float64
 		for axis := range destination {
-			delta := float64(move.Position[axis]) - float64(destination[axis])
+			delta := float64(position[axis]) - float64(destination[axis])
 			distanceSquared += delta * delta
 		}
 		if !(distanceSquared <= 2.5*2.5) {
@@ -81,16 +97,17 @@ func teleportWithPlayerAuthInput(ctx context.Context, destination protocol.Block
 			// 使用服务器给出的坐标（含眼部高度）和朝向，
 			// 不用整数方块坐标替代，也不插入 querytarget 或固定延时。
 			err := writePacket(&packet.PlayerAuthInput{
-				Position:  move.Position,
-				Pitch:     move.Pitch,
-				Yaw:       move.Yaw,
-				HeadYaw:   move.HeadYaw,
+				Position:  position,
+				Pitch:     pitch,
+				Yaw:       yaw,
+				HeadYaw:   headYaw,
+				Tick:      tick,
 				InputData: inputData,
 			})
 			if err != nil {
 				err = fmt.Errorf("传送后发送 PlayerAuthInput 失败: %w", err)
 			}
-			completed <- result{position: move.Position, err: err}
+			completed <- result{position: position, err: err}
 		})
 	})
 	if err != nil {
