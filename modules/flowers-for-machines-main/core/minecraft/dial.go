@@ -377,8 +377,11 @@ func readChainIdentityData(chainData []byte) (login.IdentityData, error) {
 // listenConn listens on the connection until it is closed on another goroutine. The channel passed will
 // receive a value once the connection is logged in.
 func listenConn(conn *Conn, readyForLogin, connected chan struct{}, cancel context.CancelCauseFunc) {
+	closeCause := error(net.ErrClosed)
 	defer func() {
-		_ = conn.Close()
+		// Keep the receive error for Resources and pending command callbacks.
+		// Close() would replace decode/transport failures with net.ErrClosed.
+		_ = conn.close(closeCause)
 	}()
 	cancelContext := true
 	for {
@@ -386,6 +389,7 @@ func listenConn(conn *Conn, readyForLogin, connected chan struct{}, cancel conte
 		// and push them to the Conn so that they may be processed.
 		packets, err := conn.dec.Decode()
 		if err != nil {
+			closeCause = err
 			if !errors.Is(err, net.ErrClosed) {
 				if cancelContext {
 					cancel(err)
@@ -398,6 +402,7 @@ func listenConn(conn *Conn, readyForLogin, connected chan struct{}, cancel conte
 		for _, data := range packets {
 			loggedInBefore, readyToLoginBefore := conn.loggedIn, conn.readyToLogin
 			if err := conn.receive(data); err != nil {
+				closeCause = err
 				if cancelContext {
 					cancel(err)
 				} else {
