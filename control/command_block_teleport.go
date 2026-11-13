@@ -16,14 +16,17 @@ type teleportPacketListener interface {
 	DestroyListener(string)
 }
 
-// TeleportForCommandBlocks 在机器人传送后立即同步 PlayerAuthInput，
-// 只有同步包写入成功才允许调用方开始发送 CommandBlockUpdate。
+// TeleportForCommandBlocks 在命令方块写入前同步机器人的位置。
+// TanLobby 复用 Flowers 操作台的命令与同步方式，传送确认由资源层处理。
 func (c *Control) TeleportForCommandBlocks(ctx context.Context, dimensionName string, pos protocol.BlockPos) ([3]float32, error) {
 	if c.Resources == nil {
 		return [3]float32{}, loc.Err(loc.KeyControlResourcesNotInitialized)
 	}
 	if c.API == nil {
 		return [3]float32{}, loc.Err(loc.KeyControlAPINotInitialized)
+	}
+	if c.Resources.IsLocalLobby() {
+		return teleportLocalLobbyForCommandBlocks(ctx, dimensionName, pos, c.API.Commands(), c.Resources.LocalLobbyPosition)
 	}
 	return teleportWithPlayerAuthInput(ctx, pos, c.Resources.BotInfo().EntityRuntimeID,
 		c.Resources.PacketListener(),
@@ -50,8 +53,7 @@ func teleportWithPlayerAuthInput(ctx context.Context, destination protocol.Block
 	completed := make(chan result, 1)
 	var once sync.Once
 	// 先监听再传送，避免快速回包发生在监听器注册之前。
-	// 租赁服通常回 MovePlayer；TanLobby 使用服务器权威移动时会回
-	// CorrectPlayerMovePrediction。两种包都表示机器人已收到传送结果。
+	// 此监听路径不用于 TanLobby，避免重复发送 Flowers 已处理的传送确认。
 	id, err := listener.ListenPacket([]uint32{packet.IDMovePlayer, packet.IDCorrectPlayerMovePrediction}, func(pk packet.Packet, connErr error) {
 		if ctx.Err() != nil {
 			return

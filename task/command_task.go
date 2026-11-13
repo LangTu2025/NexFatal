@@ -74,7 +74,15 @@ func (b *BuildTask) prepareCommandBlockWrites(ctx context.Context, ctrl *game_co
 		return loc.Errf(loc.KeyBuildImportCancelled, err)
 	}
 
-	if ctrl.IsLobbyServer() {
+	if ctrl.Resources != nil && ctrl.Resources.IsLocalLobby() {
+		if ctrl.API == nil {
+			return loc.Err(loc.KeyControlAPINotInitialized)
+		}
+		// 与 Flowers 初始化操作台相同，先绑定机器人执行环境。
+		if err := ctrl.API.Commands().SendSettingsCommand("gamemode 1", true); err != nil {
+			return fmt.Errorf("在发送命令方块更新包前，未能将机器人切换到创造模式: %w", err)
+		}
+	} else if ctrl.IsLobbyServer() {
 		if err := ctrl.SendSettingsCommandAsync("gamemode 1 @s"); err != nil {
 			return fmt.Errorf("在发送命令方块更新包前，未能将机器人切换到创造模式: %w", err)
 		}
