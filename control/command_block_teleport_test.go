@@ -62,17 +62,11 @@ func TestCommandTeleportSynchronizesServerPositionBeforeWriting(t *testing.T) {
 		t.Fatal(err)
 	}
 	events = append(events, "CommandBlockUpdate")
-	if !reflect.DeepEqual(events, []string{"tp", "PlayerAuthInput", "CommandBlockUpdate"}) {
+	if !reflect.DeepEqual(events, []string{"tp", "CommandBlockUpdate"}) {
 		t.Fatalf("incorrect command block packet order: %v", events)
 	}
-	if position != ([3]float32)(move.Position) || input.Position != move.Position {
-		t.Fatal("sync packet replaced server position or lost eye height")
-	}
-	if input.Pitch != move.Pitch || input.Yaw != move.Yaw || input.HeadYaw != move.HeadYaw {
-		t.Fatalf("server movement fields were lost: %+v", input)
-	}
-	if !input.InputData.Load(packet.InputFlagHandledTeleport) {
-		t.Fatal("missing teleport acknowledgement flag")
+	if position != ([3]float32)(move.Position) || input != nil {
+		t.Fatal("MovePlayer should use Resources' automatic teleport acknowledgement")
 	}
 	if !listener.destroyed {
 		t.Fatal("completed teleport leaked its listener")
@@ -104,7 +98,7 @@ func TestCommandTeleportIgnoresUnrelatedMovement(t *testing.T) {
 		},
 		func(packet.Packet) error { writes++; return nil },
 	)
-	if err != nil || writes != 1 {
+	if err != nil || writes != 0 {
 		t.Fatalf("sync result: writes=%d err=%v", writes, err)
 	}
 }
@@ -167,7 +161,7 @@ func TestCommandTeleportPropagatesFailuresAndCleansUp(t *testing.T) {
 					case "connection":
 						listener.callback(nil, failure)
 					case "input":
-						listener.callback(commandTeleportPacket(), nil)
+						listener.callback(&packet.CorrectPlayerMovePrediction{PredictionType: packet.PredictionTypePlayer, Position: commandTeleportPacket().Position}, nil)
 					case "cancel":
 						cancel()
 					}
@@ -208,7 +202,10 @@ func TestCommandTeleportWaitsForInputWriteToComplete(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		_, err := teleportWithPlayerAuthInput(context.Background(), protocol.BlockPos{100, 70, -20}, 17, listener,
-			func() error { go listener.callback(commandTeleportPacket(), nil); return nil },
+			func() error {
+				go listener.callback(&packet.CorrectPlayerMovePrediction{PredictionType: packet.PredictionTypePlayer, Position: commandTeleportPacket().Position}, nil)
+				return nil
+			},
 			func(packet.Packet) error { close(entered); <-release; return nil },
 		)
 		done <- err

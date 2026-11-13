@@ -96,18 +96,34 @@ func (b *BuildTask) prepareCommandBlockWrites(ctx context.Context, ctrl *game_co
 
 type commandBlockGroupIO struct {
 	prepare func(nbtPlacementTask) error
+	barrier func() error
 	move    func(protocol.BlockPos) ([3]float32, error)
 	write   func(nbtPlacementTask) error
 	verify  func([]nbtPlacementTask) (commandBlockVerificationResult, error)
 }
 
 func (b *BuildTask) writeCommandBlockGroup(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, mode commandBlockWriteMode, progress *buildProgressReporter, bar *progressbar.ProgressBar) (int, error) {
+	localLobby := ctrl.Resources != nil && ctrl.Resources.IsLocalLobby()
 	return b.writeCommandBlockGroupWithIO(ctx, tasks, mode, progress, bar, commandBlockGroupIO{
 		prepare: func(task nbtPlacementTask) error {
+			if localLobby {
+				return nil
+			}
 			return ctrl.PrepareCommandBlockAsync(task.pos, task.blockName, task.blockStates, task.nbtData)
 		},
-		move:  func(pos protocol.BlockPos) ([3]float32, error) { return b.moveToCommandBlockGroup(ctx, ctrl, pos) },
-		write: func(task nbtPlacementTask) error { return b.writeCommandBlockNBT(ctrl, task) },
+		barrier: func() error {
+			if localLobby {
+				return nil
+			}
+			return ctrl.AwaitCommandBlockBatch()
+		},
+		move: func(pos protocol.BlockPos) ([3]float32, error) { return b.moveToCommandBlockGroup(ctx, ctrl, pos) },
+		write: func(task nbtPlacementTask) error {
+			if localLobby {
+				return ctrl.UpdateCommandBlockLocalLobby(task.pos, task.blockName, task.blockStates, task.nbtData)
+			}
+			return b.writeCommandBlockNBT(ctrl, task)
+		},
 		verify: func(tasks []nbtPlacementTask) (commandBlockVerificationResult, error) {
 			return b.verifyCommandBlocks(ctx, ctrl, tasks)
 		},
@@ -139,6 +155,11 @@ func (b *BuildTask) writeCommandBlockGroupWithIO(ctx context.Context, tasks []nb
 		}
 		if len(prepared) == 0 {
 			return placed, nil
+		}
+		if io.barrier != nil {
+			if err := io.barrier(); err != nil {
+				return placed, fmt.Errorf("命令方块本体批次等待失败: %w", err)
+			}
 		}
 		if err := ctx.Err(); err != nil {
 			return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
@@ -185,6 +206,11 @@ func (b *BuildTask) writeCommandBlockGroupWithIO(ctx context.Context, tasks []nb
 
 		if err := ctx.Err(); err != nil {
 			return placed, loc.Errf(loc.KeyBuildImportCancelled, err)
+		}
+		if io.barrier != nil {
+			if err := io.barrier(); err != nil {
+				return placed, fmt.Errorf("命令方块更新批次等待失败: %w", err)
+			}
 		}
 		verification, err := io.verify(wrote)
 		if err != nil {
