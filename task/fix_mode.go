@@ -365,10 +365,16 @@ func runRepairChatLoop(
 			return
 		}
 		domainGame := ctrl.Resources != nil && ctrl.Resources.IsDomainGame()
+		localLobby := ctrl.Resources != nil && ctrl.Resources.IsLocalLobby()
 		playerName := cleanPlayerName(text.SourceName)
 		message := strings.TrimSpace(text.Message)
 		if domainGame {
 			playerName, message = domainRepairChatInput(text, ctrl.Resources.DomainGamePlayers(), ctrl.API.GetBotInfo().BotName)
+			if playerName == "" || message == "" {
+				return
+			}
+		} else if localLobby {
+			playerName, message = localLobbyRepairChatInput(text, ctrl.Resources.LocalLobbyPlayers(), ctrl.API.GetBotInfo().BotName)
 			if playerName == "" || message == "" {
 				return
 			}
@@ -389,9 +395,9 @@ func runRepairChatLoop(
 			return
 		}
 
-		// 山头定位失败时会传送机器人到玩家；定位和修补须共用同一把锁，
+		// 山头和本地联机定位失败时会传送机器人到玩家；定位和修补须共用同一把锁，
 		// 避免两条聊天请求同时移动机器人而串用坐标。
-		if domainGame {
+		if domainGame || localLobby {
 			fixMu.Lock()
 			defer fixMu.Unlock()
 		}
@@ -399,6 +405,8 @@ func runRepairChatLoop(
 		var err error
 		if domainGame {
 			player, err = readDomainGamePlayerFixContext(ctx, ctrl, playerName)
+		} else if localLobby {
+			player, err = readLocalLobbyPlayerFixContext(ctx, ctrl, playerName)
 		} else {
 			player, err = readPlayerFixContext(ctrl, playerName)
 		}
@@ -406,7 +414,7 @@ func runRepairChatLoop(
 			broadcaster.sendFixModeMessage(ctrl, fmt.Sprintf(loc.Text(loc.KeyFixModeTaskFailed), err))
 			return
 		}
-		if !domainGame {
+		if !domainGame && !localLobby {
 			fixMu.Lock()
 			defer fixMu.Unlock()
 		}

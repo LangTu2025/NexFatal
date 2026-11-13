@@ -65,7 +65,11 @@ func NewResourcesControl(client *client.Client) *Resources {
 	constantPacket.updateByGameData(client.Conn().GameData())
 	resourcesControl.constant = constantPacket
 	if client.IsLocalLobby() {
-		resourcesControl.localLobby = &localLobbyState{position: client.Conn().GameData().PlayerPosition}
+		resourcesControl.localLobby = &localLobbyState{
+			position:  client.Conn().GameData().PlayerPosition,
+			dimension: client.Conn().GameData().Dimension,
+			players:   make(map[string]LocalLobbyPlayer),
+		}
 	}
 	if client.IsDomainGame() {
 		resourcesControl.domainGame = &domainGameState{
