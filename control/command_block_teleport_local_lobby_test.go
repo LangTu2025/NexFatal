@@ -10,15 +10,12 @@ import (
 )
 
 type localLobbyTeleportCommandStub struct {
-	send  func(string, bool) error
-	await func() error
+	send func(string, bool) error
 }
 
 func (s localLobbyTeleportCommandStub) SendSettingsCommand(command string, dimensional bool) error {
 	return s.send(command, dimensional)
 }
-
-func (s localLobbyTeleportCommandStub) AwaitChangesGeneral() error { return s.await() }
 
 func TestLocalLobbyCommandTeleportUsesFlowersCommandAndSynchronization(t *testing.T) {
 	for _, dimension := range []struct{ input, name string }{
@@ -36,10 +33,6 @@ func TestLocalLobbyCommandTeleportUsesFlowersCommandAndSynchronization(t *testin
 						t.Fatalf("teleport = (%q, %t), want Flowers (%q, true)", command, dimensional, want)
 					}
 					events = append(events, "Flowers.SendSettingsCommand")
-					return nil
-				},
-				await: func() error {
-					events = append(events, "Flowers.AwaitChangesGeneral")
 					serverPosition = arrivedPosition
 					return nil
 				},
@@ -54,7 +47,7 @@ func TestLocalLobbyCommandTeleportUsesFlowersCommandAndSynchronization(t *testin
 			if position != arrivedPosition {
 				t.Fatalf("returned position = %v, want authoritative eye position %v", position, arrivedPosition)
 			}
-			wantEvents := []string{"Flowers.SendSettingsCommand", "Flowers.AwaitChangesGeneral", "Flowers.LocalLobbyPosition"}
+			wantEvents := []string{"Flowers.LocalLobbyPosition", "Flowers.SendSettingsCommand", "Flowers.LocalLobbyPosition"}
 			if !reflect.DeepEqual(events, wantEvents) {
 				t.Fatalf("teleport sequence = %v, want %v", events, wantEvents)
 			}
@@ -68,13 +61,10 @@ func TestLocalLobbyCommandTeleportStopsAfterErrorsOrCancellation(t *testing.T) {
 		name      string
 		wantError error
 		wantSend  int
-		wantAwait int
 	}{
-		{"cancel-before-send", context.Canceled, 0, 0},
-		{"send-failed", failed, 1, 0},
-		{"cancel-after-send", context.Canceled, 1, 0},
-		{"sync-failed", failed, 1, 1},
-		{"cancel-after-sync", context.Canceled, 1, 1},
+		{"cancel-before-send", context.Canceled, 0},
+		{"send-failed", failed, 1},
+		{"cancel-after-send", context.Canceled, 1},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
@@ -82,7 +72,7 @@ func TestLocalLobbyCommandTeleportStopsAfterErrorsOrCancellation(t *testing.T) {
 			if scenario.name == "cancel-before-send" {
 				cancel()
 			}
-			sent, awaited := 0, 0
+			sent := 0
 			commands := localLobbyTeleportCommandStub{
 				send: func(string, bool) error {
 					sent++
@@ -94,26 +84,15 @@ func TestLocalLobbyCommandTeleportStopsAfterErrorsOrCancellation(t *testing.T) {
 					}
 					return nil
 				},
-				await: func() error {
-					awaited++
-					if scenario.name == "cancel-after-sync" {
-						cancel()
-					}
-					if scenario.name == "sync-failed" {
-						return failed
-					}
-					return nil
-				},
 			}
 			_, err := teleportLocalLobbyForCommandBlocks(ctx, "overworld", protocol.BlockPos{0, -56, 45}, "LT_ouvqt", commands, func() [3]float32 {
-				t.Fatal("failed teleport must not return a position for command block writes")
-				return [3]float32{}
+				return [3]float32{100, 64, 100}
 			})
 			if !errors.Is(err, scenario.wantError) {
 				t.Fatalf("error = %v, want %v", err, scenario.wantError)
 			}
-			if sent != scenario.wantSend || awaited != scenario.wantAwait {
-				t.Fatalf("send/await calls = %d/%d, want %d/%d", sent, awaited, scenario.wantSend, scenario.wantAwait)
+			if sent != scenario.wantSend {
+				t.Fatalf("send calls = %d, want %d", sent, scenario.wantSend)
 			}
 		})
 	}
@@ -121,8 +100,7 @@ func TestLocalLobbyCommandTeleportStopsAfterErrorsOrCancellation(t *testing.T) {
 
 func TestLocalLobbyCommandTeleportRejectsInvalidDimensionBeforeSending(t *testing.T) {
 	commands := localLobbyTeleportCommandStub{
-		send:  func(string, bool) error { t.Fatal("invalid dimension sent a command"); return nil },
-		await: func() error { t.Fatal("invalid dimension awaited command changes"); return nil },
+		send: func(string, bool) error { t.Fatal("invalid dimension sent a command"); return nil },
 	}
 	_, err := teleportLocalLobbyForCommandBlocks(context.Background(), "invalid", protocol.BlockPos{}, "LT_ouvqt", commands, func() [3]float32 {
 		t.Fatal("invalid dimension returned a position")
