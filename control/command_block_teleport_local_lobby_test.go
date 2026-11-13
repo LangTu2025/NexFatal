@@ -31,7 +31,7 @@ func TestLocalLobbyCommandTeleportUsesFlowersCommandAndSynchronization(t *testin
 			arrivedPosition := [3]float32{0.5, -54.38, 45.5}
 			commands := localLobbyTeleportCommandStub{
 				send: func(command string, dimensional bool) error {
-					want := "execute in " + dimension.name + " run tp 0 -56 45"
+					want := "execute in " + dimension.name + " run tp @a[name=\"LT_ouvqt\"] 0 -56 45"
 					if command != want || !dimensional {
 						t.Fatalf("teleport = (%q, %t), want Flowers (%q, true)", command, dimensional, want)
 					}
@@ -44,7 +44,7 @@ func TestLocalLobbyCommandTeleportUsesFlowersCommandAndSynchronization(t *testin
 					return nil
 				},
 			}
-			position, err := teleportLocalLobbyForCommandBlocks(context.Background(), dimension.input, protocol.BlockPos{0, -56, 45}, commands, func() [3]float32 {
+			position, err := teleportLocalLobbyForCommandBlocks(context.Background(), dimension.input, protocol.BlockPos{0, -56, 45}, "LT_ouvqt", commands, func() [3]float32 {
 				events = append(events, "Flowers.LocalLobbyPosition")
 				return serverPosition
 			})
@@ -105,7 +105,7 @@ func TestLocalLobbyCommandTeleportStopsAfterErrorsOrCancellation(t *testing.T) {
 					return nil
 				},
 			}
-			_, err := teleportLocalLobbyForCommandBlocks(ctx, "overworld", protocol.BlockPos{0, -56, 45}, commands, func() [3]float32 {
+			_, err := teleportLocalLobbyForCommandBlocks(ctx, "overworld", protocol.BlockPos{0, -56, 45}, "LT_ouvqt", commands, func() [3]float32 {
 				t.Fatal("failed teleport must not return a position for command block writes")
 				return [3]float32{}
 			})
@@ -124,7 +124,7 @@ func TestLocalLobbyCommandTeleportRejectsInvalidDimensionBeforeSending(t *testin
 		send:  func(string, bool) error { t.Fatal("invalid dimension sent a command"); return nil },
 		await: func() error { t.Fatal("invalid dimension awaited command changes"); return nil },
 	}
-	_, err := teleportLocalLobbyForCommandBlocks(context.Background(), "invalid", protocol.BlockPos{}, commands, func() [3]float32 {
+	_, err := teleportLocalLobbyForCommandBlocks(context.Background(), "invalid", protocol.BlockPos{}, "LT_ouvqt", commands, func() [3]float32 {
 		t.Fatal("invalid dimension returned a position")
 		return [3]float32{}
 	})

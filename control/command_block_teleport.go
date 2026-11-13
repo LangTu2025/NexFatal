@@ -26,7 +26,7 @@ func (c *Control) TeleportForCommandBlocks(ctx context.Context, dimensionName st
 		return [3]float32{}, loc.Err(loc.KeyControlAPINotInitialized)
 	}
 	if c.Resources.IsLocalLobby() {
-		return teleportLocalLobbyForCommandBlocks(ctx, dimensionName, pos, c.API.Commands(), c.Resources.LocalLobbyPosition)
+		return teleportLocalLobbyForCommandBlocks(ctx, dimensionName, pos, c.API.GetBotInfo().BotName, c.API.Commands(), c.Resources.LocalLobbyPosition)
 	}
 	return teleportWithPlayerAuthInput(ctx, pos, c.Resources.BotInfo().EntityRuntimeID,
 		c.Resources.PacketListener(),
