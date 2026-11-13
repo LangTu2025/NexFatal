@@ -568,56 +568,6 @@ func (c *Control) UpdateCommandBlock(pos protocol.BlockPos, blockName string, bl
 	return nil
 }
 
-// UpdateCommandBlockLocalLobby follows the TanLobby/NexusEgo order:
-// backing setblock request -> command block update packet -> command barrier.
-// TanLobby may close the RakNet stream when the update packet arrives before
-// the backing block has been acknowledged.
-func (c *Control) UpdateCommandBlockLocalLobby(pos protocol.BlockPos, blockName string, blockStates map[string]any, blockNBT map[string]any) error {
-	if c.Resources == nil {
-		return loc.Err(loc.KeyControlResourcesNotInitialized)
-	}
-	if c.API == nil {
-		return loc.Err(loc.KeyControlAPINotInitialized)
-	}
-	commandBlock, err := parseCommandBlockForWrite(blockName, blockStates, blockNBT)
-	if err != nil {
-		return err
-	}
-	if err := c.API.SetBlock().SetBlock(pos, commandBlock.BlockName(), commandBlock.BlockStatesString()); err != nil {
-		return loc.Errf(loc.KeyControlWriteCommandBlockFailed, err)
-	}
-	if err := c.writeCommandBlockUpdatePacket(pos, commandBlock); err != nil {
-		return err
-	}
-	if err := c.AwaitChanges(); err != nil {
-		return loc.Errf(loc.KeyControlWriteCommandBlockFailed, err)
-	}
-	return nil
-}
-
-func (c *Control) writeCommandBlockUpdatePacket(pos protocol.BlockPos, commandBlock *nbt_parser_block.CommandBlock) error {
-	var mode uint32 = packet.CommandBlockImpulse
-	switch commandBlock.BlockName() {
-	case "minecraft:chain_command_block":
-		mode = packet.CommandBlockChain
-	case "minecraft:repeating_command_block":
-		mode = packet.CommandBlockRepeating
-	}
-	command := command_upgrader.NormalizeCommandBlockCommand(commandBlock.NBT.Command)
-	if err := c.Resources.WritePacket(&packet.CommandBlockUpdate{
-		Block: true, Position: pos, Mode: mode,
-		NeedsRedstone: commandBlock.NBT.Auto == 0,
-		Conditional:   commandBlock.NBT.ConditionalMode == 1,
-		Command:       command, LastOutput: "", Name: commandBlock.NBT.CustomName,
-		ShouldTrackOutput:  commandBlock.NBT.TrackOutput == 1,
-		TickDelay:          commandBlock.NBT.TickDelay,
-		ExecuteOnFirstTick: commandBlock.NBT.ExecuteOnFirstTick == 1,
-	}); err != nil {
-		return loc.Errf(loc.KeyControlWriteCommandBlockFailed, err)
-	}
-	return nil
-}
-
 // Teleport 将机器人传送到指定位置。
 func (c *Control) Teleport(dimensionName string, pos protocol.BlockPos) error {
 	command := fmt.Sprintf("tp @s %d %d %d", pos[0], pos[1], pos[2])
@@ -730,15 +680,6 @@ func (c *Control) AwaitChanges() error {
 		return loc.Errf(loc.KeyControlWaitCommandChangesFailed, err)
 	}
 	return nil
-}
-
-// AwaitCommandBlockBatch 仅为 TanLobby 的命令请求链路提供批次屏障。
-// 租赁服和山头的更新包不需要额外空命令往返。
-func (c *Control) AwaitCommandBlockBatch() error {
-	if c.Resources == nil || !c.Resources.IsLocalLobby() {
-		return nil
-	}
-	return c.AwaitChanges()
 }
 
 func (c *Control) positionConsole(dimensionName string, center wsdefine.BlockPos) error {

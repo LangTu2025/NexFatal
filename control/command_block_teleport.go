@@ -25,7 +25,7 @@ func (c *Control) TeleportForCommandBlocks(ctx context.Context, dimensionName st
 	if c.API == nil {
 		return [3]float32{}, loc.Err(loc.KeyControlAPINotInitialized)
 	}
-	position, err := teleportWithPlayerAuthInput(ctx, pos, c.Resources.BotInfo().EntityRuntimeID,
+	return teleportWithPlayerAuthInput(ctx, pos, c.Resources.BotInfo().EntityRuntimeID,
 		c.Resources.PacketListener(),
 		// 实际传送由 MovePlayer 回包确认，不再额外等待 CommandOutput
 		// 或发送两次空命令等待；位置仍使用服务器报告的真实坐标。
@@ -34,18 +34,6 @@ func (c *Control) TeleportForCommandBlocks(ctx context.Context, dimensionName st
 		},
 		c.Resources.WritePacket,
 	)
-	if err != nil {
-		return [3]float32{}, err
-	}
-	// TanLobby 的 CommandRequest 与方块更新包需要一个真实的命令处理屏障。
-	// 传送包已经被处理后，再等待空命令回包，避免更新包和传送命令挤在同一批 UDP 数据中。
-	if c.Resources.IsLocalLobby() {
-		if err := c.AwaitChanges(); err != nil {
-			return [3]float32{}, fmt.Errorf("本地联机传送后等待命令屏障失败: %w", err)
-		}
-		position = c.Resources.LocalLobbyPosition()
-	}
-	return position, nil
 }
 
 func teleportWithPlayerAuthInput(ctx context.Context, destination protocol.BlockPos, botRuntimeID uint64, listener teleportPacketListener, teleport func() error, writePacket func(packet.Packet) error) ([3]float32, error) {
@@ -102,13 +90,6 @@ func teleportWithPlayerAuthInput(ctx context.Context, destination protocol.Block
 		once.Do(func() {
 			if err := ctx.Err(); err != nil {
 				completed <- result{err: err}
-				return
-			}
-			// Resources.handleMovePlayer 已经对 MovePlayer 自动发送了
-			// HandledTeleport 的 PlayerAuthInput。重复发送会让 TanLobby
-			// 关闭连接；只有 CorrectPlayerMovePrediction 没有该自动处理。
-			if _, isMovePlayer := pk.(*packet.MovePlayer); isMovePlayer {
-				completed <- result{position: position}
 				return
 			}
 			inputData := protocol.NewBitset(packet.PlayerAuthInputBitsetSize)
