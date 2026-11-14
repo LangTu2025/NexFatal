@@ -285,6 +285,9 @@ func (dialer Dialer) clientListen(rakConn *Conn, conn net.Conn) {
 			if errors.Is(err, net.ErrClosed) {
 				return
 			}
+			if isOversizedUDPReadError(err) {
+				continue
+			}
 			// Errors reading a packet other than the connection being
 			// closed may be worth logging.
 			dialer.ErrorLog.Error("handle packet: " + err.Error())
@@ -329,6 +332,9 @@ func (state *connState) discoverMTU(ctx context.Context) error {
 		// 1 packet.
 		n, err := state.conn.Read(b)
 		if err != nil {
+			if isOversizedUDPReadError(err) {
+				continue
+			}
 			if isTransientUDPReadError(err) && (state.maxTransientErrors == -1 || state.transientErrorCount < state.maxTransientErrors) {
 				state.transientErrorCount++
 				continue
@@ -397,6 +403,9 @@ func (state *connState) openConnection(ctx context.Context) error {
 		// packets.
 		n, err := state.conn.Read(b)
 		if err != nil {
+			if isOversizedUDPReadError(err) {
+				continue
+			}
 			if isTransientUDPReadError(err) && (state.maxTransientErrors == -1 || state.transientErrorCount < state.maxTransientErrors) {
 				state.transientErrorCount++
 				continue

@@ -22,6 +22,11 @@ jobs:
         run: |
           go test ./client ./client/domain_game ./client/lobby_game ./client/local_lobby ./core/bunker/auth ./game_control/... ./nbt_assigner/... ./nbt_parser/... ./core/minecraft/protocol/...
           go vet ./client ./client/domain_game ./client/lobby_game ./client/local_lobby ./core/bunker/auth ./game_control/... ./nbt_assigner/... ./nbt_parser/... ./core/minecraft/protocol/...
+      - name: RakNet UDP read error regression
+        working-directory: modules/flowers-for-machines-main
+        run: |
+          go test ./core/minecraft/raknet -run '^(TestIsOversizedUDPReadError|TestHandshakeUDPReadErrors|TestClientListenUDPReadErrors|Test_uint24)$'
+          go vet ./core/minecraft/raknet/...
       - name: User centre encryption and plain authentication
         working-directory: utils/safe_http
         run: |
