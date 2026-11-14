@@ -38,6 +38,10 @@ func (c *Control) TeleportForCommandBlocks(ctx context.Context, dimensionName st
 			nil, // Flowers already acknowledges the server teleport.
 		)
 	}
+	if c.Client != nil && !c.Client.IsDomainGame() {
+		return teleportRentalForCommandBlocks(ctx, dimensionName, pos, c.Resources.BotInfo().EntityRuntimeID,
+			c.API.Commands(), c.Resources.PacketListener(), c.Resources.WritePacket)
+	}
 	return teleportWithPlayerAuthInput(ctx, pos, c.Resources.BotInfo().EntityRuntimeID,
 		c.Resources.PacketListener(),
 		// 实际传送由 MovePlayer 回包确认，不再额外等待 CommandOutput
