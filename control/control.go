@@ -164,11 +164,37 @@ func (c *Control) IsLobbyGame() bool {
 	return c.isLobbyGameConnection()
 }
 
+// StartLobbyGameKeepAlive periodically sends the same empty command probe used
+// by the native importer. LobbyGame disconnects otherwise-idle clients after
+// roughly a few minutes, even while the RakNet transport is healthy.
+func (c *Control) StartLobbyGameKeepAlive(ctx context.Context) func() {
+	if !c.isLobbyGameConnection() {
+		return func() {}
+	}
+	keepAliveCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-keepAliveCtx.Done():
+				return
+			case <-ticker.C:
+				if c.API == nil || c.Client == nil || c.Client.Conn().Context().Err() != nil {
+					return
+				}
+				_, _, _ = c.API.Commands().SendWSCommandWithTimeout("", 4*time.Second)
+			}
+		}
+	}()
+	return cancel
+}
+
 var lobbyGameCommandBlockRulePattern = regexp.MustCompile("(?i)commandblocksenabled[^a-z0-9]+(true|false)")
 
 // TemporarilyDisableLobbyGameCommandBlocks pauses command block execution for
-// the outer importer. LobbyGame re-applies its adventure-mode policy while
-// command blocks are active, which can kick the importer during update packets.
+// the outer importer so partially imported commands cannot change the bot mode
+// or execute before the structure is ready. Flowers itself remains unchanged.
 func (c *Control) TemporarilyDisableLobbyGameCommandBlocks(timeout time.Duration) (func() error, error) {
 	if !c.isLobbyGameConnection() {
 		return func() error { return nil }, nil
@@ -197,6 +223,18 @@ func (c *Control) TemporarilyDisableLobbyGameCommandBlocks(timeout time.Duration
 		return nil, err
 	}
 	return func() error {
+		if c.Client == nil || c.Client.Conn().Context().Err() != nil {
+			// A failed import may have already lost its connection. Use a short
+			// cleanup session rather than leaving the world rule disabled.
+			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+			defer cancel()
+			cleanup := NewControl(c.Config)
+			if err := cleanup.EnsureConnected(ctx); err != nil {
+				return fmt.Errorf("重新连接以恢复 commandblocksenabled 失败: %w", err)
+			}
+			defer cleanup.Close()
+			return cleanup.setLobbyGameCommandBlocksEnabled(original, timeout)
+		}
 		return c.setLobbyGameCommandBlocksEnabled(original, timeout)
 	}, nil
 }
@@ -223,16 +261,45 @@ func (c *Control) setLobbyGameCommandBlocksEnabled(enabled bool, timeout time.Du
 }
 
 func lobbyGameCommandBlockRuleValue(resp *packet.CommandOutput) (bool, bool) {
-	if resp == nil {
+	if resp == nil || resp.SuccessCount <= 0 {
 		return false, false
 	}
+	if value, ok := lobbyGameCommandBlockRuleJSON([]byte(resp.DataSet), 0); ok {
+		return value, true
+	}
 	for _, message := range resp.OutputMessages {
-		if match := lobbyGameCommandBlockRulePattern.FindStringSubmatch(message.Message); len(match) == 2 {
+		if match := lobbyGameCommandBlockRulePattern.FindStringSubmatch(message.Message); message.Success && len(match) == 2 {
 			return strings.EqualFold(match[1], "true"), true
 		}
 	}
-	if match := lobbyGameCommandBlockRulePattern.FindStringSubmatch(resp.DataSet); len(match) == 2 {
-		return strings.EqualFold(match[1], "true"), true
+	return false, false
+}
+
+func lobbyGameCommandBlockRuleJSON(data []byte, depth int) (bool, bool) {
+	if depth > 2 {
+		return false, false
+	}
+	var rule struct {
+		Enabled *bool           `json:"commandblocksenabled"`
+		Name    string          `json:"name"`
+		Value   *bool           `json:"value"`
+		Details json.RawMessage `json:"details"`
+	}
+	if json.Unmarshal(data, &rule) != nil {
+		return false, false
+	}
+	if rule.Enabled != nil {
+		return *rule.Enabled, true
+	}
+	if strings.EqualFold(rule.Name, "commandblocksenabled") && rule.Value != nil {
+		return *rule.Value, true
+	}
+	var details string
+	if json.Unmarshal(rule.Details, &details) == nil {
+		return lobbyGameCommandBlockRuleJSON([]byte(details), depth+1)
+	}
+	if len(rule.Details) > 0 {
+		return lobbyGameCommandBlockRuleJSON(rule.Details, depth+1)
 	}
 	return false, false
 }

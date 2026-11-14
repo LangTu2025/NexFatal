@@ -135,6 +135,8 @@ func (b *BuildTask) Start(ctx context.Context, ctrl *game_control.Control) error
 		if err != nil {
 			return err
 		}
+		stopKeepAlive := ctrl.StartLobbyGameKeepAlive(ctx)
+		defer stopKeepAlive()
 		defer func() {
 			if restoreErr := restoreCommandBlocks(); restoreErr != nil {
 				fmt.Fprintf(os.Stderr, "[WARN] 恢复 LobbyGame 命令方块规则失败: %v\n", restoreErr)
