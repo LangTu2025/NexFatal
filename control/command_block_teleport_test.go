@@ -33,6 +33,23 @@ func commandTeleportPacket() *packet.MovePlayer {
 	}
 }
 
+func TestLobbyGameTeleportObservesFlowersServerPosition(t *testing.T) {
+	listener := &commandTeleportListener{}
+	move := commandTeleportPacket()
+	position, err := teleportWithServerPosition(context.Background(), protocol.BlockPos{100, 70, -20}, 17, listener,
+		func() error {
+			if listener.callback == nil {
+				t.Fatal("listener was not installed before teleport")
+			}
+			listener.callback(move, nil)
+			listener.callback(move, nil)
+			return nil
+		}, nil)
+	if err != nil || position != ([3]float32)(move.Position) || !listener.destroyed {
+		t.Fatalf("server-position observation failed: position=%v err=%v destroyed=%v", position, err, listener.destroyed)
+	}
+}
+
 func TestCommandTeleportSynchronizesServerPositionBeforeWriting(t *testing.T) {
 	listener := &commandTeleportListener{}
 	move := commandTeleportPacket()

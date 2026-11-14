@@ -24,6 +24,7 @@ type buildProgressReporter struct {
 	ctrl            *game_control.Control
 	stop            chan struct{}
 	once            sync.Once
+	pushInterval    time.Duration
 	taskID          int
 	execute         string
 	displayFileName string
@@ -52,9 +53,17 @@ func startBuildProgress(ctrl *game_control.Control, taskID int, execute, display
 		taskID = 1
 	}
 
+	pushInterval := inGameProgressPushInterval
+	if ctrl.IsLobbyGame() {
+		// LobbyGame disconnects clients after prolonged high-frequency command
+		// traffic. Keep progress visible while reducing the outer import's
+		// actionbar CommandRequest rate.
+		pushInterval = time.Second
+	}
 	reporter := &buildProgressReporter{
 		ctrl:            ctrl,
 		stop:            make(chan struct{}),
+		pushInterval:    pushInterval,
 		taskID:          taskID,
 		execute:         strings.TrimSpace(execute),
 		displayFileName: strings.TrimSpace(displayFileName),
@@ -73,7 +82,11 @@ func (r *buildProgressReporter) run() {
 	if r == nil {
 		return
 	}
-	ticker := time.NewTicker(inGameProgressPushInterval)
+	interval := r.pushInterval
+	if interval <= 0 {
+		interval = inGameProgressPushInterval
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	r.push()
@@ -397,4 +410,3 @@ func formatETA(d time.Duration) string {
 	seconds := totalSeconds % 60
 	return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
 }
-

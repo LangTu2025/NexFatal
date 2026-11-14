@@ -2,9 +2,11 @@ package task
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	wsdefine "github.com/Yeah114/WaterStructure/define"
 	wsstructure "github.com/Yeah114/WaterStructure/structure"
@@ -126,6 +128,18 @@ func (b *BuildTask) Start(ctx context.Context, ctrl *game_control.Control) error
 	}
 	if err := ctrl.EnsureOperator(ctx); err != nil {
 		return err
+	}
+
+	if ctrl.IsLobbyGame() {
+		restoreCommandBlocks, err := ctrl.TemporarilyDisableLobbyGameCommandBlocks(5 * time.Second)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if restoreErr := restoreCommandBlocks(); restoreErr != nil {
+				fmt.Fprintf(os.Stderr, "[WARN] 恢复 LobbyGame 命令方块规则失败: %v\n", restoreErr)
+			}
+		}()
 	}
 
 	tickingAreaBackup, err := b.saveAndClearTickingAreas(ctx, ctrl)

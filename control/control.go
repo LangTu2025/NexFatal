@@ -123,7 +123,12 @@ func (c *Control) connectBot(ctx context.Context) error {
 	c.cancelConnection = stop
 	c.Client = cl
 	c.Resources = resources_control.NewResourcesControl(cl)
-	api, err := game_interface.NewGameInterface(c.Resources, nil)
+	var maintainer game_interface.Maintainer
+	if cl.IsLobbyGame() {
+		// Use the same lifecycle as standalone Flowers for creative/flying state.
+		maintainer = game_interface.DefaultMaintainer
+	}
+	api, err := game_interface.NewGameInterface(c.Resources, maintainer)
 	if err != nil {
 		_ = c.Close()
 		return loc.Errf(loc.KeyControlConnectBotFailed, err)
@@ -146,6 +151,90 @@ func (c *Control) IsLobbyServer() bool {
 
 func (c *Control) isLobbyServer() bool {
 	return c.IsLobbyServer()
+}
+
+// LobbyGame 的外部导入链路必须使用 WebSocket CommandRequest；Flowers 内部
+// 保持原有 SettingsCommand 实现不变，只有 NovaBuilder 的外部包装在此切换。
+func (c *Control) isLobbyGameConnection() bool {
+	return c != nil && c.Client != nil && c.Client.IsLobbyGame()
+}
+
+// IsLobbyGame reports the connected client type for the outer import pipeline.
+func (c *Control) IsLobbyGame() bool {
+	return c.isLobbyGameConnection()
+}
+
+var lobbyGameCommandBlockRulePattern = regexp.MustCompile("(?i)commandblocksenabled[^a-z0-9]+(true|false)")
+
+// TemporarilyDisableLobbyGameCommandBlocks pauses command block execution for
+// the outer importer. LobbyGame re-applies its adventure-mode policy while
+// command blocks are active, which can kick the importer during update packets.
+func (c *Control) TemporarilyDisableLobbyGameCommandBlocks(timeout time.Duration) (func() error, error) {
+	if !c.isLobbyGameConnection() {
+		return func() error { return nil }, nil
+	}
+	if c.API == nil {
+		return nil, errors.New("LobbyGame API 未初始化")
+	}
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	resp, timedOut, err := c.API.Commands().SendWSCommandWithTimeout("gamerule commandblocksenabled", timeout)
+	if timedOut {
+		return nil, fmt.Errorf("读取 commandblocksenabled 超时")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("读取 commandblocksenabled 失败: %w", err)
+	}
+	original, ok := lobbyGameCommandBlockRuleValue(resp)
+	if !ok {
+		return nil, fmt.Errorf("无法解析 commandblocksenabled 返回值")
+	}
+	if !original {
+		return func() error { return nil }, nil
+	}
+	if err := c.setLobbyGameCommandBlocksEnabled(false, timeout); err != nil {
+		return nil, err
+	}
+	return func() error {
+		return c.setLobbyGameCommandBlocksEnabled(original, timeout)
+	}, nil
+}
+
+func (c *Control) setLobbyGameCommandBlocksEnabled(enabled bool, timeout time.Duration) error {
+	if c.API == nil {
+		return errors.New("LobbyGame API 未初始化")
+	}
+	value := "false"
+	if enabled {
+		value = "true"
+	}
+	resp, timedOut, err := c.API.Commands().SendWSCommandWithTimeout("gamerule commandblocksenabled "+value, timeout)
+	if timedOut {
+		return fmt.Errorf("设置 commandblocksenabled=%s 超时", value)
+	}
+	if err != nil {
+		return fmt.Errorf("设置 commandblocksenabled=%s 失败: %w", value, err)
+	}
+	if resp == nil || resp.SuccessCount <= 0 {
+		return fmt.Errorf("设置 commandblocksenabled=%s 失败: %s", value, commandOutputFailureText(resp))
+	}
+	return nil
+}
+
+func lobbyGameCommandBlockRuleValue(resp *packet.CommandOutput) (bool, bool) {
+	if resp == nil {
+		return false, false
+	}
+	for _, message := range resp.OutputMessages {
+		if match := lobbyGameCommandBlockRulePattern.FindStringSubmatch(message.Message); len(match) == 2 {
+			return strings.EqualFold(match[1], "true"), true
+		}
+	}
+	if match := lobbyGameCommandBlockRulePattern.FindStringSubmatch(resp.DataSet); len(match) == 2 {
+		return strings.EqualFold(match[1], "true"), true
+	}
+	return false, false
 }
 
 func (c *Control) isDomainServer() bool {
@@ -511,6 +600,13 @@ func (c *Control) PrepareCommandBlockAsync(pos protocol.BlockPos, blockName stri
 	if err != nil {
 		return err
 	}
+	if c.isLobbyGameConnection() {
+		command := fmt.Sprintf("setblock %d %d %d %s %s", pos[0], pos[1], pos[2], block.BlockName(), block.BlockStatesString())
+		if err := c.API.Commands().SendWSCommand(command); err != nil {
+			return loc.Errf(loc.KeyControlWriteCommandBlockFailed, err)
+		}
+		return nil
+	}
 	if err := c.API.SetBlock().SetBlockAsync(pos, block.BlockName(), block.BlockStatesString()); err != nil {
 		return loc.Errf(loc.KeyControlWriteCommandBlockFailed, err)
 	}
@@ -628,6 +724,19 @@ func (c *Control) SendSettingsDimensionCommand(dimensionName, command string) er
 		return loc.Err(loc.KeyControlAPINotInitialized)
 	}
 	wrapped := wrapDimensionCommand(dimensionName, command)
+	if c.isLobbyGameConnection() {
+		resp, timedOut, err := c.API.Commands().SendWSCommandWithTimeout(strings.TrimSpace(wrapped), 5*time.Second)
+		if timedOut {
+			return loc.Errf(loc.KeyControlWaitDimensionCommandFailed, fmt.Errorf("命令回包超时"))
+		}
+		if err != nil {
+			return loc.Errf(loc.KeyControlSendDimensionCommandFailed, err)
+		}
+		if resp == nil || resp.SuccessCount <= 0 {
+			return loc.Errf(loc.KeyControlSendDimensionCommandFailed, commandOutputFailureText(resp))
+		}
+		return nil
+	}
 	if err := c.API.Commands().SendSettingsCommand(strings.TrimSpace(wrapped), false); err != nil {
 		return loc.Errf(loc.KeyControlSendDimensionCommandFailed, err)
 	}
@@ -643,6 +752,12 @@ func (c *Control) SendSettingsDimensionCommandAsync(dimensionName, command strin
 		return loc.Err(loc.KeyControlAPINotInitialized)
 	}
 	wrapped := wrapDimensionCommand(dimensionName, command)
+	if c.isLobbyGameConnection() {
+		if err := c.API.Commands().SendWSCommand(strings.TrimSpace(wrapped)); err != nil {
+			return loc.Errf(loc.KeyControlSendDimensionCommandFailed, err)
+		}
+		return nil
+	}
 	if err := c.API.Commands().SendSettingsCommand(strings.TrimSpace(wrapped), false); err != nil {
 		return loc.Errf(loc.KeyControlSendDimensionCommandFailed, err)
 	}
@@ -653,6 +768,12 @@ func (c *Control) SendSettingsDimensionCommandAsync(dimensionName, command strin
 func (c *Control) SendSettingsCommandAsync(command string) error {
 	if c.API == nil {
 		return loc.Err(loc.KeyControlAPINotInitialized)
+	}
+	if c.isLobbyGameConnection() {
+		if err := c.API.Commands().SendWSCommand(strings.TrimSpace(command)); err != nil {
+			return loc.Errf(loc.KeyControlSendDimensionCommandFailed, err)
+		}
+		return nil
 	}
 	if err := c.API.Commands().SendSettingsCommand(strings.TrimSpace(command), false); err != nil {
 		return loc.Errf(loc.KeyControlSendDimensionCommandFailed, err)

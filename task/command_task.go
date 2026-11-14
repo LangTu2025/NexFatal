@@ -83,6 +83,10 @@ func (b *BuildTask) prepareCommandBlockWrites(ctx context.Context, ctrl *game_co
 		if err := ctrl.API.Commands().SendSettingsCommand("gamemode 1", true); err != nil {
 			return fmt.Errorf("在发送命令方块更新包前，未能将机器人切换到创造模式: %w", err)
 		}
+	} else if ctrl.IsLobbyGame() {
+		if err := ctrl.SendRawCommandAsync("gamemode 1 @s"); err != nil {
+			return fmt.Errorf("在发送命令方块更新包前，未能将机器人切换到创造模式: %w", err)
+		}
 	} else if ctrl.IsLobbyServer() {
 		if err := ctrl.SendSettingsCommandAsync("gamemode 1 @s"); err != nil {
 			return fmt.Errorf("在发送命令方块更新包前，未能将机器人切换到创造模式: %w", err)
@@ -113,21 +117,27 @@ type commandBlockGroupIO struct {
 
 func (b *BuildTask) writeCommandBlockGroup(ctx context.Context, ctrl *game_control.Control, tasks []nbtPlacementTask, mode commandBlockWriteMode, progress *buildProgressReporter, bar *progressbar.ProgressBar) (int, error) {
 	localLobby := ctrl.Resources != nil && ctrl.Resources.IsLocalLobby()
+	lobbyGame := ctrl.IsLobbyGame()
 	var commandBlockLimiter ratelimit.Limiter
 	if localLobby {
 		// 对齐 NexusEgo 的异步命令方块分支：每秒 1000 个方块，突发量为 1。
 		commandBlockLimiter = ratelimit.New(1000, ratelimit.WithoutSlack)
+	} else if lobbyGame {
+		// Limit external LobbyGame writes without changing Flowers' own path.
+		commandBlockLimiter = ratelimit.New(1000, ratelimit.WithoutSlack)
 	}
 	return b.writeCommandBlockGroupWithIO(ctx, tasks, mode, progress, bar, commandBlockGroupIO{
-		prepareOnWrite: localLobby,
+		prepareOnWrite: localLobby || lobbyGame,
 		prepare: func(task nbtPlacementTask) error {
 			if commandBlockLimiter != nil {
 				commandBlockLimiter.Take()
 			}
 			return ctrl.PrepareCommandBlockAsync(task.pos, task.blockName, task.blockStates, task.nbtData)
 		},
-		move:  func(pos protocol.BlockPos) ([3]float32, error) { return b.moveToCommandBlockGroup(ctx, ctrl, pos) },
-		write: func(task nbtPlacementTask) error { return b.writeCommandBlockNBT(ctrl, task) },
+		move: func(pos protocol.BlockPos) ([3]float32, error) { return b.moveToCommandBlockGroup(ctx, ctrl, pos) },
+		write: func(task nbtPlacementTask) error {
+			return b.writeCommandBlockNBT(ctrl, task)
+		},
 		verify: func(tasks []nbtPlacementTask) (commandBlockVerificationResult, error) {
 			return b.verifyCommandBlocks(ctx, ctrl, tasks)
 		},
@@ -138,8 +148,8 @@ func (b *BuildTask) writeCommandBlockGroupWithIO(ctx context.Context, tasks []nb
 	pending := append([]nbtPlacementTask(nil), tasks...)
 	placed := 0
 	for len(pending) > 0 {
-		// TanLobby 对齐 NexusEgo：先 TP，再逐个连续提交异步 setblock 和更新包。
-		// 其他连接保持原有的整组预放置方式。两种写入方式均不等待逐块回包。
+		// TanLobby 和 LobbyGame 先传送，再逐个异步放置并更新；其他连接先整组预放置。
+		// 写入不等待逐块回包，完成后统一读取子区块校验。
 		prepared := make([]nbtPlacementTask, 0, len(pending))
 		for _, task := range pending {
 			if err := ctx.Err(); err != nil {

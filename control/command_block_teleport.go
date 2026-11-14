@@ -29,6 +29,15 @@ func (c *Control) TeleportForCommandBlocks(ctx context.Context, dimensionName st
 		bot := c.Resources.BotInfo()
 		return teleportLocalLobbyForCommandBlocks(ctx, dimensionName, pos, bot.BotName, bot.EntityRuntimeID, c.API.Commands(), c.Resources.PacketListener())
 	}
+	if c.isLobbyGameConnection() {
+		return teleportWithServerPosition(ctx, pos, c.Resources.BotInfo().EntityRuntimeID,
+			c.Resources.PacketListener(),
+			func() error {
+				return c.API.Commands().SendWSCommand(fmt.Sprintf("tp @s %d %d %d", pos[0], pos[1], pos[2]))
+			},
+			nil, // Flowers already acknowledges the server teleport.
+		)
+	}
 	return teleportWithPlayerAuthInput(ctx, pos, c.Resources.BotInfo().EntityRuntimeID,
 		c.Resources.PacketListener(),
 		// 实际传送由 MovePlayer 回包确认，不再额外等待 CommandOutput
@@ -41,6 +50,12 @@ func (c *Control) TeleportForCommandBlocks(ctx context.Context, dimensionName st
 }
 
 func teleportWithPlayerAuthInput(ctx context.Context, destination protocol.BlockPos, botRuntimeID uint64, listener teleportPacketListener, teleport func() error, writePacket func(packet.Packet) error) ([3]float32, error) {
+	return teleportWithServerPosition(ctx, destination, botRuntimeID, listener, teleport, writePacket)
+}
+
+// A nil writePacket only observes the server position: Flowers has already
+// sent its teleport acknowledgement before dispatching the movement event.
+func teleportWithServerPosition(ctx context.Context, destination protocol.BlockPos, botRuntimeID uint64, listener teleportPacketListener, teleport func() error, writePacket func(packet.Packet) error) ([3]float32, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
@@ -93,6 +108,10 @@ func teleportWithPlayerAuthInput(ctx context.Context, destination protocol.Block
 		once.Do(func() {
 			if err := ctx.Err(); err != nil {
 				completed <- result{err: err}
+				return
+			}
+			if writePacket == nil {
+				completed <- result{position: position}
 				return
 			}
 			inputData := protocol.NewBitset(packet.PlayerAuthInputBitsetSize)

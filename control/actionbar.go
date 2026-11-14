@@ -77,6 +77,12 @@ func (c *Control) SendActionBar(message string) error {
 		}
 		return nil
 	}
+	if c.isLobbyGameConnection() {
+		if err := c.API.Commands().SendWSCommand(localLobbyActionBarCommand(message)); err != nil {
+			return loc.Errf(loc.KeyControlActionbarSendFailed, err)
+		}
+		return nil
+	}
 	if err := c.API.Commands().Title(message); err != nil {
 		return loc.Errf(loc.KeyControlActionbarSendFailed, err)
 	}
