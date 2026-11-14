@@ -1,0 +1,4 @@
+# Keep the build scripts usable on Windows and Unix.
+/build.bat text eol=crlf
+/build.sh text eol=lf
+/cmd/cli/build.bat text eol=crlf
