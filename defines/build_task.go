@@ -15,7 +15,7 @@ const (
 	// MaxBuildSpeed 是按 mcpe_server 每 tick 发包限制保留余量后的安全上限。
 	MaxBuildSpeed = 9500 * 20
 	// DefaultBuildSpeed 是默认构建速度。
-	DefaultBuildSpeed = 5000
+	DefaultBuildSpeed = 3500
 	// MinLightSpacing 是允许设置的最小光源间距。
 	MinLightSpacing = 3
 	// MaxLightSpacing 是允许设置的最大光源间距。
