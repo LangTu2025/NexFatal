@@ -31,6 +31,7 @@ type KBDX struct {
 
 	paletteCache map[string]uint32
 	blocks       []kbdxBlock
+	blockIndex   chunkRecordIndex
 
 	nonAirBlocks int
 }
@@ -112,6 +113,7 @@ func (k *KBDX) FromFile(file *os.File) error {
 func (k *KBDX) populate(rawBlocks []kbdxRawBlock, palette map[int]string, blockEntities map[[3]int]map[string]any) error {
 	k.paletteCache = make(map[string]uint32)
 	k.blocks = nil
+	k.blockIndex.reset()
 	k.nonAirBlocks = 0
 
 	minX, minY, minZ := math.MaxInt, math.MaxInt, math.MaxInt
@@ -298,23 +300,30 @@ func (k *KBDX) GetChunks(posList []define.ChunkPos) (map[define.ChunkPos]*chunk.
 	offsetY := int(k.offsetPos.Y())
 	offsetZ := int(k.offsetPos.Z())
 
-	for _, blk := range k.blocks {
-		newX := blk.LocalX + offsetX
-		newY := blk.LocalY + offsetY
-		newZ := blk.LocalZ + offsetZ
+	index := k.blockIndex.get(len(k.blocks), k.offsetPos, func(n int) (int, int, int, int) {
+		b := k.blocks[n]
+		return b.LocalX, b.LocalX, b.LocalZ, b.LocalZ
+	})
+	for pos := range chunks {
+		index.visit(pos, func(n int) {
+			blk := k.blocks[n]
+			newX := blk.LocalX + offsetX
+			newY := blk.LocalY + offsetY
+			newZ := blk.LocalZ + offsetZ
 
-		chunkX := floorDiv(newX, 16)
-		chunkZ := floorDiv(newZ, 16)
-		chunkPos := define.ChunkPos{int32(chunkX), int32(chunkZ)}
+			chunkX := floorDiv(newX, 16)
+			chunkZ := floorDiv(newZ, 16)
+			chunkPos := define.ChunkPos{int32(chunkX), int32(chunkZ)}
 
-		c, exists := chunks[chunkPos]
-		if !exists {
-			continue
-		}
+			c, exists := chunks[chunkPos]
+			if !exists {
+				return
+			}
 
-		localX := newX - chunkX*16
-		localZ := newZ - chunkZ*16
-		c.SetBlock(uint8(localX), int16(newY)-64, uint8(localZ), 0, blk.RuntimeID)
+			localX := newX - chunkX*16
+			localZ := newZ - chunkZ*16
+			c.SetBlock(uint8(localX), int16(newY)-64, uint8(localZ), 0, blk.RuntimeID)
+		})
 	}
 
 	return chunks, nil
@@ -336,28 +345,35 @@ func (k *KBDX) GetChunksNBT(posList []define.ChunkPos) (map[define.ChunkPos]map[
 	offsetY := int(k.offsetPos.Y())
 	offsetZ := int(k.offsetPos.Z())
 
-	for _, blk := range k.blocks {
-		if blk.NBT == nil {
-			continue
-		}
+	index := k.blockIndex.get(len(k.blocks), k.offsetPos, func(n int) (int, int, int, int) {
+		b := k.blocks[n]
+		return b.LocalX, b.LocalX, b.LocalZ, b.LocalZ
+	})
+	for pos := range result {
+		index.visit(pos, func(n int) {
+			blk := k.blocks[n]
+			if blk.NBT == nil {
+				return
+			}
 
-		newX := blk.LocalX + offsetX
-		newY := blk.LocalY + offsetY
-		newZ := blk.LocalZ + offsetZ
+			newX := blk.LocalX + offsetX
+			newY := blk.LocalY + offsetY
+			newZ := blk.LocalZ + offsetZ
 
-		chunkX := floorDiv(newX, 16)
-		chunkZ := floorDiv(newZ, 16)
-		chunkPos := define.ChunkPos{int32(chunkX), int32(chunkZ)}
+			chunkX := floorDiv(newX, 16)
+			chunkZ := floorDiv(newZ, 16)
+			chunkPos := define.ChunkPos{int32(chunkX), int32(chunkZ)}
 
-		chunkNBT, exists := result[chunkPos]
-		if !exists {
-			continue
-		}
+			chunkNBT, exists := result[chunkPos]
+			if !exists {
+				return
+			}
 
-		localX := newX - chunkX*16
-		localZ := newZ - chunkZ*16
-		blockPos := define.BlockPos{int32(localX), chunkLocalYFromWorld(newY), int32(localZ)}
-		chunkNBT[blockPos] = blk.NBT
+			localX := newX - chunkX*16
+			localZ := newZ - chunkZ*16
+			blockPos := define.BlockPos{int32(localX), chunkLocalYFromWorld(newY), int32(localZ)}
+			chunkNBT[blockPos] = blk.NBT
+		})
 	}
 
 	return result, nil

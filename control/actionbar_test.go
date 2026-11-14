@@ -85,7 +85,7 @@ func TestLocalLobbyActionBarProgressFitsServerPacketLimit(t *testing.T) {
 		for _, filled := range []int{0, 1, 25, 49, 50} {
 			t.Run(fmt.Sprintf("%s/%d", stage, filled), func(t *testing.T) {
 				bar := "§a" + strings.Repeat("▎", filled) + "§7" + strings.Repeat("▎", 50-filled) + "§r"
-				message := fmt.Sprintf("§5§lNexFatal§r §7v0.0.1 §8| §f%s§8[§easync§8]§r\n总进度: %s\n区进度: %s\n§b99.99%% §8| §8(§7999999.00 / 999999§8) §99999.99 区块/秒 §5ETA 99:59:59", stage, bar, bar)
+				message := fmt.Sprintf("§5§lNexFatal§r §7v0.0.2 §8| §f%s§8[§easync§8]§r\n总进度: %s\n区进度: %s\n§b99.99%% §8| §8(§7999999.00 / 999999§8) §99999.99 区块/秒 §5ETA 99:59:59", stage, bar, bar)
 				if size := actionBarRequestSize(message); size <= 512 {
 					t.Fatalf("fixture did not reproduce the oversized progress packet: %d bytes", size)
 				}
@@ -127,7 +127,7 @@ func TestLocalLobbyActionBarPreservesDifferentBarLengthsAndLiteralPlaceholders(t
 		for regionFilled := 0; regionFilled <= 50; regionFilled++ {
 			totalBar := "§a" + strings.Repeat("▎", totalFilled) + "§7" + strings.Repeat("▎", 50-totalFilled) + "§r"
 			regionBar := "§c" + strings.Repeat("▎", regionFilled) + "§7" + strings.Repeat("▎", 50-regionFilled) + "§r"
-			message := "§5§lNexFatal§r §7v0.0.1 §8| §fBuilding Chunk§8[§easync§8]§r\n总进度: " + totalBar + "\n区进度: " + regionBar + "\n§b99.99% §8| §8(§7999999.00 / 999999§8) §99999.99 区块/秒 §5ETA 99:59:59"
+			message := "§5§lNexFatal§r §7v0.0.2 §8| §fBuilding Chunk§8[§easync§8]§r\n总进度: " + totalBar + "\n区进度: " + regionBar + "\n§b99.99% §8| §8(§7999999.00 / 999999§8) §99999.99 区块/秒 §5ETA 99:59:59"
 			command := localLobbyActionBarCommand(message)
 			if rendered := actionBarRenderedText(t, command); rendered != message || actionBarCommandSize(command) > 512 {
 				t.Fatalf("bars %d/%d changed or exceeded the packet limit: %d bytes", totalFilled, regionFilled, actionBarCommandSize(command))

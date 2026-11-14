@@ -5,15 +5,16 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/bits"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/TriM-Organization/bedrock-world-operator/block"
 	"github.com/TriM-Organization/bedrock-world-operator/chunk"
-	"github.com/TriM-Organization/bedrock-world-operator/world"
 	bwo_define "github.com/TriM-Organization/bedrock-world-operator/define"
+	"github.com/TriM-Organization/bedrock-world-operator/world"
 	"github.com/Yeah114/WaterStructure/define"
 	"github.com/Yeah114/blocks"
 )
@@ -25,15 +26,17 @@ type MCFunction struct {
 	originalSize *define.Size
 	offsetPos    define.Offset
 
-	blocks       []mcFunctionBlock
+	commands     []mcFunctionCommand
+	commandIndex chunkRecordIndex
+	countMu      sync.Mutex
 	nonAirBlocks int
+	countReady   bool
 }
 
-type mcFunctionBlock struct {
-	LocalX    int
-	LocalY    int
-	LocalZ    int
-	RuntimeID uint32
+// One record per source command; fill cuboids are expanded only inside requested chunks.
+type mcFunctionCommand struct {
+	X1, X2, Y1, Y2, Z1, Z2 int32
+	RuntimeID              uint32
 }
 
 func (m *MCFunction) ID() uint8 {
@@ -48,185 +51,142 @@ func (m *MCFunction) FromFile(file *os.File) error {
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return fmt.Errorf("重置文件指针失败: %w", err)
 	}
-
 	scanner := bufio.NewScanner(file)
-	blockMap := make(map[[3]int]uint32)
-	minX, minY, minZ := math.MaxInt, math.MaxInt, math.MaxInt
-	maxX, maxY, maxZ := math.MinInt, math.MinInt, math.MinInt
-
+	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
+	type stateKey struct{ name, states string }
+	cache := make(map[stateKey]uint32)
+	commands := make([]mcFunctionCommand, 0)
+	lo := [3]int{math.MaxInt, math.MaxInt, math.MaxInt}
+	hi := [3]int{math.MinInt, math.MinInt, math.MinInt}
 	lineNumber := 0
 	for scanner.Scan() {
 		lineNumber++
 		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
+		if lineNumber == 1 {
+			line = strings.TrimPrefix(line, "\uFEFF")
+		}
+		command, rest := nextMCFunctionField(line)
+		fill := strings.EqualFold(command, "fill")
+		if !fill && !strings.EqualFold(command, "setblock") {
 			continue
 		}
-
-		cmdLower := strings.ToLower(line)
-		if !strings.HasPrefix(cmdLower, "fill ") && !strings.HasPrefix(cmdLower, "setblock ") {
+		coordCount := 3
+		if fill {
+			coordCount = 6
+		}
+		var coords [6]int
+		var coordErr error
+		complete := true
+		for n := 0; n < coordCount; n++ {
+			var field string
+			field, rest = nextMCFunctionField(rest)
+			if field == "" {
+				complete = false
+				break
+			}
+			value, err := parseMCFunctionCoord(field)
+			if err != nil && coordErr == nil {
+				coordErr = err
+			}
+			if int64(value) < math.MinInt32 || int64(value) > math.MaxInt32 {
+				coordErr = fmt.Errorf("坐标超出 int32 范围: %s", field)
+			}
+			coords[n] = value
+		}
+		if !complete || strings.TrimSpace(rest) == "" {
 			continue
 		}
-
+		if coordErr != nil {
+			return fmt.Errorf("第 %d 行: %w", lineNumber, coordErr)
+		}
+		rest = strings.TrimSpace(rest)
+		blockEnd := strings.IndexAny(rest, "[ \t\r\n")
+		if blockEnd < 0 {
+			blockEnd = len(rest)
+		}
+		name := rest[:blockEnd]
+		if name == "" {
+			continue
+		}
+		tail := strings.TrimSpace(rest[blockEnd:])
 		statePart := ""
-		if idx := strings.Index(line, "["); idx != -1 {
-			if end := strings.LastIndex(line, "]"); end > idx {
-				statePart = line[idx : end+1]
-				line = strings.TrimSpace(line[:idx] + line[end+1:])
+		if strings.HasPrefix(tail, "[") {
+			close := strings.LastIndexByte(tail, ']')
+			if close < 0 {
+				return fmt.Errorf("第 %d 行: 状态格式无效", lineNumber)
 			}
+			statePart = tail[:close+1]
 		}
-
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
-
-		switch strings.ToLower(fields[0]) {
-		case "fill":
-			if len(fields) < 8 {
-				continue
-			}
-
-			x1, err1 := parseMCFunctionCoord(fields[1])
-			y1, err2 := parseMCFunctionCoord(fields[2])
-			z1, err3 := parseMCFunctionCoord(fields[3])
-			x2, err4 := parseMCFunctionCoord(fields[4])
-			y2, err5 := parseMCFunctionCoord(fields[5])
-			z2, err6 := parseMCFunctionCoord(fields[6])
-			if err := firstError(err1, err2, err3, err4, err5, err6); err != nil {
-				return fmt.Errorf("第 %d 行: %w", lineNumber, err)
-			}
-
-			blockName := fields[7]
+		key := stateKey{name, statePart}
+		runtimeID, found := cache[key]
+		if !found {
 			states, err := parseMCFunctionStates(statePart)
 			if err != nil {
 				return fmt.Errorf("第 %d 行: %w", lineNumber, err)
 			}
-
-			runtimeID := runtimeIDForBlock(blockName, states)
-
-			xMin, xMax := min(x1, x2), max(x1, x2)
-			yMin, yMax := min(y1, y2), max(y1, y2)
-			zMin, zMax := min(z1, z2), max(z1, z2)
-
-			for x := xMin; x <= xMax; x++ {
-				for y := yMin; y <= yMax; y++ {
-					for z := zMin; z <= zMax; z++ {
-						blockMap[[3]int{x, y, z}] = runtimeID
-						if x < minX {
-							minX = x
-						}
-						if y < minY {
-							minY = y
-						}
-						if z < minZ {
-							minZ = z
-						}
-						if x > maxX {
-							maxX = x
-						}
-						if y > maxY {
-							maxY = y
-						}
-						if z > maxZ {
-							maxZ = z
-						}
-					}
-				}
+			runtimeID = runtimeIDForBlock(name, states)
+			if len(cache) < 65536 {
+				cache[stateKey{strings.Clone(name), strings.Clone(statePart)}] = runtimeID
 			}
-
-		case "setblock":
-			if len(fields) < 5 {
-				continue
-			}
-
-			x, err1 := parseMCFunctionCoord(fields[1])
-			y, err2 := parseMCFunctionCoord(fields[2])
-			z, err3 := parseMCFunctionCoord(fields[3])
-			if err := firstError(err1, err2, err3); err != nil {
-				return fmt.Errorf("第 %d 行: %w", lineNumber, err)
-			}
-
-			blockName := fields[4]
-			states, err := parseMCFunctionStates(statePart)
-			if err != nil {
-				return fmt.Errorf("第 %d 行: %w", lineNumber, err)
-			}
-
-			runtimeID := runtimeIDForBlock(blockName, states)
-
-			blockMap[[3]int{x, y, z}] = runtimeID
-			if x < minX {
-				minX = x
-			}
-			if y < minY {
-				minY = y
-			}
-			if z < minZ {
-				minZ = z
-			}
-			if x > maxX {
-				maxX = x
-			}
-			if y > maxY {
-				maxY = y
-			}
-			if z > maxZ {
-				maxZ = z
-			}
-
-		default:
-			continue
+		}
+		if !fill {
+			copy(coords[3:], coords[:3])
+		}
+		c := mcFunctionCommand{RuntimeID: runtimeID}
+		c.X1, c.X2 = int32(min(coords[0], coords[3])), int32(max(coords[0], coords[3]))
+		c.Y1, c.Y2 = int32(min(coords[1], coords[4])), int32(max(coords[1], coords[4]))
+		c.Z1, c.Z2 = int32(min(coords[2], coords[5])), int32(max(coords[2], coords[5]))
+		commands = append(commands, c)
+		for axis := 0; axis < 3; axis++ {
+			lo[axis] = min(lo[axis], coords[axis], coords[axis+3])
+			hi[axis] = max(hi[axis], coords[axis], coords[axis+3])
 		}
 	}
-
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("读取 mcfunction 失败: %w", err)
 	}
-
-	if len(blockMap) == 0 {
+	if len(commands) == 0 {
 		return ErrInvalidFile
 	}
-
+	var dimensions [3]int
+	for axis := range dimensions {
+		length := int64(hi[axis]) - int64(lo[axis]) + 1
+		if length > math.MaxInt32 || length > int64(math.MaxInt) {
+			return fmt.Errorf("mcfunction 尺寸超出支持范围")
+		}
+		dimensions[axis] = int(length)
+	}
+	for n := range commands {
+		c := &commands[n]
+		c.X1, c.X2 = int32(int64(c.X1)-int64(lo[0])), int32(int64(c.X2)-int64(lo[0]))
+		c.Y1, c.Y2 = int32(int64(c.Y1)-int64(lo[1])), int32(int64(c.Y2)-int64(lo[1]))
+		c.Z1, c.Z2 = int32(int64(c.Z1)-int64(lo[2])), int32(int64(c.Z2)-int64(lo[2]))
+	}
 	m.file = file
-	width := maxX - minX + 1
-	height := maxY - minY + 1
-	length := maxZ - minZ + 1
-
-	m.size = &define.Size{Width: width, Height: height, Length: length}
-	m.originalSize = &define.Size{Width: width, Height: height, Length: length}
+	m.size = &define.Size{Width: dimensions[0], Height: dimensions[1], Length: dimensions[2]}
+	original := *m.size
+	m.originalSize = &original
 	m.offsetPos = define.Offset{}
-
-	keys := make([][3]int, 0, len(blockMap))
-	for pos := range blockMap {
-		keys = append(keys, pos)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		if keys[i][1] != keys[j][1] {
-			return keys[i][1] < keys[j][1]
-		}
-		if keys[i][2] != keys[j][2] {
-			return keys[i][2] < keys[j][2]
-		}
-		return keys[i][0] < keys[j][0]
-	})
-
-	m.blocks = make([]mcFunctionBlock, 0, len(keys))
-	m.nonAirBlocks = 0
-	for _, pos := range keys {
-		runtimeID := blockMap[pos]
-		local := mcFunctionBlock{
-			LocalX:    pos[0] - minX,
-			LocalY:    pos[1] - minY,
-			LocalZ:    pos[2] - minZ,
-			RuntimeID: runtimeID,
-		}
-		m.blocks = append(m.blocks, local)
-		if runtimeID != block.AirRuntimeID {
-			m.nonAirBlocks++
-		}
-	}
-
+	m.commands = commands
+	m.commandIndex.reset()
+	m.countReady = false
 	return nil
+}
+
+func nextMCFunctionField(line string) (string, string) {
+	line = strings.TrimLeft(line, " \t\r\n")
+	end := strings.IndexAny(line, " \t\r\n")
+	if end < 0 {
+		return line, ""
+	}
+	return line[:end], line[end:]
+}
+
+func (m *MCFunction) index(offset define.Offset) *chunkRecordIndexData {
+	return m.commandIndex.get(len(m.commands), offset, func(n int) (int, int, int, int) {
+		c := m.commands[n]
+		return int(c.X1), int(c.X2), int(c.Z1), int(c.Z2)
+	})
 }
 
 func (m *MCFunction) GetOffsetPos() define.Offset {
@@ -246,43 +206,32 @@ func (m *MCFunction) GetSize() define.Size {
 
 func (m *MCFunction) GetChunks(posList []define.ChunkPos) (map[define.ChunkPos]*chunk.Chunk, error) {
 	chunks := make(map[define.ChunkPos]*chunk.Chunk, len(posList))
-	height := m.size.Height
-	if height <= 0 {
-		height = 1
-	}
-	for _, pos := range posList {
-		if _, exists := chunks[pos]; !exists {
-			chunks[pos] = chunk.NewChunk(block.AirRuntimeID, MCWorldOverworldRange)
-		}
-	}
-
-	if len(chunks) == 0 {
+	if len(posList) == 0 {
 		return chunks, nil
 	}
-
-	offsetX := int(m.offsetPos.X())
-	offsetY := int(m.offsetPos.Y())
-	offsetZ := int(m.offsetPos.Z())
-
-	for _, blk := range m.blocks {
-		newX := blk.LocalX + offsetX
-		newY := blk.LocalY + offsetY
-		newZ := blk.LocalZ + offsetZ
-
-		chunkX := floorDiv(newX, 16)
-		chunkZ := floorDiv(newZ, 16)
-		chunkPos := define.ChunkPos{int32(chunkX), int32(chunkZ)}
-
-		c, exists := chunks[chunkPos]
-		if !exists {
+	index := m.index(m.offsetPos)
+	ox, oy, oz := int(m.offsetPos.X()), int(m.offsetPos.Y()), int(m.offsetPos.Z())
+	for _, pos := range posList {
+		if chunks[pos] != nil {
 			continue
 		}
-
-		localX := newX - chunkX*16
-		localZ := newZ - chunkZ*16
-		c.SetBlock(uint8(localX), int16(newY) - 64, uint8(localZ), 0, blk.RuntimeID)
+		target := chunk.NewChunk(block.AirRuntimeID, MCWorldOverworldRange)
+		chunks[pos] = target
+		cx, cz := int(pos.X())*16, int(pos.Z())*16
+		index.visit(pos, func(n int) {
+			c := m.commands[n]
+			x1, x2 := max(int(c.X1)+ox, cx), min(int(c.X2)+ox, cx+15)
+			z1, z2 := max(int(c.Z1)+oz, cz), min(int(c.Z2)+oz, cz+15)
+			y1, y2 := max(int(c.Y1)+oy, 0), min(int(c.Y2)+oy, int(MCWorldOverworldRange.Max())+64)
+			for x := x1; x <= x2; x++ {
+				for y := y1; y <= y2; y++ {
+					for z := z1; z <= z2; z++ {
+						target.SetBlock(uint8(x-cx), int16(y-64), uint8(z-cz), 0, c.RuntimeID)
+					}
+				}
+			}
+		})
 	}
-
 	return chunks, nil
 }
 
@@ -297,6 +246,71 @@ func (m *MCFunction) GetChunksNBT(posList []define.ChunkPos) (map[define.ChunkPo
 }
 
 func (m *MCFunction) CountNonAirBlocks() (int, error) {
+	m.countMu.Lock()
+	defer m.countMu.Unlock()
+	if m.countReady {
+		return m.nonAirBlocks, nil
+	}
+	// Count source coordinates (independent of offset and world height clipping),
+	// retaining only one 16x16x16 occupancy bitset at a time.
+	index := m.index(define.Offset{})
+	var total int64
+	countChunk := func(pos define.ChunkPos) {
+		cx, cz := int(pos.X())*16, int(pos.Z())*16
+		yMin, yMax := math.MaxInt, math.MinInt
+		index.visit(pos, func(n int) {
+			c := m.commands[n]
+			if int(c.X2) < cx || int(c.X1) > cx+15 || int(c.Z2) < cz || int(c.Z1) > cz+15 {
+				return
+			}
+			yMin = min(yMin, int(c.Y1))
+			yMax = max(yMax, int(c.Y2))
+		})
+		if yMin > yMax {
+			return
+		}
+		for sy := yMin / 16; sy <= yMax/16; sy++ {
+			var occupied [64]uint64
+			index.visit(pos, func(n int) {
+				c := m.commands[n]
+				x1, x2 := max(int(c.X1), cx), min(int(c.X2), cx+15)
+				z1, z2 := max(int(c.Z1), cz), min(int(c.Z2), cz+15)
+				y1, y2 := max(int(c.Y1), sy*16), min(int(c.Y2), sy*16+15)
+				for x := x1; x <= x2; x++ {
+					for y := y1; y <= y2; y++ {
+						for z := z1; z <= z2; z++ {
+							bit := (x-cx)*256 + (y-sy*16)*16 + z - cz
+							mask := uint64(1) << uint(bit%64)
+							if c.RuntimeID == block.AirRuntimeID {
+								occupied[bit/64] &^= mask
+							} else {
+								occupied[bit/64] |= mask
+							}
+						}
+					}
+				}
+			})
+			for _, word := range occupied {
+				total += int64(bits.OnesCount64(word))
+			}
+		}
+	}
+	if len(index.broad) == 0 {
+		for pos := range index.spans {
+			countChunk(pos)
+		}
+	} else {
+		for x := 0; x < m.originalSize.GetChunkXCount(); x++ {
+			for z := 0; z < m.originalSize.GetChunkZCount(); z++ {
+				countChunk(define.ChunkPos{int32(x), int32(z)})
+			}
+		}
+	}
+	if total > int64(math.MaxInt) {
+		return 0, fmt.Errorf("非空气方块数量超出 int 范围")
+	}
+	m.nonAirBlocks = int(total)
+	m.countReady = true
 	return m.nonAirBlocks, nil
 }
 
@@ -310,6 +324,8 @@ func (m *MCFunction) ToMCWorld(
 }
 
 func (m *MCFunction) Close() error {
+	m.commands = nil
+	m.commandIndex.reset()
 	return nil
 }
 

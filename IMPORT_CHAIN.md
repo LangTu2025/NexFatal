@@ -1,4 +1,4 @@
-# NexFatal 0.0.1 导入链路
+# NexFatal 0.0.2 导入链路
 
 保留 NovaBuilder 原版菜单和操作顺序。建筑读取、格式转换继续使用本地 WaterStructure；游戏登录、协议、命令交互、NBT 操作台、物品制作及缓存统一使用本地 flowers-for-machines-main。
 

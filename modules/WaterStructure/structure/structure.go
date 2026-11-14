@@ -49,6 +49,11 @@ func StructureFromFile(file *os.File) (Structure, error) {
 	ext := strings.ToLower(filepath.Ext(file.Name()))
 	var err error
 	switch ext {
+	case ".mcfunction", ".txt":
+		reader := &MCFunction{}
+		if err := reader.FromFile(file); err == nil {
+			return reader, nil
+		}
 	case ".mcworld", ".zip":
 		file.Seek(0, io.SeekStart)
 		rMCWorld := &MCWorld{}
@@ -69,6 +74,9 @@ func StructureFromFile(file *os.File) (Structure, error) {
 		}
 	}
 
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
 	header := make([]byte, 2)
 	n, err := file.Read(header)
 	if err != nil {

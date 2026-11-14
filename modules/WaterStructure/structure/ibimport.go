@@ -16,8 +16,8 @@ import (
 
 	"github.com/TriM-Organization/bedrock-world-operator/block"
 	"github.com/TriM-Organization/bedrock-world-operator/chunk"
-	"github.com/TriM-Organization/bedrock-world-operator/world"
 	bwo_define "github.com/TriM-Organization/bedrock-world-operator/define"
+	"github.com/TriM-Organization/bedrock-world-operator/world"
 	"github.com/Yeah114/WaterStructure/define"
 	"github.com/Yeah114/blocks"
 )
@@ -32,6 +32,7 @@ type IBImport struct {
 
 	paletteCache map[string]uint32
 	blocks       []ibImportBlock
+	blockIndex   chunkRecordIndex
 
 	nonAirBlocks int
 }
@@ -81,13 +82,13 @@ func (b ibImportBoolish) Bool() bool {
 }
 
 type ibImportCommand struct {
-	PosX           string `json:"posX"`
-	PosY           string `json:"posY"`
-	PosZ           string `json:"posZ"`
-	CommandMessage string `json:"CommandMessage"`
-	CommandTitle   string `json:"Commandtitle"`
-	Mode           int    `json:"mode"`
-	TickDelay      int    `json:"isTime"`
+	PosX           string          `json:"posX"`
+	PosY           string          `json:"posY"`
+	PosZ           string          `json:"posZ"`
+	CommandMessage string          `json:"CommandMessage"`
+	CommandTitle   string          `json:"Commandtitle"`
+	Mode           int             `json:"mode"`
+	TickDelay      int             `json:"isTime"`
 	Conditional    ibImportBoolish `json:"Conditional"`
 	IsRedstone     ibImportBoolish `json:"isRedstone"`
 }
@@ -231,6 +232,7 @@ func readIBImportVarInt(r *bufio.Reader) (int, error) {
 func (i *IBImport) populate(script string, commands []ibImportCommand) error {
 	i.paletteCache = make(map[string]uint32)
 	i.blocks = nil
+	i.blockIndex.reset()
 	i.nonAirBlocks = 0
 
 	accum := make(map[[3]int]*ibImportBlock)
@@ -431,7 +433,7 @@ func buildIBImportCommandNBT(cmd ibImportCommand) map[string]any {
 		"auto":               boolToByte(auto),
 		"TickDelay":          int32(cmd.TickDelay),
 		"LastOutput":         "",
-		"Version":           int32(38),
+		"Version":            int32(38),
 	}
 	return nbt
 }
@@ -532,23 +534,30 @@ func (i *IBImport) GetChunks(posList []define.ChunkPos) (map[define.ChunkPos]*ch
 	offsetY := int(i.offsetPos.Y())
 	offsetZ := int(i.offsetPos.Z())
 
-	for _, blk := range i.blocks {
-		newX := blk.LocalX + offsetX
-		newY := blk.LocalY + offsetY
-		newZ := blk.LocalZ + offsetZ
+	index := i.blockIndex.get(len(i.blocks), i.offsetPos, func(n int) (int, int, int, int) {
+		b := i.blocks[n]
+		return b.LocalX, b.LocalX, b.LocalZ, b.LocalZ
+	})
+	for pos := range chunks {
+		index.visit(pos, func(n int) {
+			blk := i.blocks[n]
+			newX := blk.LocalX + offsetX
+			newY := blk.LocalY + offsetY
+			newZ := blk.LocalZ + offsetZ
 
-		chunkX := floorDiv(newX, 16)
-		chunkZ := floorDiv(newZ, 16)
-		chunkPos := define.ChunkPos{int32(chunkX), int32(chunkZ)}
+			chunkX := floorDiv(newX, 16)
+			chunkZ := floorDiv(newZ, 16)
+			chunkPos := define.ChunkPos{int32(chunkX), int32(chunkZ)}
 
-		c, exists := chunks[chunkPos]
-		if !exists {
-			continue
-		}
+			c, exists := chunks[chunkPos]
+			if !exists {
+				return
+			}
 
-		localX := newX - chunkX*16
-		localZ := newZ - chunkZ*16
-		c.SetBlock(uint8(localX), int16(newY)-64, uint8(localZ), 0, blk.RuntimeID)
+			localX := newX - chunkX*16
+			localZ := newZ - chunkZ*16
+			c.SetBlock(uint8(localX), int16(newY)-64, uint8(localZ), 0, blk.RuntimeID)
+		})
 	}
 
 	return chunks, nil
@@ -570,28 +579,35 @@ func (i *IBImport) GetChunksNBT(posList []define.ChunkPos) (map[define.ChunkPos]
 	offsetY := int(i.offsetPos.Y())
 	offsetZ := int(i.offsetPos.Z())
 
-	for _, blk := range i.blocks {
-		if blk.NBT == nil {
-			continue
-		}
+	index := i.blockIndex.get(len(i.blocks), i.offsetPos, func(n int) (int, int, int, int) {
+		b := i.blocks[n]
+		return b.LocalX, b.LocalX, b.LocalZ, b.LocalZ
+	})
+	for pos := range result {
+		index.visit(pos, func(n int) {
+			blk := i.blocks[n]
+			if blk.NBT == nil {
+				return
+			}
 
-		newX := blk.LocalX + offsetX
-		newY := blk.LocalY + offsetY
-		newZ := blk.LocalZ + offsetZ
+			newX := blk.LocalX + offsetX
+			newY := blk.LocalY + offsetY
+			newZ := blk.LocalZ + offsetZ
 
-		chunkX := floorDiv(newX, 16)
-		chunkZ := floorDiv(newZ, 16)
-		chunkPos := define.ChunkPos{int32(chunkX), int32(chunkZ)}
+			chunkX := floorDiv(newX, 16)
+			chunkZ := floorDiv(newZ, 16)
+			chunkPos := define.ChunkPos{int32(chunkX), int32(chunkZ)}
 
-		chunkNBT, exists := result[chunkPos]
-		if !exists {
-			continue
-		}
+			chunkNBT, exists := result[chunkPos]
+			if !exists {
+				return
+			}
 
-		localX := newX - chunkX*16
-		localZ := newZ - chunkZ*16
-		blockPos := define.BlockPos{int32(localX), chunkLocalYFromWorld(newY), int32(localZ)}
-		chunkNBT[blockPos] = blk.NBT
+			localX := newX - chunkX*16
+			localZ := newZ - chunkZ*16
+			blockPos := define.BlockPos{int32(localX), chunkLocalYFromWorld(newY), int32(localZ)}
+			chunkNBT[blockPos] = blk.NBT
+		})
 	}
 
 	return result, nil

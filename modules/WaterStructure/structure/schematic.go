@@ -1,12 +1,12 @@
 package structure
 
 import (
+	"bufio"
 	"compress/gzip"
 	"fmt"
 	"io"
 	"math"
 	"os"
-	"slices"
 
 	"github.com/TriM-Organization/bedrock-world-operator/block"
 	"github.com/TriM-Organization/bedrock-world-operator/chunk"
@@ -220,18 +220,24 @@ func (s *Schematic) FromFile(file *os.File) error {
 			}
 			s.BlockNBT = blocks
 
-		case "Blocks":
-			s.BlocksTagGzipOffset = offsetReader.GetOffset()
-			err = tagReader.SkipTagValue(offsetReader, tagType)
-			if err != nil {
-				return fmt.Errorf("跳过标签 %s 失败: %w", tagName, err)
+		case "Blocks", "Data":
+			if tagType != nbt.TagByteArray {
+				return fmt.Errorf("期望 %s 为 TAG_Byte_Array", tagName)
 			}
-
-		case "Data":
-			s.DataTagGzipOffset = offsetReader.GetOffset()
-			err = tagReader.SkipTagValue(offsetReader, tagType)
+			length, err := tagReader.ReadTagInt32(offsetReader)
 			if err != nil {
-				return fmt.Errorf("跳过标签 %s 失败: %w", tagName, err)
+				return err
+			}
+			if length < 0 {
+				return fmt.Errorf("%s 长度无效: %d", tagName, length)
+			}
+			if tagName == "Blocks" {
+				s.BlocksTagGzipOffset = offsetReader.GetOffset()
+			} else {
+				s.DataTagGzipOffset = offsetReader.GetOffset()
+			}
+			if _, err = io.CopyN(io.Discard, offsetReader, int64(length)); err != nil {
+				return fmt.Errorf("读取 %s 失败: %w", tagName, err)
 			}
 
 		default:
@@ -273,247 +279,67 @@ func (s *Schematic) GetSize() define.Size {
 }
 
 func (s *Schematic) GetChunks(posList []define.ChunkPos) (map[define.ChunkPos]*chunk.Chunk, error) {
-	chunks := make(map[define.ChunkPos]*chunk.Chunk)
-	// 初始化所有请求的区块为空气
+	chunks := make(map[define.ChunkPos]*chunk.Chunk, len(posList))
 	for _, pos := range posList {
-		chunks[pos] = chunk.NewChunk(block.AirRuntimeID, MCWorldOverworldRange)
-	}
-
-	// 原始建筑的尺寸
-	origWidth := s.originalSize.Width
-	origLength := s.originalSize.Length
-	origHeight := s.originalSize.Height
-
-	// 偏移量（建筑在新尺寸中的位置）
-	offsetX := int(s.offsetPos.X())
-	offsetY := int(s.offsetPos.Y())
-	offsetZ := int(s.offsetPos.Z())
-
-	// 收集需要读取的原始建筑方块索引
-	allIndices := []int{}
-	for _, pos := range posList {
-		// 计算当前区块在全局的坐标范围
-		chunkMinX := int(pos.X()) * 16
-		chunkMaxX := chunkMinX + 16
-		chunkMinZ := int(pos.Z()) * 16
-		chunkMaxZ := chunkMinZ + 16
-
-		// 遍历区块内可能包含原始建筑的位置（考虑偏移后的位置）
-		for y := 0; y < origHeight; y++ {
-			// 建筑在新范围中的Y坐标 = 原始Y + 偏移Y
-			newY := y + offsetY
-			if newY < 0 || newY >= s.size.Height {
-				continue
-			}
-
-			for z := 0; z < origLength; z++ {
-				// 建筑在新范围中的Z坐标 = 原始Z + 偏移Z
-				newZ := z + offsetZ
-				if newZ < chunkMinZ || newZ >= chunkMaxZ {
-					continue // 不在当前区块的Z范围内
-				}
-
-				for x := 0; x < origWidth; x++ {
-					// 建筑在新范围中的X坐标 = 原始X + 偏移X
-					newX := x + offsetX
-					if newX < chunkMinX || newX >= chunkMaxX {
-						continue // 不在当前区块的X范围内
-					}
-
-					// 计算原始建筑中的索引（用于读取NBT数据）
-					index := (y*origLength+z)*origWidth + x
-					allIndices = append(allIndices, index)
-				}
-			}
+		if chunks[pos] == nil {
+			chunks[pos] = chunk.NewChunk(block.AirRuntimeID, MCWorldOverworldRange)
 		}
 	}
-
-	if len(allIndices) == 0 {
-		return chunks, nil // 没有需要读取的建筑方块, 返回全空气区块
+	rows := denseChunkRows(*s.originalSize, s.offsetPos, chunks, false)
+	if len(rows) == 0 {
+		return chunks, nil
 	}
-
-	// 排序索引, 优化读取效率
-	slices.Sort(allIndices)
-
-	// 读取方块数据
 	file, err := os.Open(s.file.Name())
 	if err != nil {
-		return nil, fmt.Errorf("重新打开文件失败: %w", err)
+		return nil, err
 	}
 	defer file.Close()
-	gzipReader, err := gzip.NewReader(file)
+	gz, err := gzip.NewReader(file)
 	if err != nil {
-		return nil, fmt.Errorf("创建 gzip 读取器失败: %w", err)
+		return nil, err
 	}
-	defer gzipReader.Close()
-	offsetReader := nbt.NewOffsetReader(gzipReader)
-	datas := make(map[int]byte)
-
-	// 处理数据标签和方块标签
-	if s.DataTagGzipOffset < s.BlocksTagGzipOffset {
-		// 先读Data标签
-		if _, err := io.CopyN(io.Discard, offsetReader, s.DataTagGzipOffset); err != nil {
-			return nil, fmt.Errorf("定位到 data 标签失败: %w", err)
-		}
-
-		lastIndex := 0
-		for _, index := range allIndices {
-			if _, err := io.CopyN(io.Discard, offsetReader, int64(index-lastIndex)); err != nil {
-				return nil, fmt.Errorf("定位数据索引 %d 失败: %w", index, err)
+	defer gz.Close()
+	reader := bufio.NewReaderSize(gz, 64*1024)
+	first, second := s.BlocksTagGzipOffset, s.DataTagGzipOffset
+	dataFirst := first > second
+	if dataFirst {
+		first, second = second, first
+	}
+	count := 0
+	for _, row := range rows {
+		count += row.count
+	}
+	saved := make([]byte, count)
+	offset := int64(0)
+	for pass, base := range []int64{first, second} {
+		cursor := 0
+		var values [16]byte
+		for _, row := range rows {
+			start := base + row.index
+			if start < offset {
+				return nil, fmt.Errorf("Schematic 数组重叠或索引无效")
 			}
-			b := make([]byte, 1)
-			if _, err := io.ReadFull(offsetReader, b); err != nil {
-				return nil, fmt.Errorf("读取索引 %d 的数据失败: %w", index, err)
+			if _, err := io.CopyN(io.Discard, reader, start-offset); err != nil {
+				return nil, err
 			}
-			datas[index] = b[0]
-			lastIndex = index + 1
-		}
-
-		// 再读Blocks标签
-		if _, err := io.CopyN(io.Discard, offsetReader, s.BlocksTagGzipOffset-offsetReader.GetOffset()); err != nil {
-			return nil, fmt.Errorf("定位到 blocks 标签失败: %w", err)
-		}
-
-		lastIndex = 0
-		for _, index := range allIndices {
-			if _, err := io.CopyN(io.Discard, offsetReader, int64(index-lastIndex)); err != nil {
-				return nil, fmt.Errorf("定位方块索引 %d 失败: %w", index, err)
+			if _, err := io.ReadFull(reader, values[:row.count]); err != nil {
+				return nil, err
 			}
-			b := make([]byte, 1)
-			if _, err := io.ReadFull(offsetReader, b); err != nil {
-				return nil, fmt.Errorf("读取索引 %d 的方块失败: %w", index, err)
-			}
-
-			// 从原始索引反推原始坐标
-			x := index % origWidth
-			remaining := index / origWidth
-			z := remaining % origLength
-			y := remaining / origLength
-
-			// 计算在新范围中的坐标（原始坐标 + 偏移）
-			newX := x + offsetX
-			newY := y + offsetY
-			newZ := z + offsetZ
-
-			// 计算在区块内的局部坐标
-			chunkX := int32(newX / 16)
-			chunkZ := int32(newZ / 16)
-			localX := uint8(newX % 16)
-			localZ := uint8(newZ % 16)
-			localY := int16(newY)
-
-			// 获取当前区块
-			c, ok := chunks[define.ChunkPos{chunkX, chunkZ}]
-			if !ok {
-				lastIndex = index + 1
-				continue
-			}
-
-			// 转换方块ID
-			blockIndex := uint8(b[0])
-			dataValue := uint8(datas[index])
-			runtimeID := blocks.SchematicToRuntimeID(blockIndex, dataValue)
-			baseName, properties, found := blocks.RuntimeIDToState(runtimeID)
-			blockRuntimeID := block.AirRuntimeID // 默认空气
-			if found {
-				if rtid, found := block.StateToRuntimeID("minecraft:"+baseName, properties); found {
-					blockRuntimeID = rtid
+			offset = start + int64(row.count)
+			if pass == 0 {
+				copy(saved[cursor:], values[:row.count])
+			} else {
+				for j := 0; j < row.count; j++ {
+					id, data := saved[cursor+j], values[j]
+					if dataFirst {
+						id, data = data, id
+					}
+					row.target.SetBlock(uint8(row.x+j), int16(row.y), uint8(row.z), 0, SchematicBlockMapping[id][data])
 				}
 			}
-
-			// 设置方块到新位置
-			c.SetBlock(localX, localY - 64, localZ, 0, blockRuntimeID)
-			lastIndex = index + 1
-		}
-	} else if s.DataTagGzipOffset > s.BlocksTagGzipOffset {
-		// 先读Blocks标签
-		blockIndices := make(map[int]byte)
-		if _, err := io.CopyN(io.Discard, offsetReader, s.BlocksTagGzipOffset); err != nil {
-			return nil, fmt.Errorf("定位到 blocks 标签失败: %w", err)
-		}
-
-		lastIndex := 0
-		for _, index := range allIndices {
-			if _, err := io.CopyN(io.Discard, offsetReader, int64(index-lastIndex)); err != nil {
-				return nil, fmt.Errorf("定位方块索引 %d 失败: %w", index, err)
-			}
-			b := make([]byte, 1)
-			if _, err := io.ReadFull(offsetReader, b); err != nil {
-				return nil, fmt.Errorf("读取索引 %d 的方块失败: %w", index, err)
-			}
-			blockIndices[index] = b[0]
-			lastIndex = index + 1
-		}
-
-		// 重新打开gzip读取Data标签
-		gzipReader.Close()
-		s.file.Seek(0, io.SeekStart)
-		gzipReader, err = gzip.NewReader(s.file)
-		if err != nil {
-			return nil, fmt.Errorf("创建第二个 gzip 读取器失败: %w", err)
-		}
-		offsetReader = nbt.NewOffsetReader(gzipReader)
-
-		if _, err := io.CopyN(io.Discard, offsetReader, s.DataTagGzipOffset); err != nil {
-			return nil, fmt.Errorf("定位到 data 标签失败: %w", err)
-		}
-
-		lastIndex = 0
-		for _, index := range allIndices {
-			if _, err := io.CopyN(io.Discard, offsetReader, int64(index-lastIndex)); err != nil {
-				return nil, fmt.Errorf("定位数据索引 %d 失败: %w", index, err)
-			}
-			b := make([]byte, 1)
-			if _, err := io.ReadFull(offsetReader, b); err != nil {
-				return nil, fmt.Errorf("读取索引 %d 的数据失败: %w", index, err)
-			}
-			datas[index] = b[0]
-			lastIndex = index + 1
-		}
-
-		// 处理方块放置
-		for _, index := range allIndices {
-			// 从原始索引反推原始坐标
-			x := index % origWidth
-			remaining := index / origWidth
-			z := remaining % origLength
-			y := remaining / origLength
-
-			// 计算在新范围中的坐标（原始坐标 + 偏移）
-			newX := x + offsetX
-			newY := y + offsetY
-			newZ := z + offsetZ
-
-			// 计算在区块内的局部坐标
-			chunkX := int32(newX / 16)
-			chunkZ := int32(newZ / 16)
-			localX := uint8(newX % 16)
-			localZ := uint8(newZ % 16)
-			localY := int16(newY)
-
-			// 获取当前区块
-			c, ok := chunks[define.ChunkPos{chunkX, chunkZ}]
-			if !ok {
-				continue
-			}
-
-			// 转换方块ID
-			blockIndex := uint8(blockIndices[index])
-			dataValue := uint8(datas[index])
-			runtimeID := blocks.SchematicToRuntimeID(blockIndex, dataValue)
-			baseName, properties, found := blocks.RuntimeIDToState(runtimeID)
-			blockRuntimeID := block.AirRuntimeID // 默认空气
-			if found {
-				if rtid, found := block.StateToRuntimeID("minecraft:"+baseName, properties); found {
-					blockRuntimeID = rtid
-				}
-			}
-
-			// 设置方块到新位置
-			c.SetBlock(localX, localY - 64, localZ, 0, blockRuntimeID)
+			cursor += row.count
 		}
 	}
-
 	return chunks, nil
 }
 

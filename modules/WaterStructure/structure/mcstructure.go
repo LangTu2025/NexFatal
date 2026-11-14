@@ -1,11 +1,11 @@
 package structure
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
 	"os"
-	"slices"
 	"strconv"
 
 	"github.com/bongnv/go-container/orderedmap"
@@ -34,6 +34,8 @@ type MCStructure struct {
 	palette             map[int32]uint32
 	offsetPos           define.Offset
 	blockIndexTagOffset int64
+	layerOffsets        [2]int64
+	layerLengths        [2]int64
 }
 
 func (m *MCStructure) ID() uint8 {
@@ -161,9 +163,24 @@ func (m *MCStructure) FromFile(file *os.File) error {
 					m.blockIndexTagOffset = offsetReader.GetOffset()
 
 					for i := int32(0); i < blockIndicesLength; i++ {
-						err = tagReader.SkipTagList(offsetReader)
+						element, err := tagReader.ReadTagType(offsetReader)
 						if err != nil {
-							return fmt.Errorf("跳过 block index 标签 %d 失败: %w", i, err)
+							return err
+						}
+						if element != nbt.TagInt32 {
+							return fmt.Errorf("block_indices[%d] 必须为 TAG_Int 列表", i)
+						}
+						length, err := tagReader.ReadTagInt32(offsetReader)
+						if err != nil {
+							return err
+						}
+						if length < 0 {
+							return fmt.Errorf("block_indices[%d] 长度无效", i)
+						}
+						m.layerOffsets[i] = offsetReader.GetOffset()
+						m.layerLengths[i] = int64(length)
+						if _, err := io.CopyN(io.Discard, offsetReader, int64(length)*4); err != nil {
+							return err
 						}
 					}
 
@@ -281,151 +298,57 @@ func (m *MCStructure) GetSize() define.Size {
 }
 
 func (m *MCStructure) GetChunks(posList []define.ChunkPos) (map[define.ChunkPos]*chunk.Chunk, error) {
-	chunks := make(map[define.ChunkPos]*chunk.Chunk)
-	// 初始化所有请求的区块为空气
+	chunks := make(map[define.ChunkPos]*chunk.Chunk, len(posList))
 	for _, pos := range posList {
-		chunks[pos] = chunk.NewChunk(block.AirRuntimeID, MCWorldOverworldRange)
-	}
-
-	// 原始建筑的尺寸
-	origWidth := m.originalSize.Width
-	origLength := m.originalSize.Length
-	origHeight := m.originalSize.Height
-
-	// 偏移量（建筑在新尺寸中的位置）
-	offsetX := int(m.offsetPos.X())
-	offsetY := int(m.offsetPos.Y())
-	offsetZ := int(m.offsetPos.Z())
-
-	// 收集需要读取的原始建筑方块索引
-	allIndices := []int{}
-	for _, pos := range posList {
-		// 计算当前区块在全局的坐标范围
-		chunkMinX := int(pos.X()) * 16
-		chunkMaxX := chunkMinX + 16
-		chunkMinZ := int(pos.Z()) * 16
-		chunkMaxZ := chunkMinZ + 16
-
-		// 遍历区块内可能包含原始建筑的位置（考虑偏移后的位置）
-		// 按ZYX顺序生成索引, 匹配MCStructure的存储格式
-		for x := 0; x < origWidth; x++ {
-			// 建筑在新范围中的X坐标 = 原始X + 偏移X
-			newX := x + offsetX
-			if newX < chunkMinX || newX >= chunkMaxX {
-				continue // 不在当前区块的X范围内
-			}
-
-			for y := 0; y < origHeight; y++ {
-				// 建筑在新范围中的Y坐标 = 原始Y + 偏移Y
-				newY := y + offsetY
-				if newY < 0 || newY >= m.size.Height {
-					continue
-				}
-
-				for z := 0; z < origLength; z++ {
-					// 建筑在新范围中的Z坐标 = 原始Z + 偏移Z
-					newZ := z + offsetZ
-					if newZ < chunkMinZ || newZ >= chunkMaxZ {
-						continue // 不在当前区块的Z范围内
-					}
-
-					// 按ZYX顺序计算索引, 匹配MCStructure存储格式
-					index := x*origHeight*origLength + y*origLength + z
-					allIndices = append(allIndices, index)
-				}
-			}
+		if chunks[pos] == nil {
+			chunks[pos] = chunk.NewChunk(block.AirRuntimeID, MCWorldOverworldRange)
 		}
 	}
-
-	if len(allIndices) == 0 {
-		return chunks, nil // 没有需要读取的建筑方块, 返回全空气区块
+	rows := denseChunkRows(*m.originalSize, m.offsetPos, chunks, true)
+	if len(rows) == 0 {
+		return chunks, nil
 	}
-
-	// 排序索引, 优化读取效率
-	slices.Sort(allIndices)
-
-	// 读取方块数据（流式解析第0层: 只读取第0层内层List, 不使用 ReadTagList）
 	file, err := os.Open(m.file.Name())
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
-	if _, err := file.Seek(m.blockIndexTagOffset, io.SeekStart); err != nil {
-		return nil, err
-	}
-	offsetReader := nbt.NewOffsetReader(file)
-	tagReader := nbt.NewTagReader(nbt.LittleEndian)
-
-	// 内层List的负载: 元素类型(1字节) + 长度(Int32) + 元素序列
-	innerElementType, err := tagReader.ReadTagType(offsetReader)
-	if err != nil {
-		return nil, fmt.Errorf("read block_indices[0] element type: %w", err)
-	}
-	if innerElementType != nbt.TagInt32 {
-		return nil, fmt.Errorf("expected block_indices[0] element type TAG_Int, got %s", innerElementType)
-	}
-	innerLength, err := tagReader.ReadTagInt32(offsetReader)
-	if err != nil {
-		return nil, fmt.Errorf("read block_indices[0] length: %w", err)
-	}
-
-	// 按需流式读取: 跳过不需要的索引, 只读取 allIndices 中需要的位置
-	nextNeeded := 0
-	total := int(innerLength)
-	if total < 0 {
-		total = 0
-	}
-	for idx := 0; idx < total && nextNeeded < len(allIndices); {
-		target := allIndices[nextNeeded]
-		if target < idx {
-			nextNeeded++
+	// Coalesce nearby rows in a bounded window instead of scanning preceding data.
+	buffer := make([]byte, 64*1024)
+	for layer := 0; layer < 2; layer++ {
+		if m.layerLengths[layer] == 0 {
 			continue
 		}
-		// 跳过 [idx, target) 的多余元素（每个元素为4字节的Int32）
-		skipCount := target - idx
-		if skipCount > 0 {
-			if _, err := io.CopyN(io.Discard, offsetReader, int64(4*skipCount)); err != nil {
-				return nil, fmt.Errorf("skip %d indices before %d: %w", skipCount, target, err)
+		windowStart, windowEnd := int64(-1), int64(-1)
+		for _, row := range rows {
+			if row.index+int64(row.count) > m.layerLengths[layer] {
+				return nil, io.ErrUnexpectedEOF
 			}
-			idx += skipCount
-		}
-
-		// 读取目标索引的值
-		val, err := tagReader.ReadTagInt32(offsetReader)
-		if err != nil {
-			return nil, fmt.Errorf("read block index at %d: %w", idx, err)
-		}
-
-		if val != -1 {
-			// 将扁平索引(ZYX顺序)转换为坐标
-			z := idx % origLength
-			remaining := idx / origLength
-			y := remaining % origHeight
-			x := remaining / origHeight
-
-			newX := x + offsetX
-			newY := y + offsetY
-			newZ := z + offsetZ
-
-			chunkX := int32(newX / 16)
-			chunkZ := int32(newZ / 16)
-			localX := uint8(newX % 16)
-			localZ := uint8(newZ % 16)
-			localY := int16(newY)
-
-			if c, ok := chunks[define.ChunkPos{chunkX, chunkZ}]; ok {
-				blockRuntimeID, ok := m.palette[val]
-				if !ok {
-					blockRuntimeID = UnknownBlockRuntimeID
+			start := m.layerOffsets[layer] + row.index*4
+			end := start + int64(row.count*4)
+			if start < windowStart || end > windowEnd {
+				length := min(int64(len(buffer)), m.layerOffsets[layer]+m.layerLengths[layer]*4-start)
+				if _, err := file.ReadAt(buffer[:int(length)], start); err != nil {
+					return nil, err
 				}
-				c.SetBlock(localX, localY-64, localZ, 0, blockRuntimeID)
+				windowStart, windowEnd = start, start+length
+			}
+			for j := 0; j < row.count; j++ {
+				at := int(start-windowStart) + j*4
+				value := int32(binary.LittleEndian.Uint32(buffer[at : at+4]))
+				if value == -1 {
+					continue
+				}
+				runtimeID, ok := m.palette[value]
+				if !ok {
+					runtimeID = UnknownBlockRuntimeID
+				}
+				if runtimeID != block.AirRuntimeID {
+					row.target.SetBlock(uint8(row.x), int16(row.y), uint8(row.z+j), uint8(layer), runtimeID)
+				}
 			}
 		}
-
-		idx++
-		nextNeeded++
 	}
-
 	return chunks, nil
 }
 

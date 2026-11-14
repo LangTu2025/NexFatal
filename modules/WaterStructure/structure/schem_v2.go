@@ -1,6 +1,7 @@
 package structure
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -8,7 +9,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"slices"
 
 	"github.com/TriM-Organization/bedrock-world-operator/block"
 	"github.com/TriM-Organization/bedrock-world-operator/chunk"
@@ -275,136 +275,51 @@ func (s *SchemV2) GetSize() define.Size {
 }
 
 func (s *SchemV2) GetChunks(posList []define.ChunkPos) (map[define.ChunkPos]*chunk.Chunk, error) {
-	chunks := make(map[define.ChunkPos]*chunk.Chunk)
-	// 初始化所有请求的区块为空气
+	chunks := make(map[define.ChunkPos]*chunk.Chunk, len(posList))
 	for _, pos := range posList {
-		chunks[pos] = chunk.NewChunk(block.AirRuntimeID, MCWorldOverworldRange)
-	}
-
-	// 原始建筑的尺寸
-	origWidth := s.originalSize.Width
-	origLength := s.originalSize.Length
-	origHeight := s.originalSize.Height
-
-	// 偏移量（建筑在新尺寸中的位置）
-	offsetX := int(s.offsetPos.X())
-	offsetY := int(s.offsetPos.Y())
-	offsetZ := int(s.offsetPos.Z())
-
-	// 收集需要读取的原始建筑方块索引
-	allIndices := []int{}
-	for _, pos := range posList {
-		// 计算当前区块在全局的坐标范围
-		chunkMinX := int(pos.X()) * 16
-		chunkMaxX := chunkMinX + 16
-		chunkMinZ := int(pos.Z()) * 16
-		chunkMaxZ := chunkMinZ + 16
-
-		// 遍历区块内可能包含原始建筑的位置（考虑偏移后的位置）
-		for y := 0; y < origHeight; y++ {
-			// 建筑在新范围中的Y坐标 = 原始Y + 偏移Y
-			newY := y + offsetY
-			if newY < 0 || newY >= s.size.Height {
-				continue
-			}
-
-			for z := 0; z < origLength; z++ {
-				// 建筑在新范围中的Z坐标 = 原始Z + 偏移Z
-				newZ := z + offsetZ
-				if newZ < chunkMinZ || newZ >= chunkMaxZ {
-					continue // 不在当前区块的Z范围内
-				}
-
-				for x := 0; x < origWidth; x++ {
-					// 建筑在新范围中的X坐标 = 原始X + 偏移X
-					newX := x + offsetX
-					if newX < chunkMinX || newX >= chunkMaxX {
-						continue // 不在当前区块的X范围内
-					}
-
-					// 计算原始建筑中的索引（用于读取NBT数据）
-					index := (y*origLength+z)*origWidth + x
-					allIndices = append(allIndices, index)
-				}
-			}
+		if chunks[pos] == nil {
+			chunks[pos] = chunk.NewChunk(block.AirRuntimeID, MCWorldOverworldRange)
 		}
 	}
-
-	if len(allIndices) == 0 {
-		return chunks, nil // 没有需要读取的建筑方块, 返回全空气区块
+	rows := denseChunkRows(*s.originalSize, s.offsetPos, chunks, false)
+	if len(rows) == 0 {
+		return chunks, nil
 	}
-
-	// 排序索引, 优化读取效率
-	slices.Sort(allIndices)
-
-	// 读取方块数据
 	file, err := os.Open(s.file.Name())
 	if err != nil {
-		return nil, fmt.Errorf("重新打开文件失败: %w", err)
+		return nil, err
 	}
 	defer file.Close()
-	gzipReader, err := gzip.NewReader(file)
+	gz, err := gzip.NewReader(file)
 	if err != nil {
-		return nil, fmt.Errorf("创建 gzip 读取器失败: %w", err)
+		return nil, err
 	}
-	defer gzipReader.Close()
-	offsetReader := nbt.NewOffsetReader(gzipReader)
-	if _, err = io.CopyN(io.Discard, offsetReader, s.dataTagGzipOffset); err != nil {
-		return nil, fmt.Errorf("定位到 data 标签失败: %w", err)
+	defer gz.Close()
+	reader := bufio.NewReaderSize(gz, 64*1024)
+	if _, err = io.CopyN(io.Discard, reader, s.dataTagGzipOffset); err != nil {
+		return nil, err
 	}
-
-	currentIndex := 0
-	for _, targetIndex := range allIndices {
-		// 跳过不需要的varint, 逐个解码来正确跳过变长编码
-		for currentIndex < targetIndex {
-			_, err := ReadVarintFromReader(offsetReader)
-			if err != nil {
-				return nil, fmt.Errorf("跳过索引 %d 的 varint 失败: %w", currentIndex, err)
+	current := int64(0)
+	for _, row := range rows {
+		for current < row.index {
+			if _, err := ReadVarintFromReader(reader); err != nil {
+				return nil, fmt.Errorf("跳过索引 %d: %w", current, err)
 			}
-			currentIndex++
+			current++
 		}
-
-		// 读取目标位置的 varint 编码的方块索引数据
-		blockIndex, err := ReadVarintFromReader(offsetReader)
-		if err != nil {
-			return nil, fmt.Errorf("读取索引 %d 的 varint 数据失败: %w", targetIndex, err)
+		for j := 0; j < row.count; j++ {
+			value, err := ReadVarintFromReader(reader)
+			if err != nil {
+				return nil, fmt.Errorf("读取索引 %d: %w", current, err)
+			}
+			current++
+			runtimeID, ok := s.palette[int32(value)]
+			if !ok {
+				runtimeID = UnknownBlockRuntimeID
+			}
+			row.target.SetBlock(uint8(row.x+j), int16(row.y), uint8(row.z), 0, runtimeID)
 		}
-		currentIndex++
-
-		// 从原始索引反推原始坐标
-		x := targetIndex % origWidth
-		remaining := targetIndex / origWidth
-		z := remaining % origLength
-		y := remaining / origLength
-
-		// 计算在新范围中的坐标（原始坐标 + 偏移）
-		newX := x + offsetX
-		newY := y + offsetY
-		newZ := z + offsetZ
-
-		// 计算在区块内的局部坐标
-		chunkX := int32(newX / 16)
-		chunkZ := int32(newZ / 16)
-		localX := uint8(newX % 16)
-		localZ := uint8(newZ % 16)
-		localY := int16(newY)
-
-		// 获取当前区块
-		c, ok := chunks[define.ChunkPos{chunkX, chunkZ}]
-		if !ok {
-			continue
-		}
-
-		// 从s.palette获取方块ID
-		blockRuntimeID, ok := s.palette[int32(blockIndex)]
-		if !ok {
-			blockRuntimeID = UnknownBlockRuntimeID
-		}
-
-		// 设置方块到新位置
-		c.SetBlock(localX, localY-64, localZ, 0, blockRuntimeID)
 	}
-
 	return chunks, nil
 }
 

@@ -120,33 +120,31 @@ func convertReaderToMCWorldWithContext(
 		return nil
 	}
 
-	allChunkPos := make([]define.ChunkPos, 0, totalChunks)
-	for x := 0; x < xCount; x++ {
-		for z := 0; z < zCount; z++ {
-			allChunkPos = append(allChunkPos, define.ChunkPos{int32(x), int32(z)})
-		}
-	}
-
 	if batchSize <= 0 {
 		batchSize = 64
 	}
 	if totalChunks < batchSize {
 		batchSize = totalChunks
 	}
+	batch := make([]define.ChunkPos, batchSize)
 
 	chunkOffsetX := startSubChunkPos.X()
 	chunkOffsetZ := startSubChunkPos.Z()
 	blockYOffset := startSubChunkPos.Y() * 16
 
-	for i := 0; i < len(allChunkPos); i += batchSize {
+	for i := 0; i < totalChunks; i += batchSize {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		end := i + batchSize
-		if end > len(allChunkPos) {
-			end = len(allChunkPos)
+		if end > totalChunks {
+			end = totalChunks
 		}
-		batch := allChunkPos[i:end]
+		batch = batch[:end-i]
+		for j := range batch {
+			index := i + j
+			batch[j] = define.ChunkPos{int32(index / zCount), int32(index % zCount)}
+		}
 
 		chunks, err := reader.GetChunks(batch)
 		if err != nil {
@@ -168,7 +166,7 @@ func convertReaderToMCWorldWithContext(
 				}
 			}
 			if progressCallback != nil {
-				go progressCallback()
+				progressCallback()
 			}
 		}
 
